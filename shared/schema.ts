@@ -1,18 +1,50 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+export const jurisdictionSchema = z.object({
+  state: z.string(),
+  county: z.string(),
+  country: z.string(),
+  formattedAddress: z.string().optional(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export type Jurisdiction = z.infer<typeof jurisdictionSchema>;
+
+export const geocodeByCoordinatesSchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export const geocodeByZipSchema = z.object({
+  zipCode: z.string().min(5).max(10),
+});
+
+export const geocodeRequestSchema = z.union([
+  geocodeByCoordinatesSchema,
+  geocodeByZipSchema,
+]);
+
+export type GeocodeRequest = z.infer<typeof geocodeRequestSchema>;
+
+export const custodyLawSchema = z.object({
+  custodyStandard: z.string(),
+  custodyTypes: z.string(),
+  modificationRules: z.string(),
+  relocationRules: z.string(),
+  enforcementOptions: z.string(),
+});
+
+export type CustodyLaw = z.infer<typeof custodyLawSchema>;
+
+export const askAIRequestSchema = z.object({
+  jurisdiction: jurisdictionSchema,
+  question: z.string().min(5).max(2000),
+});
+
+export type AskAIRequest = z.infer<typeof askAIRequestSchema>;
+
+export const chatMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+});
+
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
