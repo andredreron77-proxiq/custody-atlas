@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   MapPin, Hash, Loader2, Navigation, AlertCircle,
   ShieldOff, WifiOff, Clock, CheckCircle2, ArrowRight
@@ -146,6 +146,15 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
   const [gpsState, setGpsState] = useState<GpsState>({ status: "idle" });
   const [zipCode, setZipCode] = useState("");
   const [zipState, setZipState] = useState<ZipState>({ status: "idle" });
+  const zipInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (activeTab === "zip") {
+      // Defer one tick so the input is in the DOM before focusing
+      const id = setTimeout(() => zipInputRef.current?.focus(), 0);
+      return () => clearTimeout(id);
+    }
+  }, [activeTab]);
 
   const isGpsLoading = gpsState.status === "loading";
   const isZipLoading = zipState.status === "loading";
@@ -358,6 +367,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
             <form onSubmit={handleZipSubmit} className="space-y-2">
               <div className="space-y-1.5">
                 <Input
+                  ref={zipInputRef}
                   type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
