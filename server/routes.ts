@@ -34,15 +34,23 @@ function getOpenAIClient(): OpenAI {
 async function geocodeWithGoogle(
   params: { lat: number; lng: number } | { address: string }
 ): Promise<Jurisdiction | null> {
+  // GOOGLE MAPS API KEY used here — server-side only, never exposed to the client
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_MAPS_API_KEY is not configured");
   }
 
   let url: string;
+  let inputCoords: { latitude: number; longitude: number } | undefined;
+
   if ("lat" in params) {
+    // Reverse geocoding: coordinates → address components
+    // GOOGLE MAPS GEOCODING API — latlng lookup
     url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${params.lat},${params.lng}&key=${apiKey}`;
+    inputCoords = { latitude: params.lat, longitude: params.lng };
   } else {
+    // Forward geocoding: ZIP/address → address components
+    // GOOGLE MAPS GEOCODING API — address lookup
     url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(params.address)}&key=${apiKey}`;
   }
 
@@ -90,7 +98,19 @@ async function geocodeWithGoogle(
 
   if (!state || !county) return null;
 
-  return { state, county, country, formattedAddress: result.formatted_address };
+  // Extract coordinates from the geocode result geometry (available for both lookup types)
+  const geometry = result.geometry?.location as { lat: number; lng: number } | undefined;
+  const latitude = inputCoords?.latitude ?? geometry?.lat;
+  const longitude = inputCoords?.longitude ?? geometry?.lng;
+
+  return {
+    state,
+    county,
+    country,
+    formattedAddress: result.formatted_address,
+    ...(latitude !== undefined && { latitude }),
+    ...(longitude !== undefined && { longitude }),
+  };
 }
 
 const UPLOADS_DIR = join(process.cwd(), "uploads");

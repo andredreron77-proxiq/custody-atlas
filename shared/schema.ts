@@ -5,6 +5,8 @@ export const jurisdictionSchema = z.object({
   county: z.string(),
   country: z.string().optional().default("United States"),
   formattedAddress: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 });
 
 export type Jurisdiction = z.infer<typeof jurisdictionSchema>;

@@ -9,10 +9,21 @@ export default function LocationPage() {
   const handleJurisdictionFound = (jurisdiction: Jurisdiction) => {
     const params = new URLSearchParams({
       county: jurisdiction.county,
-      country: jurisdiction.country,
-      address: jurisdiction.formattedAddress || "",
+      country: jurisdiction.country ?? "United States",
+      address: jurisdiction.formattedAddress ?? "",
     });
-    navigate(`/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}?${params}`);
+
+    // Pass coordinates if available (returned from server-side geocoding)
+    if (jurisdiction.latitude !== undefined) {
+      params.set("lat", String(jurisdiction.latitude));
+    }
+    if (jurisdiction.longitude !== undefined) {
+      params.set("lng", String(jurisdiction.longitude));
+    }
+
+    navigate(
+      `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}?${params}`
+    );
   };
 
   return (
