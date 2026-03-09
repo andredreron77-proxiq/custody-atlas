@@ -150,11 +150,20 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === "assistant") {
+      // Scroll to the TOP of the new AI response so the reader starts at the beginning
+      lastMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      // User just submitted — scroll to bottom to reveal the loading indicator
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const sendMessage = async (question: string) => {
@@ -280,6 +289,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
           {messages.map((msg, i) => (
             <div
               key={i}
+              ref={i === messages.length - 1 ? lastMessageRef : null}
               className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
               data-testid={`message-${msg.role}-${i}`}
             >
