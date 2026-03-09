@@ -63,7 +63,7 @@ export default function AskAIPage() {
   const lawPagePath = `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}?country=${encodeURIComponent(jurisdiction.country)}&address=${encodeURIComponent(jurisdiction.formattedAddress || "")}`;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-5 h-[calc(100vh-4rem)]">
+    <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col flex-1 min-h-0 gap-4">
       <Breadcrumb
         items={[
           { label: "Home", href: "/" },
