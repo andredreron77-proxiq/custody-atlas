@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Bot, User, AlertTriangle, Sparkles } from "lucide-react";
+import { Send, Loader2, Bot, User, AlertTriangle, Sparkles, CheckCircle2, HelpCircle, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import type { ChatMessage, Jurisdiction } from "@shared/schema";
+import type { ChatMessage, AILegalResponse, Jurisdiction } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 
 interface ChatBoxProps {
@@ -19,12 +20,62 @@ const SUGGESTED_QUESTIONS = [
   "What happens if the other parent violates the custody order?",
 ];
 
+function StructuredResponse({ data }: { data: AILegalResponse }) {
+  return (
+    <div className="space-y-4">
+      <div className="text-sm leading-relaxed text-foreground">
+        {data.summary}
+      </div>
+
+      {data.key_points.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key Points</span>
+          </div>
+          <ul className="space-y-1.5">
+            {data.key_points.map((point, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`key-point-${i}`}>
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                <span className="leading-relaxed">{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.questions_to_ask_attorney.length > 0 && (
+        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3 space-y-2">
+          <div className="flex items-center gap-1.5">
+            <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+              Questions to Ask Your Attorney
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {data.questions_to_ask_attorney.map((q, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200" data-testid={`attorney-question-${i}`}>
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                <span className="leading-relaxed">{q}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex items-start gap-1.5 pt-1 border-t border-border">
+        <Scale className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground italic leading-relaxed">{data.disclaimer}</p>
+      </div>
+    </div>
+  );
+}
+
 export function ChatBox({ jurisdiction }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -34,6 +85,15 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
   const sendMessage = async (question: string) => {
     if (!question.trim() || isLoading) return;
 
+    if (!jurisdiction.state || !jurisdiction.county) {
+      toast({
+        title: "Jurisdiction Required",
+        description: "Please select your state and county before asking a question.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const userMessage: ChatMessage = { role: "user", content: question.trim() };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -41,14 +101,24 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
 
     try {
       const res = await apiRequest("POST", "/api/ask", {
-        jurisdiction,
-        question: question.trim(),
+        jurisdiction: {
+          state: jurisdiction.state,
+          county: jurisdiction.county,
+        },
+        user_question: question.trim(),
       });
-      const data = await res.json();
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server error (${res.status})`);
+      }
+
+      const data: AILegalResponse = await res.json();
 
       const assistantMessage: ChatMessage = {
         role: "assistant",
-        content: data.answer,
+        content: data.summary,
+        structured: data,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
@@ -93,7 +163,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
                 <button
                   key={i}
                   onClick={() => sendMessage(q)}
-                  className="text-left text-sm px-4 py-2.5 rounded-md border bg-background hover-elevate transition-colors text-muted-foreground hover:text-foreground"
+                  className="text-left text-sm px-4 py-2.5 rounded-md border bg-background hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
                   data-testid={`button-suggested-${i}`}
                 >
                   {q}
@@ -124,29 +194,36 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
                     : "bg-muted text-muted-foreground"
                 }`}
               >
-                {msg.role === "user" ? (
-                  <User className="w-4 h-4" />
-                ) : (
-                  <Bot className="w-4 h-4" />
-                )}
+                {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
               </div>
-              <Card
-                className={`max-w-[80%] ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground border-primary/20"
-                    : ""
-                }`}
-              >
-                <CardContent className="p-3.5">
-                  <p
-                    className={`text-sm leading-relaxed whitespace-pre-wrap ${
-                      msg.role === "user" ? "text-primary-foreground" : ""
-                    }`}
-                  >
-                    {msg.content}
-                  </p>
-                </CardContent>
-              </Card>
+
+              {msg.role === "user" ? (
+                <Card className="max-w-[80%] bg-primary text-primary-foreground border-primary/20">
+                  <CardContent className="p-3.5">
+                    <p className="text-sm leading-relaxed text-primary-foreground">{msg.content}</p>
+                  </CardContent>
+                </Card>
+              ) : msg.structured ? (
+                <Card className="max-w-[85%] border-border shadow-sm" data-testid={`card-response-${i}`}>
+                  <CardHeader className="pb-2 pt-3.5 px-4">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs font-normal gap-1">
+                        <Scale className="w-3 h-3" />
+                        {jurisdiction.state} · {jurisdiction.county} County
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <StructuredResponse data={msg.structured} />
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="max-w-[85%]">
+                  <CardContent className="p-3.5">
+                    <p className="text-sm leading-relaxed">{msg.content}</p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           ))}
 
@@ -159,7 +236,9 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
                 <CardContent className="p-3.5">
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Analyzing {jurisdiction.state} custody law...</span>
+                    <span className="text-sm text-muted-foreground">
+                      Analyzing {jurisdiction.state} custody law...
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -171,7 +250,6 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
 
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <Textarea
-          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -187,11 +265,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
           disabled={!input.trim() || isLoading}
           data-testid="button-send"
         >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </form>
     </div>

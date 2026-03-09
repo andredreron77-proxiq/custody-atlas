@@ -3,7 +3,14 @@ import { createServer, type Server } from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
 import OpenAI from "openai";
-import { geocodeByCoordinatesSchema, geocodeByZipSchema, askAIRequestSchema, type CustodyLaw, type Jurisdiction } from "@shared/schema";
+import {
+  geocodeByCoordinatesSchema,
+  geocodeByZipSchema,
+  askAIRequestSchema,
+  aiLegalResponseSchema,
+  type CustodyLaw,
+  type Jurisdiction,
+} from "@shared/schema";
 
 let custodyLaws: Record<string, CustodyLaw> = {};
 
@@ -21,7 +28,9 @@ function getOpenAIClient(): OpenAI {
   });
 }
 
-async function geocodeWithGoogle(params: { lat: number; lng: number } | { address: string }): Promise<Jurisdiction | null> {
+async function geocodeWithGoogle(
+  params: { lat: number; lng: number } | { address: string }
+): Promise<Jurisdiction | null> {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_MAPS_API_KEY is not configured");
@@ -50,7 +59,11 @@ async function geocodeWithGoogle(params: { lat: number; lng: number } | { addres
   }
 
   const result = data.results[0];
-  const components = result.address_components as Array<{ long_name: string; short_name: string; types: string[] }>;
+  const components = result.address_components as Array<{
+    long_name: string;
+    short_name: string;
+    types: string[];
+  }>;
 
   let state = "";
   let county = "";
@@ -72,16 +85,9 @@ async function geocodeWithGoogle(params: { lat: number; lng: number } | { addres
     }
   }
 
-  if (!state || !county) {
-    return null;
-  }
+  if (!state || !county) return null;
 
-  return {
-    state,
-    county,
-    country,
-    formattedAddress: result.formatted_address,
-  };
+  return { state, county, country, formattedAddress: result.formatted_address };
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
@@ -94,7 +100,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const jurisdiction = await geocodeWithGoogle({ lat: parsed.data.lat, lng: parsed.data.lng });
       if (!jurisdiction) {
-        return res.status(404).json({ error: "Could not determine jurisdiction for these coordinates. Please try entering your ZIP code manually." });
+        return res.status(404).json({
+          error: "Could not determine jurisdiction for these coordinates. Please try entering your ZIP code manually.",
+        });
       }
 
       return res.json(jurisdiction);
@@ -103,7 +111,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(503).json({ error: "Geocoding service not configured. Please add a Google Maps API key." });
       }
       if (err.message?.includes("REQUEST_DENIED") || err.message?.includes("referer")) {
-        return res.status(503).json({ error: "Google Maps API key has referrer restrictions. Please remove restrictions in Google Cloud Console to allow server-side requests." });
+        return res.status(503).json({
+          error: "Google Maps API key has referrer restrictions. Please remove restrictions in Google Cloud Console.",
+        });
       }
       console.error("Geocoding error:", err);
       return res.status(500).json({ error: "Location lookup failed. Please try entering your ZIP code manually." });
@@ -128,7 +138,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(503).json({ error: "Geocoding service not configured. Please add a Google Maps API key." });
       }
       if (err.message?.includes("REQUEST_DENIED")) {
-        return res.status(503).json({ error: "Google Maps API key has referrer restrictions. Please remove restrictions in Google Cloud Console to allow server-side requests." });
+        return res.status(503).json({
+          error: "Google Maps API key has referrer restrictions. Please remove restrictions in Google Cloud Console.",
+        });
       }
       console.error("Geocoding error:", err);
       return res.status(500).json({ error: "Location lookup failed. Please try a different ZIP code." });
@@ -157,39 +169,74 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const parsed = askAIRequestSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+        return res.status(400).json({
+          error: "Invalid request",
+          details: parsed.error.issues.map((i) => i.message),
+        });
       }
 
-      const { jurisdiction, question } = parsed.data;
-      const law = custodyLaws[jurisdiction.state];
+      const { jurisdiction, legal_context, user_question } = parsed.data;
+
+      if (!jurisdiction.state || !jurisdiction.county) {
+        return res.status(400).json({ error: "Jurisdiction must include both state and county." });
+      }
 
       const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
       if (!hasAI) {
-        return res.status(503).json({ error: "AI service not configured. Please connect an OpenAI integration." });
+        return res.status(503).json({
+          error: "AI service not configured. Please connect an OpenAI integration.",
+        });
       }
 
-      const systemPrompt = `You are a knowledgeable legal assistant specializing in child custody law. You provide plain-English explanations of custody laws based on the user's jurisdiction. You are NOT a lawyer and your responses are for informational purposes only and do not constitute legal advice.
+      const stateLaw = custodyLaws[jurisdiction.state];
+      const isUnsupportedState = !stateLaw;
 
-The user is located in ${jurisdiction.county} County, ${jurisdiction.state}, ${jurisdiction.country}.
+      const legalContextText = stateLaw
+        ? `CUSTODY STANDARD:
+${stateLaw.custodyStandard}
 
-${law ? `Here is the relevant custody law information for ${jurisdiction.state}:
+CUSTODY TYPES:
+${stateLaw.custodyTypes}
 
-CUSTODY STANDARD: ${law.custodyStandard}
+MODIFICATION RULES:
+${stateLaw.modificationRules}
 
-CUSTODY TYPES: ${law.custodyTypes}
+RELOCATION RULES:
+${stateLaw.relocationRules}
 
-MODIFICATION RULES: ${law.modificationRules}
+ENFORCEMENT OPTIONS:
+${stateLaw.enforcementOptions}`
+        : legal_context
+          ? JSON.stringify(legal_context, null, 2)
+          : `No specific custody law data is available for ${jurisdiction.state} in our database. Provide general US family law principles applicable to this state, and be clear that the user should verify with a local attorney.`;
 
-RELOCATION RULES: ${law.relocationRules}
+      const systemPrompt = `You are a jurisdiction-aware legal information assistant that explains child custody law in plain English.
 
-ENFORCEMENT OPTIONS: ${law.enforcementOptions}` : `Note: We don't have specific custody law data for ${jurisdiction.state}. Please provide general information about custody law in that state and recommend consulting a local family law attorney.`}
+Rules:
+- You are NOT a lawyer and must never claim to be one.
+- Do NOT give definitive legal advice or tell users what they should do.
+- Use the user's jurisdiction as the primary context for your response.
+- Explain laws simply and clearly so a non-lawyer can understand.
+- Be compassionate — custody matters are emotionally difficult.
+- Always encourage consulting a licensed family law attorney.
 
-Always:
-1. Answer in plain English that a non-lawyer can understand
-2. Reference the specific state laws when answering
-3. Remind users at the end to consult with a licensed family law attorney for advice specific to their situation
-4. Be compassionate and supportive, as custody matters are often emotionally difficult
-5. Keep responses focused and concise (2-4 paragraphs)`;
+You MUST respond with valid JSON in exactly this structure:
+{
+  "summary": "A 2-3 sentence plain-English summary directly answering the user's question",
+  "key_points": ["Array of 3-5 specific, actionable key points relevant to the question"],
+  "questions_to_ask_attorney": ["Array of 3-4 specific questions the user should ask their attorney"],
+  "disclaimer": "A brief, compassionate reminder that this is general information only"
+}`;
+
+      const userPrompt = `USER CONTEXT:
+State: ${jurisdiction.state}
+County: ${jurisdiction.county}${isUnsupportedState ? "\n(Note: Limited state-specific data available — provide general applicable law)" : ""}
+
+Relevant law data:
+${legalContextText}
+
+User question:
+${user_question}`;
 
       const openai = getOpenAIClient();
 
@@ -197,19 +244,32 @@ Always:
         model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: question },
+          { role: "user", content: userPrompt },
         ],
-        max_tokens: 1000,
-        temperature: 0.7,
+        response_format: { type: "json_object" },
+        max_tokens: 1200,
+        temperature: 0.5,
       });
 
-      const answer = completion.choices[0]?.message?.content;
-
-      if (!answer) {
+      const rawContent = completion.choices[0]?.message?.content;
+      if (!rawContent) {
         return res.status(500).json({ error: "No response received from AI service." });
       }
 
-      return res.json({ answer });
+      let parsed_response: unknown;
+      try {
+        parsed_response = JSON.parse(rawContent);
+      } catch {
+        return res.status(500).json({ error: "AI returned an invalid response format. Please try again." });
+      }
+
+      const validated = aiLegalResponseSchema.safeParse(parsed_response);
+      if (!validated.success) {
+        console.error("AI response failed schema validation:", validated.error);
+        return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
+      }
+
+      return res.json(validated.data);
     } catch (err: any) {
       console.error("Ask AI error:", err);
       return res.status(500).json({ error: "Failed to get AI response. Please try again." });
