@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { z } from "zod";
+import OpenAI from "openai";
 import { geocodeByCoordinatesSchema, geocodeByZipSchema, askAIRequestSchema, type CustodyLaw, type Jurisdiction } from "@shared/schema";
 
 let custodyLaws: Record<string, CustodyLaw> = {};
@@ -12,6 +12,13 @@ try {
   custodyLaws = JSON.parse(readFileSync(filePath, "utf-8"));
 } catch (err) {
   console.error("Failed to load custody_laws.json:", err);
+}
+
+function getOpenAIClient(): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+  });
 }
 
 async function geocodeWithGoogle(params: { lat: number; lng: number } | { address: string }): Promise<Jurisdiction | null> {
@@ -34,6 +41,10 @@ async function geocodeWithGoogle(params: { lat: number; lng: number } | { addres
 
   const data = await response.json() as any;
 
+  if (data.status === "REQUEST_DENIED") {
+    throw new Error(`REQUEST_DENIED: ${data.error_message || "API key may have referrer restrictions"}`);
+  }
+
   if (data.status !== "OK" || !data.results || data.results.length === 0) {
     return null;
   }
@@ -50,7 +61,11 @@ async function geocodeWithGoogle(params: { lat: number; lng: number } | { addres
       state = component.long_name;
     }
     if (component.types.includes("administrative_area_level_2")) {
-      county = component.long_name.replace(" County", "").replace(" Parish", "").replace(" Borough", "");
+      county = component.long_name
+        .replace(/ County$/, "")
+        .replace(/ Parish$/, "")
+        .replace(/ Borough$/, "")
+        .replace(/ Municipality$/, "");
     }
     if (component.types.includes("country")) {
       country = component.long_name;
@@ -79,7 +94,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const jurisdiction = await geocodeWithGoogle({ lat: parsed.data.lat, lng: parsed.data.lng });
       if (!jurisdiction) {
-        return res.status(404).json({ error: "Could not determine jurisdiction for these coordinates" });
+        return res.status(404).json({ error: "Could not determine jurisdiction for these coordinates. Please try entering your ZIP code manually." });
       }
 
       return res.json(jurisdiction);
@@ -87,8 +102,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (err.message?.includes("GOOGLE_MAPS_API_KEY")) {
         return res.status(503).json({ error: "Geocoding service not configured. Please add a Google Maps API key." });
       }
+      if (err.message?.includes("REQUEST_DENIED") || err.message?.includes("referer")) {
+        return res.status(503).json({ error: "Google Maps API key has referrer restrictions. Please remove restrictions in Google Cloud Console to allow server-side requests." });
+      }
       console.error("Geocoding error:", err);
-      return res.status(500).json({ error: "Geocoding failed" });
+      return res.status(500).json({ error: "Location lookup failed. Please try entering your ZIP code manually." });
     }
   });
 
@@ -109,8 +127,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (err.message?.includes("GOOGLE_MAPS_API_KEY")) {
         return res.status(503).json({ error: "Geocoding service not configured. Please add a Google Maps API key." });
       }
+      if (err.message?.includes("REQUEST_DENIED")) {
+        return res.status(503).json({ error: "Google Maps API key has referrer restrictions. Please remove restrictions in Google Cloud Console to allow server-side requests." });
+      }
       console.error("Geocoding error:", err);
-      return res.status(500).json({ error: "Geocoding failed" });
+      return res.status(500).json({ error: "Location lookup failed. Please try a different ZIP code." });
     }
   });
 
@@ -142,6 +163,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { jurisdiction, question } = parsed.data;
       const law = custodyLaws[jurisdiction.state];
 
+      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!hasAI) {
+        return res.status(503).json({ error: "AI service not configured. Please connect an OpenAI integration." });
+      }
+
       const systemPrompt = `You are a knowledgeable legal assistant specializing in child custody law. You provide plain-English explanations of custody laws based on the user's jurisdiction. You are NOT a lawyer and your responses are for informational purposes only and do not constitute legal advice.
 
 The user is located in ${jurisdiction.county} County, ${jurisdiction.state}, ${jurisdiction.country}.
@@ -156,71 +182,37 @@ MODIFICATION RULES: ${law.modificationRules}
 
 RELOCATION RULES: ${law.relocationRules}
 
-ENFORCEMENT OPTIONS: ${law.enforcementOptions}` : `Note: We don't have specific custody law data for ${jurisdiction.state}. Please provide general information and recommend consulting a local family law attorney.`}
+ENFORCEMENT OPTIONS: ${law.enforcementOptions}` : `Note: We don't have specific custody law data for ${jurisdiction.state}. Please provide general information about custody law in that state and recommend consulting a local family law attorney.`}
 
 Always:
 1. Answer in plain English that a non-lawyer can understand
 2. Reference the specific state laws when answering
-3. Remind users to consult with a licensed family law attorney for advice specific to their situation
+3. Remind users at the end to consult with a licensed family law attorney for advice specific to their situation
 4. Be compassionate and supportive, as custody matters are often emotionally difficult
 5. Keep responses focused and concise (2-4 paragraphs)`;
 
-      const openaiApiKey = process.env.OPENAI_API_KEY;
-      const replitConnectorHost = process.env.REPLIT_CONNECTORS_HOSTNAME;
+      const openai = getOpenAIClient();
 
-      let apiUrl: string;
-      let headers: Record<string, string>;
-
-      if (replitConnectorHost) {
-        apiUrl = `https://${replitConnectorHost}/openai/v1/chat/completions`;
-        const replIdentity = process.env.REPL_IDENTITY || "";
-        const webReplRenewal = process.env.WEB_REPL_RENEWAL || "";
-        headers = {
-          "Content-Type": "application/json",
-          "X-Replit-Identity": replIdentity,
-          "X-Replit-Renewal": webReplRenewal,
-        };
-      } else if (openaiApiKey) {
-        apiUrl = "https://api.openai.com/v1/chat/completions";
-        headers = {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openaiApiKey}`,
-        };
-      } else {
-        return res.status(503).json({ error: "AI service not configured. Please connect the OpenAI integration or provide an API key." });
-      }
-
-      const aiResponse = await fetch(apiUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: question },
-          ],
-          max_tokens: 1000,
-          temperature: 0.7,
-        }),
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: question },
+        ],
+        max_tokens: 1000,
+        temperature: 0.7,
       });
 
-      if (!aiResponse.ok) {
-        const errText = await aiResponse.text();
-        console.error("OpenAI API error:", errText);
-        return res.status(500).json({ error: "AI response failed. Please try again." });
-      }
-
-      const aiData = await aiResponse.json() as any;
-      const answer = aiData.choices?.[0]?.message?.content;
+      const answer = completion.choices[0]?.message?.content;
 
       if (!answer) {
         return res.status(500).json({ error: "No response received from AI service." });
       }
 
       return res.json({ answer });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Ask AI error:", err);
-      return res.status(500).json({ error: "Failed to get AI response" });
+      return res.status(500).json({ error: "Failed to get AI response. Please try again." });
     }
   });
 
