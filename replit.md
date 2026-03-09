@@ -5,10 +5,10 @@
 **Custody Law Near Me** is a production-ready web application that helps users understand child custody laws specific to their jurisdiction (US state and county). Users can:
 
 1. Share their location via GPS or ZIP code
-2. View a structured summary of custody laws for their state (covering 5 key areas: custody standard, custody types, modification rules, relocation rules, and enforcement options)
+2. View a structured summary of custody laws for their state (covering 6 key areas: custody standard, custody types, modification rules, relocation rules, enforcement options, and mediation requirements)
 3. Ask an AI assistant plain-English questions about custody law in their jurisdiction
 
-The app is a single-page React frontend backed by a Node.js/Express API server. Legal data is stored in a static JSON file (`data/custody_laws.json`). Location resolution uses Google Maps Geocoding API. The AI Q&A feature uses OpenAI's chat completions API.
+The app is a single-page React frontend backed by a Node.js/Express API server. Legal data is stored in a static JSON file (`data/custody_laws.json`) using snake_case fields, abstracted via `server/custody-laws-store.ts` for future DB migration. Location resolution uses Google Maps Geocoding API. The AI Q&A feature uses OpenAI's chat completions API.
 
 ---
 
@@ -30,11 +30,18 @@ Preferred communication style: Simple, everyday language.
 - **Key Pages**:
   - `/` — Landing page with feature overview and state coverage
   - `/location` — Location selection page (GPS or ZIP code)
-  - `/jurisdiction/:state/:county` — Displays state custody law summary (5 sections)
+  - `/jurisdiction/:state/:county` — Displays state custody law summary (6 sections) with collapsible cards
   - `/ask` — AI Q&A chat interface, jurisdiction-aware
 - **Component Structure**:
   - `client/src/pages/` — Top-level page components
-  - `client/src/components/app/` — Domain-specific components (ChatBox, LocationSelector, LawSummarySection, JurisdictionCard, Header, Footer)
+  - `client/src/components/app/` — Domain-specific components:
+    - `LocationSelector` — GPS + ZIP state machine (idle/loading/success/error states)
+    - `ChatBox` — Structured AI Q&A card with key points and attorney questions
+    - `JurisdictionHeader` — Location summary with state code badge and coordinates
+    - `LawSectionCard` — Collapsible card for each law category (used 5x on jurisdiction page)
+    - `EnforcementList` — Structured bullet list for enforcement options
+    - `UnsupportedStateNotice` — Amber notice card for states not in the dataset
+    - `Header`, `Footer` — App-wide chrome
   - `client/src/components/ui/` — shadcn/ui base components
 
 ### Backend (Node.js + Express)
@@ -46,12 +53,12 @@ Preferred communication style: Simple, everyday language.
   - `POST /api/geocode/zip` — Forward geocode ZIP code → state + county via Google Maps API
   - `GET /api/custody-laws/:state` — Serve custody law data from the static JSON file
   - `POST /api/ask` — Accept a jurisdiction + user question, return structured AI response via OpenAI
-- **Static data**: `data/custody_laws.json` loaded once at server startup, keyed by state name
+- **Data access**: `server/custody-laws-store.ts` abstracts all reads from `data/custody_laws.json` (DB-ready interface with `getCustodyLaw(state)` and `listStates()`)
 - **User storage**: In-memory `MemStorage` class (no persistent user data; user locations are never stored)
 
 ### Data Layer
 
-- **Custody law data**: Flat JSON file (`data/custody_laws.json`) with entries for ~16+ US states. Each entry has 5 string fields: `custodyStandard`, `custodyTypes`, `modificationRules`, `relocationRules`, `enforcementOptions`.
+- **Custody law data**: Flat JSON file (`data/custody_laws.json`) covering 16 US states. Each entry has 7 snake_case fields: `state_code`, `custody_standard`, `custody_types`, `modification_rules`, `relocation_rules`, `enforcement_options`, `mediation_requirements`. Accessed exclusively through `server/custody-laws-store.ts` (swap for a DB query without touching routes.ts).
 - **Database (Drizzle + PostgreSQL)**: Configured via `drizzle.config.ts` and `shared/models/chat.ts`. The schema defines `conversations` and `messages` tables for conversation history (used by Replit integration modules). The main app flow does **not** require the database — it's used only by the chat/audio Replit integration routes.
 - **Schema validation**: Zod schemas in `shared/schema.ts` validate all API inputs/outputs.
 
@@ -64,7 +71,7 @@ Preferred communication style: Simple, everyday language.
 
 - `shared/schema.ts` defines Zod schemas and TypeScript types shared between client and server:
   - `Jurisdiction` — state, county, country, formattedAddress
-  - `CustodyLaw` — the 5 legal area fields
+  - `CustodyLawRecord` — 7 snake_case fields for one state's custody law data (`CustodyLaw` is a deprecated alias)
   - `AskAIRequest` — jurisdiction + user question
   - `AILegalResponse` — structured AI answer (summary, key points, attorney questions)
 

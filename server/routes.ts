@@ -1,28 +1,19 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { readFileSync, mkdirSync, unlinkSync } from "fs";
+import { mkdirSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 import multer from "multer";
 import OpenAI from "openai";
 import { extractTextFromDocument } from "./documentai";
+import { getCustodyLaw, listStates } from "./custody-laws-store";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
   askAIRequestSchema,
   aiLegalResponseSchema,
   documentAnalysisResultSchema,
-  type CustodyLaw,
   type Jurisdiction,
 } from "@shared/schema";
-
-let custodyLaws: Record<string, CustodyLaw> = {};
-
-try {
-  const filePath = join(process.cwd(), "data", "custody_laws.json");
-  custodyLaws = JSON.parse(readFileSync(filePath, "utf-8"));
-} catch (err) {
-  console.error("Failed to load custody_laws.json:", err);
-}
 
 function getOpenAIClient(): OpenAI {
   return new OpenAI({
@@ -188,12 +179,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/custody-laws/:state", (req, res) => {
     const stateName = req.params.state;
-    const law = custodyLaws[stateName];
+    const law = getCustodyLaw(stateName);
 
     if (!law) {
       return res.status(404).json({
         error: `No custody law data available for ${stateName}`,
-        availableStates: Object.keys(custodyLaws),
+        availableStates: listStates(),
       });
     }
 
@@ -201,7 +192,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/custody-laws", (_req, res) => {
-    return res.json({ states: Object.keys(custodyLaws).sort() });
+    return res.json({ states: listStates() });
   });
 
   app.post("/api/ask", async (req, res) => {
@@ -227,24 +218,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const stateLaw = custodyLaws[jurisdiction.state];
+      const stateLaw = getCustodyLaw(jurisdiction.state);
       const isUnsupportedState = !stateLaw;
 
       const legalContextText = stateLaw
         ? `CUSTODY STANDARD:
-${stateLaw.custodyStandard}
+${stateLaw.custody_standard}
 
 CUSTODY TYPES:
-${stateLaw.custodyTypes}
+${stateLaw.custody_types}
 
 MODIFICATION RULES:
-${stateLaw.modificationRules}
+${stateLaw.modification_rules}
 
 RELOCATION RULES:
-${stateLaw.relocationRules}
+${stateLaw.relocation_rules}
 
 ENFORCEMENT OPTIONS:
-${stateLaw.enforcementOptions}`
+${stateLaw.enforcement_options}
+
+MEDIATION REQUIREMENTS:
+${stateLaw.mediation_requirements}`
         : legal_context
           ? JSON.stringify(legal_context, null, 2)
           : `No specific custody law data is available for ${jurisdiction.state} in our database. Provide general US family law principles applicable to this state, and be clear that the user should verify with a local attorney.`;

@@ -27,15 +27,25 @@ export const geocodeRequestSchema = z.union([
 
 export type GeocodeRequest = z.infer<typeof geocodeRequestSchema>;
 
+/**
+ * CustodyLawRecord — the canonical shape of one state's custody law dataset.
+ * snake_case field names match the JSON file and any future DB column names.
+ * To add a field: add it here, to custody_laws.json, and to the display components.
+ */
 export const custodyLawSchema = z.object({
-  custodyStandard: z.string(),
-  custodyTypes: z.string(),
-  modificationRules: z.string(),
-  relocationRules: z.string(),
-  enforcementOptions: z.string(),
+  state_code: z.string().length(2),
+  custody_standard: z.string(),
+  custody_types: z.string(),
+  modification_rules: z.string(),
+  relocation_rules: z.string(),
+  enforcement_options: z.string(),
+  mediation_requirements: z.string(),
 });
 
-export type CustodyLaw = z.infer<typeof custodyLawSchema>;
+export type CustodyLawRecord = z.infer<typeof custodyLawSchema>;
+
+/** @deprecated Use CustodyLawRecord */
+export type CustodyLaw = CustodyLawRecord;
 
 export const askAIRequestSchema = z.object({
   jurisdiction: z.object({
