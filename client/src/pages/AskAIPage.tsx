@@ -7,6 +7,7 @@ import { ChatBox } from "@/components/app/ChatBox";
 import { JurisdictionCard } from "@/components/app/JurisdictionCard";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
+import { useJurisdiction } from "@/hooks/useJurisdiction";
 import type { Jurisdiction } from "@shared/schema";
 
 export default function AskAIPage() {
@@ -15,21 +16,35 @@ export default function AskAIPage() {
 
   const stateParam = urlParams.get("state");
   const countyParam = urlParams.get("county");
-  const countryParam = urlParams.get("country");
-  const addressParam = urlParams.get("address");
 
-  const [jurisdiction, setJurisdiction] = useState<Jurisdiction | null>(
+  // Build a jurisdiction from URL params if present — these take priority over stored session
+  const urlJurisdiction: Jurisdiction | null =
     stateParam && countyParam
       ? {
           state: stateParam,
           county: countyParam,
-          country: countryParam || "United States",
-          formattedAddress: addressParam || undefined,
+          country: urlParams.get("country") || "United States",
+          formattedAddress: urlParams.get("address") || undefined,
+          latitude: urlParams.get("lat") ? Number(urlParams.get("lat")) : undefined,
+          longitude: urlParams.get("lng") ? Number(urlParams.get("lng")) : undefined,
         }
-      : null
-  );
+      : null;
 
-  const [showLocationPicker, setShowLocationPicker] = useState(!jurisdiction);
+  // useJurisdiction: URL params take priority; falls back to sessionStorage automatically
+  const { jurisdiction, setJurisdiction, clearJurisdiction } = useJurisdiction(urlJurisdiction);
+
+  // "Change Location" shows the picker overlay without clearing — cleared only on confirm
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+
+  const handleJurisdictionFound = (j: Jurisdiction) => {
+    setJurisdiction(j);
+    setShowLocationPicker(false);
+  };
+
+  const handleChangeLocation = () => {
+    clearJurisdiction();
+    setShowLocationPicker(true);
+  };
 
   if (!jurisdiction || showLocationPicker) {
     return (
@@ -42,25 +57,25 @@ export default function AskAIPage() {
             Ask About Custody Law
           </h1>
           <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-            First, share your location so we can provide information specific to your state's custody laws.
+            Share your location so we can provide information specific to your state's custody laws.
           </p>
         </div>
 
-        <LocationSelector
-          onJurisdictionFound={(j) => {
-            setJurisdiction(j);
-            setShowLocationPicker(false);
-          }}
-        />
+        <LocationSelector onJurisdictionFound={handleJurisdictionFound} />
 
         <p className="text-xs text-muted-foreground text-center mt-6">
-          Your location is only used to identify applicable laws and is never stored.
+          Your location is only used to identify applicable laws and is never stored on our servers.
         </p>
       </div>
     );
   }
 
-  const lawPagePath = `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}?country=${encodeURIComponent(jurisdiction.country)}&address=${encodeURIComponent(jurisdiction.formattedAddress || "")}`;
+  const lawPagePath =
+    `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}` +
+    `?country=${encodeURIComponent(jurisdiction.country ?? "United States")}` +
+    `&address=${encodeURIComponent(jurisdiction.formattedAddress || "")}` +
+    (jurisdiction.latitude !== undefined ? `&lat=${jurisdiction.latitude}` : "") +
+    (jurisdiction.longitude !== undefined ? `&lng=${jurisdiction.longitude}` : "");
 
   return (
     <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col flex-1 min-h-0 gap-4">
@@ -92,7 +107,7 @@ export default function AskAIPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setShowLocationPicker(true)}
+            onClick={handleChangeLocation}
             className="gap-1.5"
             data-testid="button-change-location"
           >

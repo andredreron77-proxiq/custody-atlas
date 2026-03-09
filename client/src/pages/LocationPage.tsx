@@ -1,19 +1,22 @@
 import { useLocation } from "wouter";
 import { MapPin } from "lucide-react";
 import { LocationSelector } from "@/components/app/LocationSelector";
+import { useJurisdiction } from "@/hooks/useJurisdiction";
 import type { Jurisdiction } from "@shared/schema";
 
 export default function LocationPage() {
   const [, navigate] = useLocation();
+  const { setJurisdiction } = useJurisdiction();
 
   const handleJurisdictionFound = (jurisdiction: Jurisdiction) => {
+    setJurisdiction(jurisdiction);
+
     const params = new URLSearchParams({
       county: jurisdiction.county,
       country: jurisdiction.country ?? "United States",
       address: jurisdiction.formattedAddress ?? "",
     });
 
-    // Pass coordinates if available (returned from server-side geocoding)
     if (jurisdiction.latitude !== undefined) {
       params.set("lat", String(jurisdiction.latitude));
     }
@@ -44,7 +47,7 @@ export default function LocationPage() {
 
       <div className="mt-8 text-center">
         <p className="text-xs text-muted-foreground">
-          Your location data is never stored. It is only used to look up applicable laws.
+          Your location data is used only to look up applicable laws and is not stored on our servers.
         </p>
       </div>
     </div>
