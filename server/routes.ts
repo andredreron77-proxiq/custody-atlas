@@ -71,6 +71,7 @@ async function geocodeWithGoogle(
   let state = "";
   let county = "";
   let country = "";
+  let cityFallback = "";
 
   for (const component of components) {
     if (component.types.includes("administrative_area_level_1")) {
@@ -86,9 +87,28 @@ async function geocodeWithGoogle(
     if (component.types.includes("country")) {
       country = component.long_name;
     }
+    // Collect fallback values for areas where Google omits administrative_area_level_2
+    // (e.g. New York City ZIPs, some rural/PO Box ZIPs)
+    if (!cityFallback && component.types.includes("locality")) {
+      cityFallback = component.long_name;
+    }
+    if (!cityFallback && component.types.includes("sublocality_level_1")) {
+      cityFallback = component.long_name;
+    }
+    if (!cityFallback && component.types.includes("postal_town")) {
+      cityFallback = component.long_name;
+    }
+    if (!cityFallback && component.types.includes("neighborhood")) {
+      cityFallback = component.long_name;
+    }
   }
 
-  if (!state || !county) return null;
+  // Use city/locality as county display name when the county component is missing
+  if (!county && cityFallback) {
+    county = cityFallback;
+  }
+
+  if (!state) return null;
 
   // Extract coordinates from the geocode result geometry (available for both lookup types)
   const geometry = result.geometry?.location as { lat: number; lng: number } | undefined;
