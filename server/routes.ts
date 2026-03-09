@@ -6,6 +6,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { extractTextFromDocument } from "./documentai";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
+import { buildSystemPrompt, buildUserPrompt } from "./lib/prompts/legalAssistant";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -205,7 +206,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const { jurisdiction, legal_context, user_question } = parsed.data;
+      const { jurisdiction, legalContext, userQuestion } = parsed.data;
 
       if (!jurisdiction.state || !jurisdiction.county) {
         return res.status(400).json({ error: "Jurisdiction must include both state and county." });
@@ -218,70 +219,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
+      // Load state law from the store (server always controls this — client legalContext is supplemental)
       const stateLaw = getCustodyLaw(jurisdiction.state);
       const isUnsupportedState = !stateLaw;
 
       const legalContextText = stateLaw
-        ? `CUSTODY STANDARD:
-${stateLaw.custody_standard}
-
-CUSTODY TYPES:
-${stateLaw.custody_types}
-
-MODIFICATION RULES:
-${stateLaw.modification_rules}
-
-RELOCATION RULES:
-${stateLaw.relocation_rules}
-
-ENFORCEMENT OPTIONS:
-${stateLaw.enforcement_options}
-
-MEDIATION REQUIREMENTS:
-${stateLaw.mediation_requirements}`
-        : legal_context
-          ? JSON.stringify(legal_context, null, 2)
-          : `No specific custody law data is available for ${jurisdiction.state} in our database. Provide general US family law principles applicable to this state, and be clear that the user should verify with a local attorney.`;
-
-      const systemPrompt = `You are a jurisdiction-aware legal information assistant that explains child custody law in plain English.
-
-Rules:
-- You are NOT a lawyer and must never claim to be one.
-- Do NOT give definitive legal advice or tell users what they should do.
-- Use the user's jurisdiction as the primary context for your response.
-- Explain laws simply and clearly so a non-lawyer can understand.
-- Be compassionate — custody matters are emotionally difficult.
-- Always encourage consulting a licensed family law attorney.
-
-You MUST respond with valid JSON in exactly this structure:
-{
-  "summary": "A 2-3 sentence plain-English summary directly answering the user's question",
-  "key_points": ["Array of 3-5 specific, actionable key points relevant to the question"],
-  "questions_to_ask_attorney": ["Array of 3-4 specific questions the user should ask their attorney"],
-  "disclaimer": "A brief, compassionate reminder that this is general information only"
-}`;
-
-      const userPrompt = `USER CONTEXT:
-State: ${jurisdiction.state}
-County: ${jurisdiction.county}${isUnsupportedState ? "\n(Note: Limited state-specific data available — provide general applicable law)" : ""}
-
-Relevant law data:
-${legalContextText}
-
-User question:
-${user_question}`;
+        ? [
+            `CUSTODY STANDARD:\n${stateLaw.custody_standard}`,
+            `CUSTODY TYPES:\n${stateLaw.custody_types}`,
+            `MODIFICATION RULES:\n${stateLaw.modification_rules}`,
+            `RELOCATION RULES:\n${stateLaw.relocation_rules}`,
+            `ENFORCEMENT OPTIONS:\n${stateLaw.enforcement_options}`,
+            `MEDIATION REQUIREMENTS:\n${stateLaw.mediation_requirements}`,
+          ].join("\n\n")
+        : legalContext
+          ? JSON.stringify(legalContext, null, 2)
+          : `No specific custody law data is available for ${jurisdiction.state}. Apply general US family law principles and clearly flag that the user must verify with a local ${jurisdiction.state} attorney.`;
 
       const openai = getOpenAIClient();
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          { role: "system", content: buildSystemPrompt(jurisdiction.state) },
+          {
+            role: "user",
+            content: buildUserPrompt({
+              state: jurisdiction.state,
+              county: jurisdiction.county,
+              isUnsupportedState,
+              legalContextText,
+              userQuestion,
+            }),
+          },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 1200,
-        temperature: 0.5,
+        max_tokens: 1400,
+        temperature: 0.4,
       });
 
       const rawContent = completion.choices[0]?.message?.content;
@@ -298,7 +272,7 @@ ${user_question}`;
 
       const validated = aiLegalResponseSchema.safeParse(parsed_response);
       if (!validated.success) {
-        console.error("AI response failed schema validation:", validated.error);
+        console.error("AI response failed schema validation:", validated.error.issues);
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 

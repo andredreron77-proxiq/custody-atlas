@@ -54,8 +54,12 @@ export const askAIRequestSchema = z.object({
     country: z.string().optional().default("United States"),
     formattedAddress: z.string().optional(),
   }),
-  legal_context: z.record(z.unknown()).optional(),
-  user_question: z.string().min(5, "Question must be at least 5 characters").max(2000),
+  /**
+   * Optional extra context passed by the client (e.g. a document analysis result).
+   * The server always loads state law data from the store — this is supplemental only.
+   */
+  legalContext: z.record(z.unknown()).optional(),
+  userQuestion: z.string().min(5, "Question must be at least 5 characters").max(2000),
 });
 
 export type AskAIRequest = z.infer<typeof askAIRequestSchema>;
@@ -64,6 +68,7 @@ export const aiLegalResponseSchema = z.object({
   summary: z.string(),
   key_points: z.array(z.string()),
   questions_to_ask_attorney: z.array(z.string()),
+  cautions: z.array(z.string()),
   disclaimer: z.string(),
 });
 

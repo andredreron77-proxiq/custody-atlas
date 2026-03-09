@@ -1,16 +1,19 @@
+import { useState } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2, MessageSquare, ArrowRight,
-  Scale, Users, RefreshCw, MapPin, Shield, Handshake, Gavel
+  Scale, Users, RefreshCw, MapPin, Handshake, Gavel,
+  ChevronDown, ChevronUp, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Breadcrumb } from "@/components/app/Header";
 import { JurisdictionHeader } from "@/components/app/JurisdictionHeader";
 import { LawSectionCard } from "@/components/app/LawSectionCard";
 import { EnforcementList } from "@/components/app/EnforcementList";
 import { UnsupportedStateNotice } from "@/components/app/UnsupportedStateNotice";
+import { ChatBox } from "@/components/app/ChatBox";
 import type { CustodyLawRecord, Jurisdiction } from "@shared/schema";
 
 /**
@@ -30,6 +33,7 @@ import type { CustodyLawRecord, Jurisdiction } from "@shared/schema";
 export default function JurisdictionPage() {
   const [match, params] = useRoute("/jurisdiction/:state/:county");
   const [location] = useLocation();
+  const [askAIOpen, setAskAIOpen] = useState(false);
 
   if (!match || !params) return null;
 
@@ -180,26 +184,72 @@ export default function JurisdictionPage() {
             state={state}
           />
 
-          {/* Ask AI CTA */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="p-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold mb-1">Have Questions About Your Situation?</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Our AI can answer specific questions about {state} custody law in plain English,
-                    including the mediation process, enforcement, and more.
-                  </p>
+          {/* Embedded Ask AI Panel */}
+          <Card
+            className="border-primary/20 overflow-hidden"
+            data-testid="card-ask-ai-panel"
+          >
+            <CardHeader
+              className="py-4 px-5 cursor-pointer select-none bg-primary/5 hover:bg-primary/10 transition-colors"
+              onClick={() => setAskAIOpen((v) => !v)}
+              role="button"
+              aria-expanded={askAIOpen}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setAskAIOpen((v) => !v);
+                }
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-sm font-semibold">
+                      Ask AI About {state} Custody Law
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Plain-English answers to your specific questions
+                    </p>
+                  </div>
                 </div>
-                <Link href={askAIPath} className="flex-shrink-0">
-                  <Button className="gap-2 whitespace-nowrap" data-testid="button-ask-ai">
-                    <MessageSquare className="w-4 h-4" />
-                    Ask AI Questions
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!askAIOpen && (
+                    <Link href={askAIPath} onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="gap-1.5 text-xs"
+                        data-testid="button-full-page-ask"
+                      >
+                        <ArrowRight className="w-3.5 h-3.5" />
+                        Full Page
+                      </Button>
+                    </Link>
+                  )}
+                  {askAIOpen ? (
+                    <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  )}
+                </div>
               </div>
-            </CardContent>
+            </CardHeader>
+
+            {askAIOpen && (
+              <CardContent className="p-0">
+                <div className="h-px bg-border" />
+                <div
+                  className="p-4 h-[520px] flex flex-col"
+                  data-testid="panel-ask-ai-content"
+                >
+                  <ChatBox jurisdiction={jurisdiction} />
+                </div>
+              </CardContent>
+            )}
           </Card>
         </>
       )}
