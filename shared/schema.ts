@@ -64,3 +64,14 @@ export const chatMessageSchema = z.object({
 });
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+export const documentAnalysisResultSchema = z.object({
+  document_type: z.string(),
+  summary: z.string(),
+  important_terms: z.array(z.string()),
+  key_dates: z.array(z.string()),
+  possible_implications: z.array(z.string()),
+  questions_to_ask_attorney: z.array(z.string()),
+});
+
+export type DocumentAnalysisResult = z.infer<typeof documentAnalysisResultSchema>;

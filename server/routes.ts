@@ -1,13 +1,16 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { readFileSync } from "fs";
+import { readFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
+import multer from "multer";
 import OpenAI from "openai";
+import { extractTextFromDocument } from "./documentai";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
   askAIRequestSchema,
   aiLegalResponseSchema,
+  documentAnalysisResultSchema,
   type CustodyLaw,
   type Jurisdiction,
 } from "@shared/schema";
@@ -89,6 +92,22 @@ async function geocodeWithGoogle(
 
   return { state, county, country, formattedAddress: result.formatted_address };
 }
+
+const UPLOADS_DIR = join(process.cwd(), "uploads");
+mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const upload = multer({
+  dest: UPLOADS_DIR,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Unsupported file type. Please upload a PDF, JPG, or PNG."));
+    }
+  },
+});
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   app.post("/api/geocode/coordinates", async (req, res) => {
@@ -273,6 +292,117 @@ ${user_question}`;
     } catch (err: any) {
       console.error("Ask AI error:", err);
       return res.status(500).json({ error: "Failed to get AI response. Please try again." });
+    }
+  });
+
+  app.post("/api/analyze-document", upload.single("file"), async (req, res) => {
+    const filePath = req.file?.path;
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded. Please attach a PDF, JPG, or PNG." });
+      }
+
+      const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
+      if (!allowedTypes.includes(req.file.mimetype)) {
+        return res.status(400).json({ error: "Unsupported file type. Please upload a PDF, JPG, or PNG." });
+      }
+
+      if (req.file.size > 10 * 1024 * 1024) {
+        return res.status(400).json({ error: "File is too large. Maximum size is 10MB." });
+      }
+
+      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!hasAI) {
+        return res.status(503).json({ error: "AI service not configured." });
+      }
+
+      const hasDocAI =
+        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON &&
+        process.env.GOOGLE_PROJECT_ID &&
+        process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID;
+      if (!hasDocAI) {
+        return res.status(503).json({ error: "Google Document AI is not configured." });
+      }
+
+      const fileBuffer = readFileSync(filePath!);
+      let extractedText: string;
+      try {
+        extractedText = await extractTextFromDocument(fileBuffer, req.file.mimetype);
+      } catch (ocrErr: any) {
+        console.error("Document AI OCR error:", ocrErr);
+        return res.status(422).json({
+          error: `OCR failed: ${ocrErr.message || "Could not extract text from this document. Please ensure the file is readable."}`,
+        });
+      }
+
+      if (extractedText.trim().length < 20) {
+        return res.status(422).json({
+          error: "The document appears to be blank or could not be read. Please upload a clearer image or a text-based PDF.",
+        });
+      }
+
+      const truncatedText = extractedText.slice(0, 12000);
+
+      const systemPrompt = `You are an assistant that analyzes custody-related legal documents and explains them in plain English.
+
+Rules:
+- You are NOT a lawyer. Do not give legal advice.
+- Explain legal terms in simple, accessible language.
+- Be accurate and thorough in identifying key information.
+- Always remind users to consult a licensed family law attorney.
+
+You MUST respond with valid JSON in exactly this structure:
+{
+  "document_type": "The type of legal document (e.g., Custody Order, Parenting Plan, Visitation Agreement, Motion to Modify, etc.)",
+  "summary": "A 2-4 sentence plain-English summary of what this document is and what it does",
+  "important_terms": ["Array of 3-6 important legal terms or provisions found in the document with brief plain-English explanations"],
+  "key_dates": ["Array of important dates mentioned in the document, or empty array if none found"],
+  "possible_implications": ["Array of 3-5 plain-English explanations of what this document means for the parties involved"],
+  "questions_to_ask_attorney": ["Array of 3-5 specific questions the user should ask their attorney about this document"]
+}`;
+
+      const userPrompt = `Analyze the following custody document text:\n\n${truncatedText}`;
+
+      const openai = getOpenAIClient();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1500,
+        temperature: 0.3,
+      });
+
+      const rawContent = completion.choices[0]?.message?.content;
+      if (!rawContent) {
+        return res.status(500).json({ error: "No response received from AI service." });
+      }
+
+      let parsedResponse: unknown;
+      try {
+        parsedResponse = JSON.parse(rawContent);
+      } catch {
+        return res.status(500).json({ error: "AI returned an invalid response format. Please try again." });
+      }
+
+      const validated = documentAnalysisResultSchema.safeParse(parsedResponse);
+      if (!validated.success) {
+        console.error("Document AI response validation error:", validated.error);
+        return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
+      }
+
+      return res.json(validated.data);
+    } catch (err: any) {
+      console.error("Document analysis error:", err);
+      return res.status(500).json({
+        error: err.message || "Failed to analyze document. Please try again.",
+      });
+    } finally {
+      if (filePath) {
+        try { unlinkSync(filePath); } catch {}
+      }
     }
   });
 

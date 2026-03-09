@@ -9,6 +9,7 @@ import LandingPage from "@/pages/LandingPage";
 import LocationPage from "@/pages/LocationPage";
 import JurisdictionPage from "@/pages/JurisdictionPage";
 import AskAIPage from "@/pages/AskAIPage";
+import UploadDocumentPage from "@/pages/UploadDocumentPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/location" component={LocationPage} />
       <Route path="/jurisdiction/:state/:county" component={JurisdictionPage} />
       <Route path="/ask" component={AskAIPage} />
+      <Route path="/upload-document" component={UploadDocumentPage} />
       <Route component={NotFound} />
     </Switch>
   );
