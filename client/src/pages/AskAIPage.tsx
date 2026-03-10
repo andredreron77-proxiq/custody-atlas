@@ -119,6 +119,11 @@ export default function AskAIPage() {
 
       <JurisdictionCard jurisdiction={jurisdiction} />
 
+      {/* Educational notice */}
+      <p className="text-xs text-muted-foreground border rounded-md px-3 py-2 bg-muted/40 leading-relaxed" data-testid="text-ai-notice">
+        This assistant provides educational information about custody law based on your jurisdiction. It is not a substitute for a licensed attorney.
+      </p>
+
       <Card className="flex-1 min-h-0 flex flex-col">
         <CardContent className="flex-1 min-h-0 flex flex-col p-4">
           <ChatBox jurisdiction={jurisdiction} />

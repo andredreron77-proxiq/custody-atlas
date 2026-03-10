@@ -233,6 +233,33 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── YOUR PRIVACY MATTERS ─────────────────────────────────────────── */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 w-full">
+        <div className="text-center mb-10">
+          <h2 className="text-2xl md:text-3xl font-bold mb-3">Your Privacy Matters</h2>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            We built Custody Atlas with privacy in mind from the start.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+          {[
+            { title: "Secure document processing", desc: "Your documents are processed securely and never stored on our servers after analysis." },
+            { title: "No data sharing", desc: "Custody Atlas does not sell or share your personal information with third parties." },
+            { title: "You're in control", desc: "You can remove your uploaded files at any time — we don't retain them after your session." },
+            { title: "Private AI responses", desc: "All AI responses are generated privately based on your jurisdiction, not shared across users." },
+          ].map((item) => (
+            <div key={item.title} className="flex gap-3 p-4 rounded-lg border bg-card">
+              <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-sm mb-0.5">{item.title}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── STATES COVERED ───────────────────────────────────────────────── */}
       <section className="bg-muted/30 border-t">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 w-full">

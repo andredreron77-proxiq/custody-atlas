@@ -10,6 +10,8 @@ import LocationPage from "@/pages/LocationPage";
 import JurisdictionPage from "@/pages/JurisdictionPage";
 import AskAIPage from "@/pages/AskAIPage";
 import UploadDocumentPage from "@/pages/UploadDocumentPage";
+import PrivacyPage from "@/pages/PrivacyPage";
+import TermsPage from "@/pages/TermsPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +22,8 @@ function Router() {
       <Route path="/jurisdiction/:state/:county" component={JurisdictionPage} />
       <Route path="/ask" component={AskAIPage} />
       <Route path="/upload-document" component={UploadDocumentPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
       <Route component={NotFound} />
     </Switch>
   );

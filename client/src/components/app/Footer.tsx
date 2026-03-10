@@ -5,16 +5,19 @@ export function Footer() {
   return (
     <footer className="border-t bg-muted/30 mt-auto">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
                 <Scale className="w-3.5 h-3.5 text-primary-foreground" />
               </div>
               <span className="font-semibold text-sm">Custody Atlas</span>
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed">
+            <p className="text-sm text-muted-foreground leading-relaxed mb-3">
               Helping families understand custody law in their jurisdiction with clear, plain-English explanations.
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Custody Atlas provides educational legal information and does not provide legal representation.
             </p>
           </div>
 
@@ -36,14 +39,34 @@ export function Footer() {
                   Ask AI
                 </Link>
               </li>
+              <li>
+                <Link href="/upload-document" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Analyze Document
+                </Link>
+              </li>
             </ul>
           </div>
 
           <div>
-            <h3 className="font-medium text-sm mb-3">Disclaimer</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              This tool provides general legal information, not legal advice. Always consult a licensed family law attorney in your jurisdiction for advice specific to your situation.
-            </p>
+            <h3 className="font-medium text-sm mb-3">Legal</h3>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Terms of Use
+                </Link>
+              </li>
+            </ul>
+            <div className="mt-4">
+              <h3 className="font-medium text-sm mb-2">Disclaimer</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                This tool provides general legal information, not legal advice. Always consult a licensed family law attorney for advice specific to your situation.
+              </p>
+            </div>
           </div>
         </div>
 

@@ -95,6 +95,12 @@ export default function JurisdictionPage() {
         hasData={!!law}
       />
 
+      {/* Subtle trust message */}
+      <p className="text-xs text-muted-foreground flex items-center gap-1.5 -mt-2">
+        <Scale className="w-3.5 h-3.5 flex-shrink-0" />
+        Custody Atlas explains custody law in plain English based on your location.
+      </p>
+
       {/* Loading skeleton */}
       {isLoading && (
         <div className="flex items-center justify-center py-16 gap-3" data-testid="loading-laws">

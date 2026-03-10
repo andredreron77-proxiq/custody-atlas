@@ -1,0 +1,73 @@
+Update the Custody Atlas application to improve user trust, privacy transparency, and security messaging throughout the UI.
+
+Goals:
+
+* Reassure users that their documents and questions are handled securely
+* Clarify that Custody Atlas provides educational legal information
+* Encourage document uploads by addressing privacy concerns
+* Maintain a professional and trustworthy tone
+
+Apply the following changes:
+
+1. Landing Page
+   Add a new section titled "Your Privacy Matters".
+
+Content:
+
+* Your documents are processed securely.
+* Custody Atlas does not sell or share your personal information.
+* You can delete your uploaded files at any time.
+* All AI responses are generated privately based on your jurisdiction.
+
+2. Document Upload Page
+   Before the upload area, display a privacy notice card:
+
+Title:
+"Secure Document Analysis"
+
+Description:
+
+* Your files are analyzed privately.
+* Documents are not shared with other users.
+* Files are used only to generate explanations and insights.
+* You may delete uploaded files at any time.
+
+3. AI Question Page
+   Add a small notice above the chat box:
+
+"This assistant provides educational information about custody law based on your jurisdiction. It is not a substitute for a licensed attorney."
+
+4. Jurisdiction Results Page
+   Under the jurisdiction header (state and county), add a subtle trust message:
+
+"Custody Atlas explains custody law in plain English based on your location."
+
+5. Footer
+   Add links for:
+
+* Privacy Policy
+* Terms of Use
+
+Add a small statement:
+
+"Custody Atlas provides educational legal information and does not provide legal representation."
+
+6. Privacy Policy Page
+   Create a basic privacy policy page with sections:
+
+* Information we collect
+* How documents are used
+* How we protect your data
+* User control over uploaded documents
+* Contact for privacy concerns
+
+Use simple plain-English language.
+
+7. UI Design Requirements
+
+* Use clean card-style components for notices
+* Maintain a professional legal-tech tone
+* Ensure messaging appears reassuring but not overly legalistic
+* Do not modify any existing functionality
+
+Finally, summarize all updated components and files changed.
