@@ -1,5 +1,8 @@
 import { Link } from "wouter";
-import { Scale, MapPin, MessageSquare, Shield, ChevronRight, CheckCircle, ArrowRight } from "lucide-react";
+import {
+  Scale, MapPin, MessageSquare, ArrowRight, CheckCircle,
+  FileSearch, BookOpen, HelpCircle, Globe, ShieldCheck,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,41 +10,58 @@ import { Badge } from "@/components/ui/badge";
 const STATES_COVERED = [
   "Alabama", "Alaska", "Arizona", "California", "Colorado",
   "Florida", "Georgia", "Illinois", "Michigan", "New York",
-  "North Carolina", "Ohio", "Pennsylvania", "Texas", "Virginia", "Washington"
-];
-
-const FEATURES = [
-  {
-    icon: MapPin,
-    title: "Location-Aware",
-    description: "Automatically detects your state and county using GPS or ZIP code lookup.",
-  },
-  {
-    icon: Scale,
-    title: "Jurisdiction-Specific",
-    description: "Laws vary dramatically by state. Get information for your exact jurisdiction.",
-  },
-  {
-    icon: MessageSquare,
-    title: "AI-Powered Q&A",
-    description: "Ask specific questions in plain English and get clear, relevant answers.",
-  },
-  {
-    icon: Shield,
-    title: "5 Key Areas Covered",
-    description: "Custody standards, types, modifications, relocation rules, and enforcement.",
-  },
+  "North Carolina", "Ohio", "Pennsylvania", "Texas", "Virginia", "Washington",
 ];
 
 const HOW_IT_WORKS = [
-  { step: "1", title: "Share Your Location", desc: "Use GPS or enter your ZIP code" },
-  { step: "2", title: "View Your Laws", desc: "See custody laws for your state and county" },
-  { step: "3", title: "Ask Questions", desc: "Get plain-English answers from our AI" },
+  {
+    step: "1",
+    title: "Enter your location",
+    desc: "Use GPS or type your ZIP code. We find your state and county automatically.",
+    href: "/location",
+  },
+  {
+    step: "2",
+    title: "See the law that applies to you",
+    desc: "Get a plain-English summary of custody law specific to your jurisdiction — no legal degree required.",
+    href: "/location",
+  },
+  {
+    step: "3",
+    title: "Ask questions and get guidance",
+    desc: "Type any custody question and get a clear answer, plus suggestions for what to ask your attorney.",
+    href: "/ask",
+  },
+];
+
+const BENEFITS = [
+  {
+    icon: Globe,
+    title: "Understand custody law in your state",
+    desc: "Every state handles custody differently. See exactly what the rules look like where you live.",
+  },
+  {
+    icon: MapPin,
+    title: "Learn how rules may differ by location",
+    desc: "County courts can vary. Custody Atlas helps you understand what to expect in your specific area.",
+  },
+  {
+    icon: HelpCircle,
+    title: "Ask custody questions in plain English",
+    desc: "No jargon, no confusion. Just real answers to the questions you're already thinking about.",
+  },
+  {
+    icon: FileSearch,
+    title: "Upload documents for easier explanation",
+    desc: "Drop in a custody order or parenting plan and get a plain-English breakdown of what it says.",
+  },
 ];
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col">
+
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden">
         <div
           className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary/80 to-blue-800/90"
@@ -110,27 +130,32 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 md:py-20 w-full">
         <div className="text-center mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold mb-3">How It Works</h2>
-          <p className="text-muted-foreground max-w-lg mx-auto">
-            Three simple steps to understanding child custody law in your jurisdiction.
+          <h2 className="text-2xl md:text-3xl font-bold mb-3">How it works</h2>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            Three simple steps to understanding custody law in your area.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {HOW_IT_WORKS.map((step, idx) => (
-            <div key={step.step} className="flex flex-col items-center text-center gap-4 relative">
-              <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-lg flex-shrink-0">
-                {step.step}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {HOW_IT_WORKS.map((item, idx) => (
+            <div key={item.step} className="relative flex flex-col items-center text-center gap-4">
+              {/* Connector line between steps (desktop only) */}
+              {idx < HOW_IT_WORKS.length - 1 && (
+                <div
+                  className="hidden md:block absolute top-5 left-[calc(50%+28px)] right-[calc(-50%+28px)] h-px bg-border"
+                  aria-hidden="true"
+                />
+              )}
+              <div className="w-11 h-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-base flex-shrink-0 z-10">
+                {item.step}
               </div>
               <div>
-                <h3 className="font-semibold mb-1">{step.title}</h3>
-                <p className="text-sm text-muted-foreground">{step.desc}</p>
+                <h3 className="font-semibold mb-2">{item.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
               </div>
-              {idx < HOW_IT_WORKS.length - 1 && (
-                <ChevronRight className="hidden md:block w-5 h-5 text-muted-foreground absolute top-4 -right-4" />
-              )}
             </div>
           ))}
         </div>
@@ -145,26 +170,29 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── WHAT YOU CAN DO ──────────────────────────────────────────────── */}
       <section className="bg-muted/30 border-y">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
-            <h2 className="text-2xl md:text-3xl font-bold mb-3">What We Cover</h2>
-            <p className="text-muted-foreground max-w-lg mx-auto">
-              Comprehensive custody law information across all five key areas.
+            <h2 className="text-2xl md:text-3xl font-bold mb-3">What you can do with Custody Atlas</h2>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Built for anyone trying to make sense of custody law — without needing a law degree.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {FEATURES.map((feature) => {
-              const Icon = feature.icon;
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {BENEFITS.map((benefit) => {
+              const Icon = benefit.icon;
               return (
-                <Card key={feature.title} className="hover-elevate">
-                  <CardContent className="p-5 space-y-3">
-                    <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
+                <Card key={benefit.title} className="hover-elevate border">
+                  <CardContent className="p-6 flex gap-4 items-start">
+                    <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Icon className="w-5 h-5 text-primary" />
                     </div>
-                    <h3 className="font-semibold text-sm">{feature.title}</h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{feature.description}</p>
+                    <div>
+                      <h3 className="font-semibold mb-1">{benefit.title}</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">{benefit.desc}</p>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -173,39 +201,75 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── TRUST SECTION ────────────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 w-full">
-        <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold mb-2">States Currently Covered</h2>
-          <p className="text-muted-foreground">
-            We have detailed custody law data for {STATES_COVERED.length} states.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-2">
-          {STATES_COVERED.map((state) => (
-            <Link
-              key={state}
-              href={`/jurisdiction/${encodeURIComponent(state)}/unknown`}
-            >
-              <Badge
-                variant="secondary"
-                className="cursor-pointer text-xs py-1 px-3"
-                data-testid={`badge-state-${state.toLowerCase().replace(/\s/g, "-")}`}
-              >
-                {state}
-              </Badge>
-            </Link>
-          ))}
+        <div className="max-w-2xl mx-auto">
+          <div className="flex flex-col items-center text-center gap-5 p-8 rounded-xl border bg-card shadow-sm">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold mb-3">Built to inform, not to replace your attorney</h2>
+              <p className="text-muted-foreground leading-relaxed">
+                Custody Atlas provides educational information to help you understand custody law and prepare better questions for a licensed attorney.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-3 pt-1">
+              {[
+                { icon: BookOpen, label: "Educational content only" },
+                { icon: ShieldCheck, label: "No legal advice given" },
+                { icon: Scale, label: "Always consult a lawyer" },
+              ].map(({ icon: Icon, label }) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-1.5 bg-muted/60 rounded-full px-3 py-1.5"
+                >
+                  <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground font-medium">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
+      {/* ── STATES COVERED ───────────────────────────────────────────────── */}
+      <section className="bg-muted/30 border-t">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 w-full">
+          <div className="text-center mb-8">
+            <h2 className="text-xl font-bold mb-2">States Currently Covered</h2>
+            <p className="text-muted-foreground text-sm">
+              Detailed custody law data is available for {STATES_COVERED.length} states.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-2">
+            {STATES_COVERED.map((state) => (
+              <Link
+                key={state}
+                href={`/jurisdiction/${encodeURIComponent(state)}/unknown`}
+              >
+                <Badge
+                  variant="secondary"
+                  className="cursor-pointer text-xs py-1 px-3"
+                  data-testid={`badge-state-${state.toLowerCase().replace(/\s/g, "-")}`}
+                >
+                  {state}
+                </Badge>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── BOTTOM CTA ───────────────────────────────────────────────────── */}
       <section className="bg-primary text-primary-foreground">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 text-center">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">
-            Find Out What Applies to Your Family
+            Find out what applies to your family
           </h2>
-          <p className="text-primary-foreground/80 mb-7 max-w-xl mx-auto">
-            Every family's situation is unique. Start by finding the laws in your area, then ask our AI your specific questions.
+          <p className="text-primary-foreground/80 mb-7 max-w-lg mx-auto">
+            Start with your location. We'll show you the custody laws for your state and county in plain, simple language.
           </p>
           <Link href="/location">
             <Button
@@ -214,7 +278,8 @@ export default function LandingPage() {
               data-testid="button-cta-bottom"
             >
               <MapPin className="w-4 h-4" />
-              Find Custody Laws Near Me
+              Find My Custody Laws
+              <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
         </div>
