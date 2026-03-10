@@ -61,13 +61,16 @@ export default function LandingPage() {
               Free Legal Information Tool
             </Badge>
 
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              Understand Child Custody Laws{" "}
-              <span className="text-blue-200">in Your Area</span>
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
+              Custody Atlas
             </h1>
 
-            <p className="text-lg text-blue-100 mb-8 leading-relaxed max-w-xl">
-              Get clear, plain-English explanations of child custody laws specific to your state and county. No legal jargon — just the information you need.
+            <p className="text-xl md:text-2xl text-blue-100 font-medium mb-5">
+              Understand custody law where you live.
+            </p>
+
+            <p className="text-base text-blue-100/90 mb-8 leading-relaxed max-w-xl">
+              Get plain-English explanations of custody law based on your state and county.
             </p>
 
             <div className="flex flex-wrap gap-3">

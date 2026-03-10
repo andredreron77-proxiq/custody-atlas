@@ -11,7 +11,7 @@ export function Footer() {
               <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
                 <Scale className="w-3.5 h-3.5 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-sm">Custody Law Near Me</span>
+              <span className="font-semibold text-sm">Custody Atlas</span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Helping families understand custody law in their jurisdiction with clear, plain-English explanations.
@@ -49,7 +49,7 @@ export function Footer() {
 
         <div className="border-t pt-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
           <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} Custody Law Near Me. For informational purposes only.
+            &copy; {new Date().getFullYear()} Custody Atlas. For informational purposes only.
           </p>
           <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-md px-3 py-1.5">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />

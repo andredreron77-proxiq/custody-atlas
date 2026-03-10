@@ -13,7 +13,7 @@ export function Header() {
             <Scale className="w-4 h-4 text-primary-foreground" />
           </div>
           <span className="font-semibold text-base tracking-tight hidden sm:block">
-            Custody Law Near Me
+            Custody Atlas
           </span>
         </Link>
 
