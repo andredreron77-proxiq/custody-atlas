@@ -363,11 +363,18 @@ You MUST respond with valid JSON in exactly this structure:
 {
   "document_type": "The type of legal document (e.g., Custody Order, Parenting Plan, Visitation Agreement, Motion to Modify, etc.)",
   "summary": "A 2-4 sentence plain-English summary of what this document is and what it does",
-  "important_terms": ["Array of 3-6 important legal terms or provisions found in the document with brief plain-English explanations"],
-  "key_dates": ["Array of important dates mentioned in the document, or empty array if none found"],
-  "possible_implications": ["Array of 3-5 plain-English explanations of what this document means for the parties involved"],
-  "questions_to_ask_attorney": ["Array of 3-5 specific questions the user should ask their attorney about this document"]
-}`;
+  "important_terms": [
+    "IMPORTANT: Each item in this array MUST be a plain text STRING — never an object or nested JSON.",
+    "Format each item as: 'Term or Provision: plain-English explanation of what it means.'",
+    "Example: 'Legal Custody: This means the right to make major decisions about the child's upbringing, such as schooling and medical care.'",
+    "Include 3-6 items total. Every item must be a single string."
+  ],
+  "key_dates": ["Each item is a plain text string. Example: 'March 15, 2024 – Order effective date'. Empty array if no dates found."],
+  "possible_implications": ["Each item is a plain text string explaining what this document means for the people involved. 3-5 items."],
+  "questions_to_ask_attorney": ["Each item is a plain text string — a specific question to ask an attorney. 3-5 items."]
+}
+
+CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use nested objects, key-value pairs, or sub-arrays inside any of the arrays.`;
 
       const userPrompt = `Analyze the following custody document text:\n\n${truncatedText}`;
 
@@ -393,6 +400,37 @@ You MUST respond with valid JSON in exactly this structure:
         parsedResponse = JSON.parse(rawContent);
       } catch {
         return res.status(500).json({ error: "AI returned an invalid response format. Please try again." });
+      }
+
+      // Defensive normalizer: if the AI returned objects inside any string array,
+      // convert them to readable strings so validation doesn't fail.
+      const normalizeStringArray = (arr: unknown): string[] => {
+        if (!Array.isArray(arr)) return [];
+        return arr.map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") {
+            // Try common object shapes GPT uses: {term, explanation}, {term, definition}, {name, description}, etc.
+            const obj = item as Record<string, unknown>;
+            const label = obj.term ?? obj.name ?? obj.title ?? obj.provision ?? "";
+            const detail = obj.explanation ?? obj.definition ?? obj.description ?? obj.meaning ?? obj.value ?? "";
+            if (label && detail) return `${label}: ${detail}`;
+            if (label) return String(label);
+            if (detail) return String(detail);
+            // Last resort: stringify
+            return JSON.stringify(item);
+          }
+          return String(item);
+        });
+      };
+
+      if (parsedResponse && typeof parsedResponse === "object") {
+        const r = parsedResponse as Record<string, unknown>;
+        const stringArrayFields = ["important_terms", "key_dates", "possible_implications", "questions_to_ask_attorney"] as const;
+        for (const field of stringArrayFields) {
+          if (Array.isArray(r[field])) {
+            r[field] = normalizeStringArray(r[field]);
+          }
+        }
       }
 
       const validated = documentAnalysisResultSchema.safeParse(parsedResponse);
