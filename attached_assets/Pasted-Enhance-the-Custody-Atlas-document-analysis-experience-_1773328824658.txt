@@ -1,0 +1,94 @@
+Enhance the Custody Atlas document analysis experience by adding a follow-up question feature after a document has been analyzed.
+
+Goal:
+After a user uploads a custody-related document and sees the AI-generated summary, they should immediately be able to ask follow-up questions based on that document.
+
+Requirements:
+
+1. Document Analysis Results Page
+After the existing analysis result card, add a new section titled:
+"Ask about this document"
+
+Include supporting text:
+"Ask follow-up questions about this document's summary, terms, dates, or possible implications."
+
+2. Input UI
+Add:
+- a text input or textarea for the user's question
+- a submit button labeled "Ask about this document"
+- a few clickable suggested questions such as:
+  - "What does this mean in plain English?"
+  - "What are the most important parts of this document?"
+  - "What questions should I ask a lawyer about this?"
+  - "Does this document mention custody or visitation terms?"
+  - "Are there any deadlines or important dates in this document?"
+
+3. AI Route
+Create or extend a server-side API route to accept:
+{
+  documentAnalysis: object,
+  extractedText: string,
+  jurisdiction: {
+    state: string,
+    county?: string,
+    country?: string
+  },
+  userQuestion: string
+}
+
+4. AI Behavior
+Use the OpenAI API server-side only.
+
+Create a dedicated system prompt for document follow-up Q&A with these rules:
+- You are a child custody legal information assistant
+- Answer questions using the analyzed document and extracted text as the primary context
+- Use the user's jurisdiction if available
+- Explain things in plain English
+- Do not act like a lawyer
+- Do not provide definitive legal advice
+- If the answer is not clearly supported by the document, say so
+- Always include a short disclaimer encouraging the user to verify important issues with a licensed attorney
+
+5. Structured Output
+Require the model to return structured JSON in this format:
+{
+  "answer": string,
+  "keyPoints": string[],
+  "documentReferences": string[],
+  "questionsToAskAttorney": string[],
+  "caution": string,
+  "disclaimer": string
+}
+
+6. UI Rendering
+Display the follow-up answer in a clean card below the question box.
+Include sections for:
+- Answer
+- Key Points
+- Questions to Ask an Attorney
+- Caution
+- Disclaimer
+
+7. State Management
+Use the already generated document analysis result and extracted text from the current upload flow.
+Do not require the user to re-upload the file.
+Persist the current document analysis in client state for the duration of the page session.
+
+8. Suggested UX Improvement
+If there is no jurisdiction detected yet, still allow questions based on the document alone.
+If jurisdiction exists, show a small badge like:
+"Answer tailored to Georgia law"
+
+9. Error Handling
+Handle:
+- empty questions
+- API failures
+- missing document context
+- loading states
+
+10. Design
+Keep the section visually connected to the document analysis results so users understand they are asking about that specific document.
+Use clean, trustworthy legal-tech styling.
+Do not break the existing upload and summary functionality.
+
+At the end, summarize which files and components were updated.

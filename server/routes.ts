@@ -13,6 +13,8 @@ import {
   askAIRequestSchema,
   aiLegalResponseSchema,
   documentAnalysisResultSchema,
+  documentQARequestSchema,
+  documentQAResponseSchema,
   type Jurisdiction,
 } from "@shared/schema";
 
@@ -439,7 +441,9 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
-      return res.json(validated.data);
+      // Append the extracted text so the client can use it for follow-up Q&A
+      // without requiring the user to re-upload the file.
+      return res.json({ ...validated.data, extractedText: truncatedText });
     } catch (err: any) {
       console.error("Document analysis error:", err);
       return res.status(500).json({
@@ -449,6 +453,107 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
       if (filePath) {
         try { unlinkSync(filePath); } catch {}
       }
+    }
+  });
+
+  // ── Document Follow-up Q&A ─────────────────────────────────────────────────
+  app.post("/api/ask-document", async (req, res) => {
+    try {
+      const parsed = documentQARequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid request",
+          details: parsed.error.issues.map((i) => i.message),
+        });
+      }
+
+      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!hasAI) {
+        return res.status(503).json({ error: "AI service not configured." });
+      }
+
+      const { documentAnalysis, extractedText, jurisdiction, userQuestion } = parsed.data;
+
+      const jurisdictionLine = jurisdiction?.state
+        ? `The user is located in ${jurisdiction.state}${jurisdiction.county ? `, ${jurisdiction.county} County` : ""}${jurisdiction.country ? `, ${jurisdiction.country}` : ""}.`
+        : "No specific jurisdiction was provided.";
+
+      const systemPrompt = `You are a child custody legal information assistant helping users understand a custody-related document they have uploaded.
+
+READING LEVEL:
+Write at an 8th-to-10th grade level. Use short sentences and plain everyday words. Avoid legal jargon; if you must use a legal term, explain it in parentheses right away.
+
+ROLE:
+- You are NOT a lawyer. Do not give specific legal advice.
+- Answer the user's question using the document summary and extracted text as your primary source.
+- If the answer is not clearly supported by the document, say so directly ("The document does not specifically address this").
+- Use the user's jurisdiction if provided, but focus primarily on the document's content.
+- Be concise, accurate, and compassionate.
+- Always end with a short disclaimer encouraging verification with a licensed attorney.
+
+OUTPUT FORMAT:
+Respond with valid JSON matching exactly this structure — no markdown fences:
+{
+  "answer": "2-4 sentences directly answering the question based on the document. Write in plain English.",
+  "keyPoints": ["2-4 short bullet points from the document relevant to the answer. Each is a plain string."],
+  "documentReferences": ["1-3 specific parts of the document that support the answer, quoted or paraphrased. Each is a plain string. Empty array if none found."],
+  "questionsToAskAttorney": ["2-3 specific follow-up questions the user should ask a licensed attorney. Each is a plain string."],
+  "caution": "One sentence about something to be careful about regarding this question.",
+  "disclaimer": "One short friendly sentence reminding the user this is educational information, not legal advice."
+}`;
+
+      const analysisContext = `DOCUMENT TYPE: ${documentAnalysis.document_type}
+SUMMARY: ${documentAnalysis.summary}
+IMPORTANT TERMS: ${documentAnalysis.important_terms.join(" | ")}
+KEY DATES: ${documentAnalysis.key_dates.join(" | ") || "None identified"}
+POSSIBLE IMPLICATIONS: ${documentAnalysis.possible_implications.join(" | ")}`;
+
+      const rawTextContext = extractedText
+        ? `\n\nEXTRACTED DOCUMENT TEXT (first 6000 characters):\n${extractedText.slice(0, 6000)}`
+        : "";
+
+      const userPrompt = `${jurisdictionLine}
+
+DOCUMENT ANALYSIS:
+${analysisContext}${rawTextContext}
+
+USER QUESTION:
+${userQuestion}`;
+
+      const openai = getOpenAIClient();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1000,
+        temperature: 0.3,
+      });
+
+      const rawContent = completion.choices[0]?.message?.content;
+      if (!rawContent) {
+        return res.status(500).json({ error: "No response received from AI service." });
+      }
+
+      let parsedResponse: unknown;
+      try {
+        parsedResponse = JSON.parse(rawContent);
+      } catch {
+        return res.status(500).json({ error: "AI returned an invalid response format. Please try again." });
+      }
+
+      const validated = documentQAResponseSchema.safeParse(parsedResponse);
+      if (!validated.success) {
+        console.error("Document Q&A response validation error:", validated.error);
+        return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
+      }
+
+      return res.json(validated.data);
+    } catch (err: any) {
+      console.error("Document Q&A error:", err);
+      return res.status(500).json({ error: err.message || "Failed to get answer. Please try again." });
     }
   });
 

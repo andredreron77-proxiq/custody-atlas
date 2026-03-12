@@ -3,18 +3,29 @@ import { Link } from "wouter";
 import {
   Upload, FileText, Image, AlertTriangle, CheckCircle2,
   Loader2, Scale, HelpCircle, Calendar, FileSearch,
-  ArrowLeft, X, ChevronRight, Lock
+  ArrowLeft, X, ChevronRight, Lock, MessageSquare,
+  MapPin, Send, BookOpen, TriangleAlert, ShieldAlert
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import type { DocumentAnalysisResult } from "@shared/schema";
+import { useJurisdiction } from "@/hooks/useJurisdiction";
+import type { DocumentAnalysisResult, DocumentQAResponse } from "@shared/schema";
 
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
 const ACCEPTED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
 const MAX_SIZE_MB = 10;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+const SUGGESTED_QUESTIONS = [
+  "What does this mean in plain English?",
+  "What are the most important parts of this document?",
+  "What questions should I ask a lawyer about this?",
+  "Does this document mention custody or visitation terms?",
+  "Are there any deadlines or important dates in this document?",
+];
 
 function FileIcon({ mimeType }: { mimeType: string }) {
   if (mimeType === "application/pdf") return <FileText className="w-8 h-8 text-red-500" />;
@@ -124,6 +135,251 @@ function AnalysisResultCard({ result }: { result: DocumentAnalysisResult }) {
   );
 }
 
+function QAResponseCard({ response }: { response: DocumentQAResponse }) {
+  return (
+    <div className="space-y-4 pt-1" data-testid="card-qa-response">
+      <div>
+        <p className="text-sm leading-relaxed text-foreground" data-testid="text-qa-answer">
+          {response.answer}
+        </p>
+      </div>
+
+      {response.keyPoints.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <BookOpen className="w-3.5 h-3.5 text-primary" />
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Key Points from the Document
+            </h4>
+          </div>
+          <ul className="space-y-1.5">
+            {response.keyPoints.map((point, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`qa-key-point-${i}`}>
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                <span className="leading-relaxed text-muted-foreground">{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {response.documentReferences.length > 0 && (
+        <div className="rounded-md border border-muted bg-muted/30 p-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            From the Document
+          </h4>
+          <ul className="space-y-1.5">
+            {response.documentReferences.map((ref, i) => (
+              <li key={i} className="text-sm text-muted-foreground italic leading-relaxed" data-testid={`qa-doc-ref-${i}`}>
+                "{ref}"
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {response.questionsToAskAttorney.length > 0 && (
+        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+              Questions to Ask an Attorney
+            </h4>
+          </div>
+          <ul className="space-y-1.5">
+            {response.questionsToAskAttorney.map((q, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200" data-testid={`qa-attorney-q-${i}`}>
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                <span className="leading-relaxed">{q}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {response.caution && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5">
+          <TriangleAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800 dark:text-amber-200 leading-relaxed" data-testid="text-qa-caution">
+            {response.caution}
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-start gap-1.5 pt-2 border-t border-border">
+        <ShieldAlert className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground italic leading-relaxed" data-testid="text-qa-disclaimer">
+          {response.disclaimer}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface DocumentQASectionProps {
+  result: DocumentAnalysisResult;
+  jurisdiction: { state: string; county: string; country?: string } | null;
+}
+
+function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
+  const [question, setQuestion] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [qaResponse, setQaResponse] = useState<DocumentQAResponse | null>(null);
+  const [qaError, setQaError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const submitQuestion = async (q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+
+    setIsLoading(true);
+    setQaError(null);
+
+    try {
+      const body: Record<string, unknown> = {
+        documentAnalysis: result,
+        extractedText: result.extractedText ?? "",
+        userQuestion: trimmed,
+      };
+      if (jurisdiction) {
+        body.jurisdiction = {
+          state: jurisdiction.state,
+          county: jurisdiction.county,
+          country: jurisdiction.country ?? "United States",
+        };
+      }
+
+      const res = await fetch("/api/ask-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Server error (${res.status})`);
+      }
+
+      setQaResponse(data as DocumentQAResponse);
+    } catch (err: any) {
+      const message = err?.message || "Failed to get an answer. Please try again.";
+      setQaError(message);
+      toast({ title: "Question Failed", description: message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSuggestedQuestion = (q: string) => {
+    setQuestion(q);
+    submitQuestion(q);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitQuestion(question);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submitQuestion(question);
+    }
+  };
+
+  return (
+    <Card className="border-t-2 border-t-primary/30" data-testid="card-document-qa">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-primary" />
+          Ask About This Document
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Ask follow-up questions about this document's summary, terms, dates, or possible implications.
+        </p>
+        {jurisdiction?.state && (
+          <div className="flex items-center gap-1.5 mt-1" data-testid="text-jurisdiction-badge">
+            <MapPin className="w-3.5 h-3.5 text-emerald-500" />
+            <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+              Answer tailored to {jurisdiction.state} law
+            </span>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+            Suggested questions
+          </p>
+          <div className="flex flex-wrap gap-2" data-testid="suggested-questions">
+            {SUGGESTED_QUESTIONS.map((q) => (
+              <button
+                key={q}
+                onClick={() => handleSuggestedQuestion(q)}
+                disabled={isLoading}
+                className="text-xs px-3 py-1.5 rounded-full border border-border bg-muted/40 hover:bg-muted hover:border-primary/40 text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                data-testid={`suggested-question-${q.slice(0, 20).replace(/\s+/g, "-").toLowerCase()}`}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <Textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your question about this document…"
+            className="resize-none min-h-[80px] text-sm"
+            disabled={isLoading}
+            data-testid="input-qa-question"
+          />
+          <Button
+            type="submit"
+            disabled={!question.trim() || isLoading}
+            className="w-full gap-2"
+            data-testid="button-ask-document"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Getting answer…
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Ask about this document
+              </>
+            )}
+          </Button>
+        </form>
+
+        {qaError && (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5" data-testid="text-qa-error">
+            <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-destructive">{qaError}</p>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="flex flex-col items-center gap-2 py-4 text-center" data-testid="qa-loading">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Analyzing document and generating your answer…</p>
+          </div>
+        )}
+
+        {qaResponse && !isLoading && (
+          <div className="rounded-lg border bg-muted/20 p-4" data-testid="qa-response-container">
+            <QAResponseCard response={qaResponse} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function UploadDocumentPage() {
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -132,6 +388,7 @@ export default function UploadDocumentPage() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { jurisdiction } = useJurisdiction();
 
   const validateFile = (file: File): string | null => {
     if (!ACCEPTED_TYPES.includes(file.type)) {
@@ -362,17 +619,21 @@ export default function UploadDocumentPage() {
       )}
 
       {result && !isAnalyzing && (
-        <Card data-testid="card-result">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileSearch className="w-4 h-4 text-primary" />
-              Document Analysis
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AnalysisResultCard result={result} />
-          </CardContent>
-        </Card>
+        <>
+          <Card data-testid="card-result">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileSearch className="w-4 h-4 text-primary" />
+                Document Analysis
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AnalysisResultCard result={result} />
+            </CardContent>
+          </Card>
+
+          <DocumentQASection result={result} jurisdiction={jurisdiction} />
+        </>
       )}
     </div>
   );

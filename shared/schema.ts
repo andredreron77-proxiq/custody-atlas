@@ -30,7 +30,6 @@ export type GeocodeRequest = z.infer<typeof geocodeRequestSchema>;
 /**
  * CustodyLawRecord — the canonical shape of one state's custody law dataset.
  * snake_case field names match the JSON file and any future DB column names.
- * To add a field: add it here, to custody_laws.json, and to the display components.
  */
 export const custodyLawSchema = z.object({
   state_code: z.string().length(2),
@@ -54,10 +53,6 @@ export const askAIRequestSchema = z.object({
     country: z.string().optional().default("United States"),
     formattedAddress: z.string().optional(),
   }),
-  /**
-   * Optional extra context passed by the client (e.g. a document analysis result).
-   * The server always loads state law data from the store — this is supplemental only.
-   */
   legalContext: z.record(z.unknown()).optional(),
   userQuestion: z.string().min(5, "Question must be at least 5 characters").max(2000),
 });
@@ -82,6 +77,11 @@ export const chatMessageSchema = z.object({
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
+/**
+ * documentAnalysisResultSchema — what the AI returns when a document is analyzed.
+ * extractedText is NOT from the AI; it is appended by the server after validation
+ * so the client can use it for follow-up Q&A without re-uploading.
+ */
 export const documentAnalysisResultSchema = z.object({
   document_type: z.string(),
   summary: z.string(),
@@ -89,6 +89,35 @@ export const documentAnalysisResultSchema = z.object({
   key_dates: z.array(z.string()),
   possible_implications: z.array(z.string()),
   questions_to_ask_attorney: z.array(z.string()),
+  /** Appended by the server — the OCR-extracted raw text for follow-up Q&A */
+  extractedText: z.string().optional(),
 });
 
 export type DocumentAnalysisResult = z.infer<typeof documentAnalysisResultSchema>;
+
+/**
+ * Document follow-up Q&A — request / response types.
+ */
+export const documentQARequestSchema = z.object({
+  documentAnalysis: documentAnalysisResultSchema,
+  extractedText: z.string().optional(),
+  jurisdiction: z.object({
+    state: z.string(),
+    county: z.string().optional(),
+    country: z.string().optional().default("United States"),
+  }).optional(),
+  userQuestion: z.string().min(3, "Question must be at least 3 characters").max(2000),
+});
+
+export type DocumentQARequest = z.infer<typeof documentQARequestSchema>;
+
+export const documentQAResponseSchema = z.object({
+  answer: z.string(),
+  keyPoints: z.array(z.string()),
+  documentReferences: z.array(z.string()),
+  questionsToAskAttorney: z.array(z.string()),
+  caution: z.string(),
+  disclaimer: z.string(),
+});
+
+export type DocumentQAResponse = z.infer<typeof documentQAResponseSchema>;
