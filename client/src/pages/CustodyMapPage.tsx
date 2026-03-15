@@ -120,100 +120,271 @@ function getStateFill(opts: {
   return "#e2e8f0";
 }
 
-/* ── Single-state explore panel ───────────────────────────────────────── */
-interface StateLawPanelProps {
-  stateName: string;
-  onClose: () => void;
-}
+/* ── StateInfoPanel ────────────────────────────────────────────────────
+ *
+ * Persistent side panel (desktop) / bottom sheet (mobile) that shows
+ * state-level custody law information when a state is selected on the map.
+ *
+ * Behaviour:
+ *   • Always rendered in explore mode — no mount/unmount flicker.
+ *   • Empty state  → placeholder with quick-access chips.
+ *   • State selected, data available → Quick Summary, Custody Standard,
+ *     Child Preference Age (if field populated), Relocation Rules + actions.
+ *   • State selected, no data → friendly "coming soon" with AI fallback.
+ *   • Mobile: collapsible — collapses to a slim handle; auto-expands on
+ *     state selection.
+ *   • Desktop (lg+): always fully visible, no collapse handle shown.
+ *
+ * Data: fetched directly from /api/custody-laws/:state so the panel stays
+ * decoupled from its parent; parent only passes the selected state name.
+ * ──────────────────────────────────────────────────────────────────────── */
+function StateInfoPanel({
+  selectedState,
+  onCompare,
+  quickAccessStates,
+  onQuickAccess,
+}: {
+  selectedState: string | null;
+  /** Switch to compare mode with this state pre-loaded as State A. */
+  onCompare: (stateName: string) => void;
+  quickAccessStates: string[];
+  onQuickAccess: (stateName: string) => void;
+}) {
+  const [mobileExpanded, setMobileExpanded] = useState(false);
 
-function StateLawPanel({ stateName, onClose }: StateLawPanelProps) {
-  const hasData = STATES_WITH_DATA.has(stateName);
+  const hasData = selectedState ? STATES_WITH_DATA.has(selectedState) : false;
 
   const { data: law, isLoading } = useQuery<CustodyLawRecord>({
-    queryKey: ["/api/custody-laws", stateName],
+    queryKey: ["/api/custody-laws", selectedState ?? "__none__"],
     queryFn: async () => {
-      const res = await fetch(`/api/custody-laws/${encodeURIComponent(stateName)}`);
+      const res = await fetch(`/api/custody-laws/${encodeURIComponent(selectedState!)}`);
       if (!res.ok) throw new Error("Not found");
       return res.json();
     },
-    enabled: hasData,
+    enabled: hasData && !!selectedState,
     staleTime: 5 * 60 * 1000,
   });
 
-  const askAIPath = `/ask?state=${encodeURIComponent(stateName)}&county=general&country=United%20States`;
-  const fullDetailsPath = `/jurisdiction/${encodeURIComponent(stateName)}/general`;
+  // Auto-expand the mobile bottom sheet whenever a state is selected
+  useEffect(() => {
+    if (selectedState) setMobileExpanded(true);
+  }, [selectedState]);
+
+  const askAIPath = selectedState
+    ? `/ask?state=${encodeURIComponent(selectedState)}&county=general&country=United%20States`
+    : "";
+  const fullDetailsPath = selectedState
+    ? `/jurisdiction/${encodeURIComponent(selectedState)}/general`
+    : "";
 
   return (
-    <div className="flex flex-col h-full" data-testid={`panel-state-${stateName.toLowerCase().replace(/\s+/g, "-")}`}>
+    <div
+      className="bg-white dark:bg-card border rounded-xl shadow-sm overflow-hidden flex flex-col"
+      data-testid="panel-state-info"
+    >
 
-      {/* ── Panel header ─────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-lg font-bold text-foreground" data-testid="text-panel-state-name">
-            {stateName}
-          </h2>
-          {hasData ? (
-            <Link href={fullDetailsPath}>
-              <Badge
-                className="text-xs bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900 transition-colors"
-                data-testid="badge-detailed-data"
-              >
-                Detailed data available ↗
-              </Badge>
-            </Link>
-          ) : (
-            <Badge variant="secondary" className="text-xs">Coming soon</Badge>
+      {/* ── Mobile collapse handle (hidden on desktop) ──────────────── */}
+      <button
+        className="lg:hidden flex items-center justify-between px-4 py-3.5 border-b hover:bg-muted/30 transition-colors w-full text-left"
+        onClick={() => setMobileExpanded((v) => !v)}
+        aria-expanded={mobileExpanded}
+        aria-controls="state-panel-body"
+        data-testid="button-mobile-panel-toggle"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <Scale className="w-4 h-4 text-primary flex-shrink-0" />
+          <span className="font-semibold text-sm truncate">
+            {selectedState ? `${selectedState} Custody Law` : "Select a state to explore"}
+          </span>
+          {selectedState && (
+            <Badge className={`text-[10px] flex-shrink-0 ${
+              hasData
+                ? "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300"
+                : "bg-muted text-muted-foreground border-border"
+            }`}>
+              {hasData ? "Data available" : "Coming soon"}
+            </Badge>
           )}
         </div>
-        <Button
-          variant="ghost" size="icon" onClick={onClose}
-          className="flex-shrink-0 -mt-1 -mr-1"
-          data-testid="button-close-panel"
-        >
-          <X className="w-4 h-4" />
-        </Button>
-      </div>
+        <ChevronDown
+          className={`w-4 h-4 text-muted-foreground flex-shrink-0 ml-3 transition-transform duration-200 ${
+            mobileExpanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
 
-      {/* ── Unsupported state ─────────────────────────────────────────── */}
-      {!hasData && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center gap-4 py-8">
-          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-            <Info className="w-6 h-6 text-muted-foreground" />
+      {/* ── Panel body ─────────────────────────────────────────────────
+       *   Hidden on mobile when collapsed; always visible on desktop.
+       * ─────────────────────────────────────────────────────────────── */}
+      <div
+        id="state-panel-body"
+        className={mobileExpanded ? "block" : "hidden lg:block"}
+      >
+
+        {/* ── Empty state ─────────────────────────────────────────────── */}
+        {!selectedState && (
+          <div className="p-6 flex flex-col items-center justify-center text-center gap-5 min-h-[360px]">
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <Scale className="w-7 h-7 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-base mb-1.5" data-testid="text-panel-empty-heading">
+                Select a state on the map
+              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                to explore custody law.
+              </p>
+            </div>
+            <div className="w-full space-y-2.5">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Quick access
+              </p>
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {quickAccessStates.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => onQuickAccess(s)}
+                    className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
+                    data-testid={`quick-state-${s.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-sm mb-1">Data coming soon for {stateName}</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              We're working on adding detailed custody law data for this state.
-              You can still ask our AI general questions.
+        )}
+
+        {/* ── Loading ─────────────────────────────────────────────────── */}
+        {selectedState && hasData && isLoading && (
+          <div className="flex flex-col items-center justify-center gap-3 p-10 min-h-[300px]">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">
+              Loading {selectedState} custody laws…
             </p>
           </div>
-          <Link href={askAIPath}>
-            <Button className="gap-2" data-testid="button-ask-ai-no-data">
-              <MessageSquare className="w-4 h-4" />
-              Ask AI About {stateName}
-            </Button>
-          </Link>
-        </div>
-      )}
+        )}
 
-      {/* ── Loading ───────────────────────────────────────────────────── */}
-      {hasData && isLoading && (
-        <div className="flex-1 flex items-center justify-center gap-2 py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground">Loading custody laws…</span>
-        </div>
-      )}
+        {/* ── No data (coming soon) ────────────────────────────────────── */}
+        {selectedState && !hasData && (
+          <div className="p-5 space-y-4">
+            <div className="pb-3 border-b">
+              <h2 className="text-lg font-bold leading-tight" data-testid="text-panel-state-name">
+                {selectedState} Custody Law
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                General statewide overview
+              </p>
+            </div>
+            <div className="flex flex-col items-center text-center gap-3 py-4">
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                <Info className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-[260px]">
+                We're working on adding detailed custody law data for this state.
+                You can still ask our AI general questions.
+              </p>
+            </div>
+            <Link href={askAIPath}>
+              <Button className="w-full gap-2 justify-center" data-testid="button-ask-ai-no-data">
+                <MessageSquare className="w-4 h-4" />
+                Ask AI About {selectedState}
+              </Button>
+            </Link>
+          </div>
+        )}
 
-      {/* ── Law summary + actions ─────────────────────────────────────── */}
-      {hasData && law && (
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+        {/* ── State data ──────────────────────────────────────────────── */}
+        {selectedState && hasData && law && (
+          <div className="p-5 space-y-4" data-testid={`panel-state-${selectedState.toLowerCase().replace(/\s+/g, "-")}`}>
 
-          {/* Primary CTA block */}
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2.5" data-testid="panel-cta-block">
-            <p className="text-xs font-semibold text-primary uppercase tracking-wide">
-              View Full Custody Law Details
-            </p>
-            <div className="flex flex-col gap-2">
+            {/* Header row */}
+            <div className="flex items-start justify-between gap-2 pb-3 border-b">
+              <div className="min-w-0">
+                <h2
+                  className="text-lg font-bold leading-tight"
+                  data-testid="text-panel-state-name"
+                >
+                  {selectedState} Custody Law
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">General statewide overview</p>
+              </div>
+              <Link href={fullDetailsPath} className="flex-shrink-0 mt-0.5">
+                <Badge
+                  className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+                  data-testid="badge-detailed-data"
+                >
+                  Full details ↗
+                </Badge>
+              </Link>
+            </div>
+
+            {/* Quick Summary — "At a Glance" blurb */}
+            {law.quick_summary && (
+              <div
+                className="rounded-lg bg-muted/50 border px-3 py-2.5"
+                data-testid="text-panel-quick-summary"
+              >
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  At a Glance
+                </p>
+                <p className="text-xs leading-relaxed text-foreground">{law.quick_summary}</p>
+              </div>
+            )}
+
+            {/* Law section cards */}
+            <div className="space-y-2.5">
+
+              {/* Custody Standard */}
+              <div className="rounded-lg border-l-2 border-l-primary/40 border border-border bg-card p-3 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Scale className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Custody Standard
+                  </h3>
+                </div>
+                <ExpandableText
+                  text={law.custody_standard}
+                  maxLen={200}
+                  testId="text-panel-custody-standard"
+                />
+              </div>
+
+              {/* Child Preference Age — only when the field is populated */}
+              {law.child_preference_age && (
+                <div className="rounded-lg border-l-2 border-l-violet-400/40 border border-border bg-card p-3 shadow-sm">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Users className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 flex-shrink-0" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Child Preference Age
+                    </h3>
+                  </div>
+                  <ExpandableText
+                    text={law.child_preference_age}
+                    maxLen={200}
+                    testId="text-panel-child-preference"
+                  />
+                </div>
+              )}
+
+              {/* Relocation Rules */}
+              <div className="rounded-lg border-l-2 border-l-orange-400/40 border border-border bg-card p-3 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400 flex-shrink-0" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Relocation Rules
+                  </h3>
+                </div>
+                <ExpandableText
+                  text={law.relocation_rules}
+                  maxLen={200}
+                  testId="text-panel-relocation-rules"
+                />
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="space-y-2 pt-1">
               <Link href={fullDetailsPath}>
                 <Button
                   className="w-full gap-2 justify-center"
@@ -233,38 +404,20 @@ function StateLawPanel({ stateName, onClose }: StateLawPanelProps) {
                   Ask AI About This State
                 </Button>
               </Link>
+              <Button
+                variant="ghost"
+                className="w-full gap-2 justify-center text-muted-foreground hover:text-foreground"
+                onClick={() => onCompare(selectedState)}
+                data-testid="button-compare-this-state"
+              >
+                <GitCompare className="w-3.5 h-3.5" />
+                Compare Another State
+              </Button>
             </div>
+
           </div>
-
-          {/* Quick summary blurb */}
-          {law.quick_summary && (
-            <div className="rounded-lg bg-muted/50 border px-3 py-2.5" data-testid="text-panel-quick-summary">
-              <p className="text-xs leading-relaxed text-foreground">{law.quick_summary}</p>
-            </div>
-          )}
-
-          {/* Law section cards — first 4 with expandable text */}
-          {LAW_SECTIONS.slice(0, 4).map(({ key, label, icon: Icon }, idx) => {
-            const accentColors = [
-              "text-primary border-l-primary/40",
-              "text-blue-600 dark:text-blue-400 border-l-blue-400/40",
-              "text-violet-600 dark:text-violet-400 border-l-violet-400/40",
-              "text-orange-500 dark:text-orange-400 border-l-orange-400/40",
-            ];
-            const accent = accentColors[idx] ?? accentColors[0];
-            const [iconColor, borderColor] = accent.split(" ");
-            return (
-              <div key={key} className={`rounded-lg border-l-2 border border-border bg-card p-3 shadow-sm ${borderColor}`}>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${iconColor}`} />
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
-                </div>
-                <ExpandableText text={law[key] ?? ""} maxLen={200} testId={`text-panel-${key}`} />
-              </div>
-            );
-          })}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -1019,50 +1172,18 @@ export default function CustodyMapPage() {
         {/* Right panel */}
         <div ref={panelRef} data-testid="panel-container">
 
-          {/* EXPLORE: single-state panel */}
-          {mode === "explore" && selectedState && (
-            <Card className="shadow-md" data-testid="card-state-panel">
-              <CardContent className="p-5 min-h-[400px] flex flex-col">
-                <StateLawPanel
-                  stateName={selectedState}
-                  onClose={() => { setSelectedState(null); setSearchQuery(""); }}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* EXPLORE: empty state */}
-          {mode === "explore" && !selectedState && (
-            <Card className="shadow-sm border-dashed" data-testid="card-panel-empty">
-              <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-4 min-h-[300px]">
-                <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Scale className="w-7 h-7 text-primary" />
-                </div>
-                <div>
-                  <p className="font-semibold mb-1">Select a state</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Click any state on the map or use the search bar to explore custody laws.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 w-full">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                    Quick access — states with data
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 justify-center">
-                    {[...STATES_WITH_DATA].slice(0, 8).map((state) => (
-                      <button
-                        key={state}
-                        onClick={() => handleStateClickExplore(state)}
-                        className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
-                        data-testid={`quick-state-${state.toLowerCase().replace(/\s+/g, "-")}`}
-                      >
-                        {state}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* EXPLORE: persistent state info panel — always rendered */}
+          {mode === "explore" && (
+            <StateInfoPanel
+              selectedState={selectedState}
+              onCompare={(stateName) => {
+                switchMode("compare");
+                setStateA(stateName);
+                setStateB(null);
+              }}
+              quickAccessStates={[...STATES_WITH_DATA].slice(0, 8)}
+              onQuickAccess={handleStateClickExplore}
+            />
           )}
 
           {/* COMPARE: comparison panel */}
