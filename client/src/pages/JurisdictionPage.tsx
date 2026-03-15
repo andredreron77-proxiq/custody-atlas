@@ -40,6 +40,9 @@ export default function JurisdictionPage() {
   // Build jurisdiction from URL before any early return (hooks must be called unconditionally)
   const state = match && params ? decodeURIComponent(params.state) : "";
   const county = match && params ? decodeURIComponent(params.county) : "";
+
+  // "general" is the sentinel county used by the map flow (state-only view).
+  const isStateOnly = !county || county.toLowerCase() === "general";
   const urlParams = new URLSearchParams(
     location.split("?")[1] || window.location.search.slice(1)
   );
@@ -83,23 +86,25 @@ export default function JurisdictionPage() {
         items={[
           { label: "Home", href: "/" },
           { label: "Find My Laws", href: "/location" },
-          { label: `${county} County, ${state}` },
+          { label: isStateOnly ? `${state} Custody Law` : `${county} County, ${state}` },
         ]}
       />
 
       <JurisdictionContextHeader
         mode="jurisdiction"
         state={state}
-        county={county}
+        county={isStateOnly ? undefined : county}
         changeLocationHref="/location"
       />
 
       <div>
         <h1 className="text-2xl md:text-3xl font-bold mb-1" data-testid="heading-jurisdiction">
-          Child Custody Laws — {state}
+          {isStateOnly ? `${state} Custody Law` : `Child Custody Laws — ${state}`}
         </h1>
         <p className="text-muted-foreground text-sm">
-          Jurisdiction-specific information for {county} County
+          {isStateOnly
+            ? "General statewide overview"
+            : `Jurisdiction-specific information for ${county} County`}
         </p>
       </div>
 

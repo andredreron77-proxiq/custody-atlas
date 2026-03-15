@@ -1,0 +1,73 @@
+Clean up the heading and jurisdiction display on the full law summary page when a user navigates there from the Custody Atlas map.
+
+Problem:
+When a user selects a state from the map and clicks "View Full Law Summary", the page currently shows awkward text like:
+"General County, Massachusetts"
+
+This is not polished because the map flow only identifies a state, not a county.
+
+Goal:
+Make the full law summary page context-aware so it displays a professional state-level heading when no county is known.
+
+Requirements:
+
+1. Update the page header logic on the full law summary / jurisdiction detail page.
+
+2. If both state and county are available:
+- keep the current jurisdiction-style header
+- example:
+  "Fulton County, Georgia"
+  with subtext like:
+  "Plain-English custody law guidance based on your location"
+
+3. If only state is available:
+- do NOT show any fake or placeholder county such as "General County"
+- instead show a polished state-level heading
+
+Recommended format:
+Title: "[State] Custody Law"
+Subtitle: "General statewide overview"
+
+Examples:
+- "Massachusetts Custody Law"
+- "Louisiana Custody Law"
+- "Nevada Custody Law"
+
+4. If the page was reached from the custody map, prefer state-level wording automatically.
+
+5. Update any reusable header or JurisdictionContextHeader component so it supports:
+- county + state mode
+- state-only mode
+- comparison mode
+- document mode
+
+6. In state-only mode, use wording such as:
+Label: "State"
+Value: "Massachusetts"
+Secondary text: "General statewide custody law overview"
+
+7. Ensure the page still renders all existing law sections:
+- quick summary
+- custody standard
+- custody types
+- modification rules
+- relocation rules
+- enforcement options
+- mediation requirements
+- child preference age if available
+
+8. Styling:
+- make the heading feel polished and intentional
+- preserve the professional legal-tech aesthetic
+- keep mobile responsiveness
+
+9. Do not break:
+- location-based jurisdiction flow
+- map flow
+- Ask AI state context
+- document analysis flow
+
+10. After implementation, summarize:
+- which component(s) were updated
+- what logic now determines county+state vs state-only display
+- which pages use the new behavior

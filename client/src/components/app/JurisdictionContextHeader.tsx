@@ -193,9 +193,18 @@ export function JurisdictionContextHeader(props: JurisdictionContextHeaderProps)
 
   /* ── jurisdiction mode (default) ─────────────────────────────────── */
   const { state, county, onChangeLocation, changeLocationHref } = props;
-  const locationText = county
-    ? `${county} County, ${state}`
-    : state;
+
+  // "general" is the sentinel county used by the custody-map flow (state-only).
+  // Treat absent or sentinel county as state-only mode.
+  const isStateOnly = !county || county.toLowerCase() === "general";
+
+  const locationLabel = isStateOnly ? "State" : "Jurisdiction";
+  const locationText = isStateOnly
+    ? state
+    : `${county} County, ${state}`;
+  const subtext = isStateOnly
+    ? "General statewide custody law overview"
+    : "Plain-English custody law guidance based on your location";
 
   return (
     <div
@@ -211,7 +220,7 @@ export function JurisdictionContextHeader(props: JurisdictionContextHeaderProps)
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-muted-foreground">Jurisdiction:</span>
+          <span className="text-xs text-muted-foreground">{locationLabel}:</span>
           <span
             className="text-sm font-semibold text-foreground truncate"
             data-testid="text-ctx-location"
@@ -219,7 +228,7 @@ export function JurisdictionContextHeader(props: JurisdictionContextHeaderProps)
             {locationText}
           </span>
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5">Plain-English custody law guidance</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{subtext}</p>
       </div>
 
       {/* Right */}
