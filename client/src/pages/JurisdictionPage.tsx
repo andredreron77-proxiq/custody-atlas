@@ -267,6 +267,19 @@ export default function JurisdictionPage() {
             ? "General statewide overview"
             : `Jurisdiction-specific information for ${county} County`}
         </p>
+        {isStateOnly && (
+          <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1 flex-wrap" data-testid="text-personalization-hint">
+            Looking for more tailored guidance?{" "}
+            <Link
+              href="/location"
+              className="text-primary hover:underline inline-flex items-center gap-0.5 font-medium transition-colors"
+              data-testid="link-use-my-location"
+            >
+              <MapPin className="w-3 h-3" />
+              Use My Location
+            </Link>
+          </p>
+        )}
       </div>
 
       {/* Location summary with coordinates */}
