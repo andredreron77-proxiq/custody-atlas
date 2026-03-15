@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
+import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
@@ -732,6 +733,21 @@ export default function CustodyMapPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Context header (shown when a state or pair is active) ────── */}
+      {mode === "compare" && stateA && stateB && (
+        <JurisdictionContextHeader
+          mode="comparison"
+          stateA={stateA}
+          stateB={stateB}
+        />
+      )}
+      {mode === "explore" && selectedState && (
+        <JurisdictionContextHeader
+          mode="jurisdiction"
+          state={selectedState}
+        />
+      )}
 
       {/* ── EXPLORE MODE: Legend + Search ─────────────────────────────── */}
       {mode === "explore" && (

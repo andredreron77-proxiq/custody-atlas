@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
+import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import type { DocumentAnalysisResult, DocumentQAResponse } from "@shared/schema";
 
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
@@ -474,6 +475,14 @@ export default function UploadDocumentPage() {
         <span>/</span>
         <span className="text-foreground font-medium">Analyze Document</span>
       </div>
+
+      <JurisdictionContextHeader
+        mode="document"
+        state={jurisdiction?.state}
+        county={jurisdiction?.county}
+        documentName={selectedFile?.name ?? undefined}
+        changeLocationHref="/location"
+      />
 
       <div>
         <h1 className="text-2xl font-bold mb-1">Analyze a Custody Document</h1>

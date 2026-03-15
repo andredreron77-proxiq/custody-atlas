@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Breadcrumb } from "@/components/app/Header";
 import { JurisdictionHeader } from "@/components/app/JurisdictionHeader";
+import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { LawSectionCard } from "@/components/app/LawSectionCard";
 import { EnforcementList } from "@/components/app/EnforcementList";
 import { UnsupportedStateNotice } from "@/components/app/UnsupportedStateNotice";
@@ -77,6 +78,13 @@ export default function JurisdictionPage() {
           { label: "Find My Laws", href: "/location" },
           { label: `${county} County, ${state}` },
         ]}
+      />
+
+      <JurisdictionContextHeader
+        mode="jurisdiction"
+        state={state}
+        county={county}
+        changeLocationHref="/location"
       />
 
       <div>

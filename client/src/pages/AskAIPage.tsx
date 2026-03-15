@@ -7,12 +7,15 @@ import { ChatBox } from "@/components/app/ChatBox";
 import { JurisdictionCard } from "@/components/app/JurisdictionCard";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
+import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import type { Jurisdiction } from "@shared/schema";
 
 export default function AskAIPage() {
   const [location] = useLocation();
-  const urlParams = new URLSearchParams(location.split("?")[1] || "");
+  const urlParams = new URLSearchParams(
+    location.split("?")[1] || window.location.search.slice(1)
+  );
 
   const stateParam = urlParams.get("state");
   const countyParam = urlParams.get("county");
@@ -85,6 +88,13 @@ export default function AskAIPage() {
           { label: `${jurisdiction.county} County, ${jurisdiction.state}`, href: lawPagePath },
           { label: "Ask AI" },
         ]}
+      />
+
+      <JurisdictionContextHeader
+        mode="jurisdiction"
+        state={jurisdiction.state}
+        county={jurisdiction.county}
+        onChangeLocation={handleChangeLocation}
       />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
