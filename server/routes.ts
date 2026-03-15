@@ -7,6 +7,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { extractTextFromDocument } from "./documentai";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
+import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
 import {
   geocodeByCoordinatesSchema,
@@ -16,6 +17,7 @@ import {
   documentAnalysisResultSchema,
   documentQARequestSchema,
   documentQAResponseSchema,
+  countyProcedureSchema,
   type Jurisdiction,
 } from "@shared/schema";
 
@@ -217,6 +219,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/custody-laws", (_req, res) => {
     return res.json({ states: listStates() });
+  });
+
+  /**
+   * GET /api/county-procedures/:state/:county
+   *
+   * Returns LOCAL COURT PROCEDURE data for a specific county.
+   *
+   * This is SEPARATE from /api/custody-laws/:state which returns statewide
+   * legal rules.  County procedure data covers court-operational details
+   * (court name, filing links, mandatory classes, local mediation programs)
+   * that may vary county-by-county even within the same state.
+   *
+   * Returns 404 when no county record exists — callers must degrade gracefully
+   * to displaying state-law-only content.  A 404 here is NORMAL, not an error.
+   */
+  app.get("/api/county-procedures/:state/:county", (req, res) => {
+    const { state, county } = req.params;
+
+    // "general" is the sentinel county used by the map flow.
+    // It is never a real county so always return 404.
+    if (!state || !county || county.toLowerCase() === "general") {
+      return res.status(404).json({ error: "No county procedure data for this location." });
+    }
+
+    const procedure = getCountyProcedure(
+      decodeURIComponent(state),
+      decodeURIComponent(county)
+    );
+
+    if (!procedure) {
+      return res.status(404).json({
+        error: `No county procedure data available for ${county} County, ${state}`,
+      });
+    }
+
+    const validated = countyProcedureSchema.safeParse(procedure);
+    if (!validated.success) {
+      console.error("County procedure record failed schema validation:", validated.error.issues);
+      return res.status(500).json({ error: "County procedure data is malformed." });
+    }
+
+    return res.json(validated.data);
   });
 
   app.post("/api/ask", async (req, res) => {

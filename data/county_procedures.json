@@ -1,0 +1,16 @@
+{
+  "_schema_reference": {
+    "_comment": "This file holds LOCAL COURT PROCEDURE data — county-specific operational details that complement the statewide custody_laws.json. Fields here describe HOW TO NAVIGATE a specific court, not WHAT THE LAW SAYS (that belongs in custody_laws.json). Each key is '{State}|{County}' (exact casing matters for lookup). Add entries only when verified local court procedure information is available.",
+    "_fields": {
+      "state":                  "Full state name (matches the key prefix)",
+      "county":                 "County name without the word 'County'",
+      "court_name":             "Official court name handling family/custody matters",
+      "filing_link":            "URL to the court's online filing portal or self-help centre",
+      "mediation_notes":        "County-specific mediation program details beyond the state mandate",
+      "parenting_class_required": "true if a parenting-education class is required before hearing",
+      "parenting_class_name":   "Name of the required parenting class if applicable",
+      "local_procedure_notes":  "Free-form notes about local practice (judges' preferences, common orders, etc.)",
+      "local_resources":        "[{ label, url }] — local legal aid, self-help centre, bar-referral links"
+    }
+  }
+}

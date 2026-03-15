@@ -1,0 +1,67 @@
+Refactor the Custody Atlas data architecture so it can support both state-level custody laws and county-level court procedures without breaking the current app.
+
+Goals:
+- Keep the current product working
+- Prepare the dataset for future county-specific procedure information
+- Clearly separate state law from county court process
+
+Requirements:
+
+1. Create or refactor the data layer into two logical sources:
+- state custody law data
+- county procedure data
+
+2. Recommended files:
+- /data/custody_laws.json
+- /data/county_procedures.json
+
+3. Keep custody_laws.json focused on state-level legal rules such as:
+- state_code
+- quick_summary
+- custody_standard
+- custody_types
+- modification_rules
+- relocation_rules
+- enforcement_options
+- mediation_requirements
+- child_preference_age
+- default_parenting_model if supported
+
+4. Create county_procedures.json for future local data such as:
+- court_name
+- local_procedure_notes
+- mediation_requirements
+- parenting_class_required
+- filing_links
+- local_resources
+
+5. Update the data-access logic so:
+- map-based state views load only state-level law data
+- location-based jurisdiction views can merge state law + county procedure data when county data exists
+- if county data does not exist, the app still works cleanly with state-level content only
+
+6. Update reusable types/interfaces so they support:
+- state-only context
+- county+state context
+- optional county overrides
+
+7. Update the UI copy where needed so the app clearly distinguishes:
+- statewide custody law
+- local court procedure
+
+8. Preserve all current functionality:
+- custody map
+- state comparison mode
+- Ask AI state context
+- jurisdiction summary page
+- workspace
+- document analysis
+
+9. Add comments in the code explaining the difference between:
+- legal rules set by state law
+- local court procedures that may vary by county
+
+10. After implementation, summarize:
+- files created or updated
+- how state and county data are now separated
+- which parts of the UI use state-only vs county-aware views

@@ -146,8 +146,18 @@ ${userQuestion}`;
 
 /**
  * Formats the jurisdiction + law data into the user-turn context block.
- * Keep the law data block clearly structured so the model can reference
- * each section explicitly in its answer.
+ *
+ * County handling:
+ *   - "general" is the sentinel county used by the custody-map flow (state-only view).
+ *     In that case the prompt shows "Statewide (no specific county)" rather than
+ *     surfacing the internal sentinel value to the model.
+ *   - When a real county name is supplied AND countyProcedureText is provided,
+ *     a LOCAL COURT PROCEDURES block is appended so the model can reference
+ *     county-specific details (e.g. mandatory parenting class, local mediator).
+ *
+ * Separation of concerns in the prompt:
+ *   STATE CUSTODY LAW  — legal rules set by state statute / case law
+ *   LOCAL COURT PROCEDURES — operational details for the specific county court
  */
 export function buildUserPrompt(opts: {
   state: string;
@@ -155,15 +165,25 @@ export function buildUserPrompt(opts: {
   isUnsupportedState: boolean;
   legalContextText: string;
   userQuestion: string;
+  /** Optional: county-level court procedure context to append after state law data. */
+  countyProcedureText?: string;
 }): string {
-  const { state, county, isUnsupportedState, legalContextText, userQuestion } = opts;
+  const { state, county, isUnsupportedState, legalContextText, userQuestion, countyProcedureText } = opts;
+
+  // "general" is a sentinel — never expose it as a real county name in the prompt
+  const isStateOnly = !county || county.toLowerCase() === "general";
+  const countyDisplay = isStateOnly ? "Statewide (no specific county)" : `${county} County`;
+
+  const countySection = !isStateOnly && countyProcedureText
+    ? `\nLOCAL COURT PROCEDURES (${countyDisplay}):\n${countyProcedureText}`
+    : "";
 
   return `USER JURISDICTION:
 State: ${state}
-County: ${county}${isUnsupportedState ? "\n(Note: Limited state-specific data available — apply general US family law principles and flag this clearly)" : ""}
+County: ${countyDisplay}${isUnsupportedState ? "\n(Note: Limited state-specific data available — apply general US family law principles and flag this clearly)" : ""}
 
 ${state.toUpperCase()} CUSTODY LAW DATA:
-${legalContextText}
+${legalContextText}${countySection}
 
 USER QUESTION:
 ${userQuestion}`;
