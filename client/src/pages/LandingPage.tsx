@@ -1,11 +1,66 @@
 import { Link } from "wouter";
 import {
   Scale, MapPin, MessageSquare, ArrowRight, CheckCircle,
-  FileSearch, BookOpen, HelpCircle, Globe, ShieldCheck,
+  FileSearch, BookOpen, HelpCircle, Globe, ShieldCheck, Map,
 } from "lucide-react";
+import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
+const STATES_WITH_DATA_SET = new Set([
+  "Alabama", "Alaska", "Arizona", "California", "Colorado",
+  "Florida", "Georgia", "Illinois", "Michigan", "New York",
+  "North Carolina", "Ohio", "Pennsylvania", "Texas", "Virginia", "Washington",
+]);
+
+function MiniMapPreview() {
+  return (
+    <div className="relative rounded-xl overflow-hidden border border-blue-200 dark:border-blue-800/50 shadow-md bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-950/30 dark:to-slate-900">
+      <ComposableMap
+        projection="geoAlbersUsa"
+        style={{ width: "100%", height: "auto", display: "block" }}
+        aria-label="Preview of the U.S. custody law map"
+      >
+        <Geographies geography={GEO_URL}>
+          {({ geographies }) =>
+            geographies.map((geo) => {
+              const name: string = geo.properties.name;
+              const hasData = STATES_WITH_DATA_SET.has(name);
+              return (
+                <Geography
+                  key={geo.rsmKey}
+                  geography={geo}
+                  fill={hasData ? "#3b82f6" : "#cbd5e1"}
+                  stroke="#ffffff"
+                  strokeWidth={0.6}
+                  style={{
+                    default: { outline: "none" },
+                    hover: { outline: "none" },
+                    pressed: { outline: "none" },
+                  }}
+                  tabIndex={-1}
+                />
+              );
+            })
+          }
+        </Geographies>
+      </ComposableMap>
+      {/* Overlay legend */}
+      <div className="absolute bottom-3 left-3 flex items-center gap-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-sm border border-white/50">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-sm bg-blue-500 inline-block" />
+          <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">Data available</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-sm bg-slate-300 inline-block" />
+          <span className="text-[10px] text-slate-600 dark:text-slate-300 font-medium">Coming soon</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const STATES_COVERED = [
   "Alabama", "Alaska", "Arizona", "California", "Colorado",
@@ -170,8 +225,94 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── WHAT YOU CAN DO ──────────────────────────────────────────────── */}
+      {/* ── CUSTODY MAP FEATURE HIGHLIGHT ────────────────────────────────── */}
       <section className="bg-white border-y">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 md:py-20">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+
+            {/* Text side */}
+            <div className="order-2 lg:order-1">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center">
+                  <Map className="w-5 h-5 text-white" />
+                </div>
+                <Badge className="bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300">
+                  New Feature
+                </Badge>
+              </div>
+
+              <h2 className="text-2xl md:text-3xl font-bold mb-4 leading-tight">
+                Explore Custody Laws Across the United States
+              </h2>
+
+              <p className="text-muted-foreground leading-relaxed mb-3">
+                Custody laws can vary significantly from state to state.
+                Use the Custody Atlas map to explore custody rules where you live.
+              </p>
+
+              <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                Click any state to see a plain-English summary of its custody standard,
+                custody types, modification rules, and more — then jump straight to the
+                AI to ask follow-up questions.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/custody-map">
+                  <Button size="lg" className="gap-2 w-full sm:w-auto" data-testid="button-cta-explore-map">
+                    <Map className="w-4 h-4" />
+                    Explore the Custody Map
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <Link href="/location">
+                  <Button size="lg" variant="outline" className="gap-2 w-full sm:w-auto">
+                    <MapPin className="w-4 h-4" />
+                    Use My Location Instead
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Mini stat badges */}
+              <div className="mt-6 flex flex-wrap gap-3">
+                {[
+                  { value: "16", label: "states with detailed data" },
+                  { value: "50", label: "states on the map" },
+                  { value: "6", label: "law categories per state" },
+                ].map(({ value, label }) => (
+                  <div key={label} className="flex items-center gap-2 bg-muted/60 rounded-full px-3 py-1.5">
+                    <span className="text-sm font-bold text-primary">{value}</span>
+                    <span className="text-xs text-muted-foreground">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Map preview side */}
+            <div className="order-1 lg:order-2">
+              <Link href="/custody-map" className="block group" aria-label="Open the Custody Law Map">
+                <div className="relative">
+                  <MiniMapPreview />
+                  {/* Click-to-explore overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl bg-blue-900/10 backdrop-blur-[1px]">
+                    <div className="bg-white/95 dark:bg-slate-900/95 rounded-xl px-5 py-3 shadow-lg flex items-center gap-2 border">
+                      <Map className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-semibold">Open interactive map</span>
+                      <ArrowRight className="w-4 h-4 text-primary" />
+                    </div>
+                  </div>
+                </div>
+              </Link>
+              <p className="text-center text-xs text-muted-foreground mt-2">
+                Blue states have detailed custody data available
+              </p>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHAT YOU CAN DO ──────────────────────────────────────────────── */}
+      <section className="bg-background border-y">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <h2 className="text-2xl md:text-3xl font-bold mb-3">What you can do with Custody Atlas</h2>
