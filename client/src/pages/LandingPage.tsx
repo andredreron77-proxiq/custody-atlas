@@ -11,8 +11,10 @@ import { Badge } from "@/components/ui/badge";
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 const STATES_WITH_DATA_SET = new Set([
   "Alabama", "Alaska", "Arizona", "California", "Colorado",
-  "Florida", "Georgia", "Illinois", "Michigan", "New York",
-  "North Carolina", "Ohio", "Pennsylvania", "Texas", "Virginia", "Washington",
+  "Florida", "Georgia", "Illinois", "Indiana", "Louisiana",
+  "Massachusetts", "Michigan", "Nevada", "New Jersey", "New York",
+  "North Carolina", "Ohio", "Oklahoma", "Pennsylvania", "Texas",
+  "Virginia", "Washington",
 ]);
 
 function MiniMapPreview() {

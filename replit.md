@@ -64,7 +64,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Data Layer
 
-- **Custody law data**: Flat JSON file (`data/custody_laws.json`) covering 16 US states. Each entry has 7 snake_case fields: `state_code`, `custody_standard`, `custody_types`, `modification_rules`, `relocation_rules`, `enforcement_options`, `mediation_requirements`. Accessed exclusively through `server/custody-laws-store.ts` (swap for a DB query without touching routes.ts).
+- **Custody law data**: Flat JSON file (`data/custody_laws.json`) covering 22 US states. Each entry has 7 snake_case fields: `state_code`, `custody_standard`, `custody_types`, `modification_rules`, `relocation_rules`, `enforcement_options`, `mediation_requirements`. Accessed exclusively through `server/custody-laws-store.ts` (swap for a DB query without touching routes.ts).
 - **Database (Drizzle + PostgreSQL)**: Configured via `drizzle.config.ts` and `shared/models/chat.ts`. The schema defines `conversations` and `messages` tables for conversation history (used by Replit integration modules). The main app flow does **not** require the database — it's used only by the chat/audio Replit integration routes.
 - **Schema validation**: Zod schemas in `shared/schema.ts` validate all API inputs/outputs.
 

@@ -1,0 +1,84 @@
+Update the Custody Atlas custody law dataset and related UI support to add these additional U.S. states:
+
+- Louisiana
+- Indiana
+- Massachusetts
+- New Jersey
+- Nevada
+- Oklahoma
+
+Important:
+- Treat "LA" as Louisiana, not Los Angeles
+- Use the same data structure already used for Georgia, Texas, and California
+- Keep the dataset clean, consistent, and strongly typed
+
+Requirements:
+
+1. Update /data/custody_laws.json
+Add entries for:
+- Louisiana
+- Indiana
+- Massachusetts
+- New Jersey
+- Nevada
+- Oklahoma
+
+For each state, include the same structure already used in the app, including:
+- state_code
+- custody_standard
+- custody_types
+- modification_rules
+- relocation_rules
+- enforcement_options
+- mediation_requirements
+- child_preference_age if supported by the current schema
+- any other existing fields already used by the app
+
+2. Data consistency
+- Match the formatting and nesting style of the current dataset
+- Do not change the shape of existing state entries unless needed for consistency across all states
+- If a field is unavailable, use a clear placeholder or null-safe value that does not break rendering
+
+3. UI support
+Ensure the following parts of the app recognize and render the new states correctly:
+- jurisdiction results page
+- custody map
+- state comparison mode
+- Ask AI state-context flow
+- unsupported state fallback logic
+
+4. Search support
+Make sure the custody map search and any state selectors include:
+- Louisiana
+- Indiana
+- Massachusetts
+- New Jersey
+- Nevada
+- Oklahoma
+
+5. Typing and validation
+Update any TypeScript types, enums, or validation logic that depend on the list of supported states.
+
+6. QA requirements
+Verify that:
+- each new state loads from the dataset correctly
+- clicking each new state in the map opens the law panel
+- each new state can be used in comparison mode
+- the Ask AI flow receives the correct state context
+- unsupported state messaging no longer appears for these states
+
+7. Do not break existing functionality
+Preserve all current features:
+- jurisdiction detection
+- AI Q&A
+- document analysis
+- workspace
+- comparison mode
+- privacy and trust messaging
+
+8. Final output
+After making changes, summarize:
+- files updated
+- states added
+- any schema adjustments made
+- any placeholders used that should later be replaced with verified legal content
