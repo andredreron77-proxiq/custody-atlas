@@ -159,6 +159,21 @@ export default function JurisdictionPage() {
       {/* Law data sections — one LawSectionCard per field in CustodyLawRecord */}
       {law && !isLoading && (
         <>
+          {/* Quick summary — plain-English overview shown before the detailed cards */}
+          {law.quick_summary && (
+            <div
+              className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3"
+              data-testid="panel-quick-summary"
+            >
+              <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">
+                At a Glance
+              </p>
+              <p className="text-sm leading-relaxed text-foreground">
+                {law.quick_summary}
+              </p>
+            </div>
+          )}
+
           <div className="space-y-3">
             <LawSectionCard
               title="Custody Standard"
