@@ -41,6 +41,37 @@ function truncate(text: string, maxLen: number) {
   return text.slice(0, maxLen).replace(/\s+\S*$/, "") + "…";
 }
 
+function ExpandableText({
+  text,
+  maxLen = 180,
+  testId,
+}: {
+  text: string;
+  maxLen?: number;
+  testId?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isTruncated = text.length > maxLen;
+  const displayed = expanded ? text : truncate(text, maxLen);
+
+  return (
+    <span>
+      <span className="text-xs text-foreground leading-relaxed" data-testid={testId}>
+        {displayed}
+      </span>
+      {isTruncated && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="ml-1 text-[11px] font-medium text-primary hover:underline focus:outline-none whitespace-nowrap"
+          data-testid={testId ? `${testId}-toggle` : undefined}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </span>
+  );
+}
+
 const LAW_SECTIONS: { key: keyof CustodyLawRecord; label: string; icon: typeof Scale }[] = [
   { key: "custody_standard", label: "Custody Standard", icon: Scale },
   { key: "custody_types", label: "Custody Types", icon: Users },
@@ -460,9 +491,7 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
                   {!hasDataA ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawA ? (
-                    <p className="text-xs text-foreground leading-relaxed" data-testid={`cell-a-${key}`}>
-                      {truncate(lawA[key], 180)}
-                    </p>
+                    <ExpandableText text={lawA[key]} testId={`cell-a-${key}`} />
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
@@ -471,9 +500,7 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
                   {!hasDataB ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawB ? (
-                    <p className="text-xs text-foreground leading-relaxed" data-testid={`cell-b-${key}`}>
-                      {truncate(lawB[key], 180)}
-                    </p>
+                    <ExpandableText text={lawB[key]} testId={`cell-b-${key}`} />
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
