@@ -11,6 +11,7 @@ import JurisdictionPage from "@/pages/JurisdictionPage";
 import AskAIPage from "@/pages/AskAIPage";
 import UploadDocumentPage from "@/pages/UploadDocumentPage";
 import CustodyMapPage from "@/pages/CustodyMapPage";
+import WorkspacePage from "@/pages/WorkspacePage";
 import PrivacyPage from "@/pages/PrivacyPage";
 import TermsPage from "@/pages/TermsPage";
 import NotFound from "@/pages/not-found";
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/ask" component={AskAIPage} />
       <Route path="/upload-document" component={UploadDocumentPage} />
       <Route path="/custody-map" component={CustodyMapPage} />
+      <Route path="/workspace" component={WorkspacePage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
       <Route component={NotFound} />

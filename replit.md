@@ -28,21 +28,27 @@ Preferred communication style: Simple, everyday language.
 - **UI Components**: shadcn/ui (Radix UI primitives + Tailwind CSS)
 - **Styling**: Tailwind CSS with CSS variables for theming (light/dark mode support)
 - **Key Pages**:
-  - `/` — Landing page with feature overview and state coverage
+  - `/` — Landing page with feature overview, map preview, and state coverage
+  - `/workspace` — **Case Workspace** dashboard: central hub with 6 cards (jurisdiction, quick actions, recent docs, recent questions, custody map, privacy)
   - `/location` — Location selection page (GPS or ZIP code)
   - `/jurisdiction/:state/:county` — Displays state custody law summary (6 sections) with collapsible cards
   - `/ask` — AI Q&A chat interface, jurisdiction-aware
+  - `/upload-document` — Document OCR analysis with AI follow-up Q&A
+  - `/custody-map` — Interactive U.S. map with explore mode (per-state panel) and compare mode (side-by-side table)
+  - `/privacy`, `/terms` — Legal pages
 - **Component Structure**:
   - `client/src/pages/` — Top-level page components
   - `client/src/components/app/` — Domain-specific components:
     - `LocationSelector` — GPS + ZIP state machine (idle/loading/success/error states)
     - `ChatBox` — Structured AI Q&A card with key points and attorney questions
     - `JurisdictionHeader` — Location summary with state code badge and coordinates
-    - `LawSectionCard` — Collapsible card for each law category (used 5x on jurisdiction page)
+    - `JurisdictionContextHeader` — Compact persistent context banner (3 modes: jurisdiction/comparison/document); shown across all main product screens
+    - `LawSectionCard` — Collapsible card for each law category
     - `EnforcementList` — Structured bullet list for enforcement options
     - `UnsupportedStateNotice` — Amber notice card for states not in the dataset
-    - `Header`, `Footer` — App-wide chrome
+    - `Header`, `Footer` — App-wide chrome with mobile hamburger drawer nav
   - `client/src/components/ui/` — shadcn/ui base components
+- **Session Persistence**: `useJurisdiction` hook reads/writes `"custody_jurisdiction"` to `sessionStorage`. JurisdictionPage, AskAIPage all write on load; WorkspacePage reads it to populate the dashboard without requiring re-entry.
 
 ### Backend (Node.js + Express)
 

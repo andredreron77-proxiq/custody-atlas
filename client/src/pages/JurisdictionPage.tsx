@@ -15,6 +15,7 @@ import { LawSectionCard } from "@/components/app/LawSectionCard";
 import { EnforcementList } from "@/components/app/EnforcementList";
 import { UnsupportedStateNotice } from "@/components/app/UnsupportedStateNotice";
 import { ChatBox } from "@/components/app/ChatBox";
+import { useJurisdiction } from "@/hooks/useJurisdiction";
 import type { CustodyLawRecord, Jurisdiction } from "@shared/schema";
 
 /**
@@ -36,11 +37,12 @@ export default function JurisdictionPage() {
   const [location] = useLocation();
   const [askAIOpen, setAskAIOpen] = useState(false);
 
-  if (!match || !params) return null;
-
-  const state = decodeURIComponent(params.state);
-  const county = decodeURIComponent(params.county);
-  const urlParams = new URLSearchParams(location.split("?")[1] || "");
+  // Build jurisdiction from URL before any early return (hooks must be called unconditionally)
+  const state = match && params ? decodeURIComponent(params.state) : "";
+  const county = match && params ? decodeURIComponent(params.county) : "";
+  const urlParams = new URLSearchParams(
+    location.split("?")[1] || window.location.search.slice(1)
+  );
 
   const jurisdiction: Jurisdiction = {
     state,
@@ -50,6 +52,11 @@ export default function JurisdictionPage() {
     latitude: urlParams.get("lat") ? Number(urlParams.get("lat")) : undefined,
     longitude: urlParams.get("lng") ? Number(urlParams.get("lng")) : undefined,
   };
+
+  // Persist to sessionStorage so other pages (e.g. Workspace) can read it back
+  useJurisdiction(match && params ? jurisdiction : null);
+
+  if (!match || !params) return null;
 
   const { data: law, isLoading, error } = useQuery<CustodyLawRecord>({
     queryKey: ["/api/custody-laws", state],

@@ -1,0 +1,104 @@
+Add a new main dashboard page to Custody Atlas called "Case Workspace".
+
+Goal:
+Create a professional, central workspace that ties together the user's jurisdiction, AI questions, uploaded documents, and map access.
+
+Requirements:
+
+1. Create a new route for the dashboard
+Route:
+ /workspace
+
+Page title:
+"Case Workspace"
+
+Subtitle:
+"Your central place to understand custody law, analyze documents, and track your progress."
+
+2. Add a clean dashboard layout with responsive cards.
+
+Desktop layout:
+- 2-column grid
+- balanced spacing
+- consistent card styling
+
+Mobile layout:
+- vertically stacked cards
+- maintain readability and spacing
+
+3. Include these dashboard cards:
+
+A. Jurisdiction Card
+Show:
+- label: "Jurisdiction"
+- detected state
+- county if available
+- short text: "Plain-English custody law guidance based on your location."
+Buttons:
+- "View law summary"
+- "Change location"
+
+B. Quick Actions Card
+Include buttons:
+- Ask a custody question
+- Analyze a document
+- Explore custody map
+- Compare states
+
+C. Recent Documents Card
+Show recently uploaded/analyzed documents if available.
+Display:
+- file name
+- status
+- action button: "View analysis"
+If no documents exist, show an empty state with:
+"Upload your first custody document"
+
+D. Recent Questions Card
+Show recent AI questions if available.
+Display:
+- question text
+- action button: "Ask another question"
+If no questions exist, show an empty state with:
+"Ask your first custody question"
+
+E. Custody Map Card
+Show a short description of the map feature:
+"Explore custody laws by state and compare key legal differences."
+Button:
+- "Open Custody Map"
+
+F. Privacy and Trust Card
+Show:
+- Secure document analysis
+- Private AI guidance
+- You control your uploads
+Button:
+- "View Privacy Policy"
+
+4. Add the existing JurisdictionContextHeader to the top of the workspace if jurisdiction data exists.
+
+5. Design requirements:
+- professional legal-tech aesthetic
+- white cards
+- subtle shadow
+- rounded corners
+- consistent spacing
+- deep navy and blue accent palette
+- modern typography
+- strong visual hierarchy
+
+6. Navigation:
+Add "Workspace" to the main navigation and make it the primary logged-in/product destination.
+
+7. Functionality:
+Use existing state or mock data where needed.
+Do not break current functionality.
+If recent documents or questions are not yet persisted, create a clean temporary placeholder structure that can later be connected to storage.
+
+8. After implementation:
+Summarize:
+- files created
+- components added
+- routing changes
+- placeholder vs real data sources

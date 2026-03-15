@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X } from "lucide-react";
+import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/", icon: Home, exact: true },
+  { label: "Workspace", href: "/workspace", icon: LayoutDashboard },
   { label: "Custody Map", href: "/custody-map", icon: Map },
   { label: "Ask AI", href: "/ask", icon: MessageSquare },
   { label: "Analyze Document", href: "/upload-document", icon: FileSearch },
