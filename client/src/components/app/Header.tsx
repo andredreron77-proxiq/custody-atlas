@@ -1,56 +1,67 @@
 import { Link, useLocation } from "wouter";
-import { Scale, MapPin, MessageSquare, ChevronRight, FileSearch } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Scale, Home, Map, MessageSquare, FileSearch } from "lucide-react";
+
+const NAV_ITEMS = [
+  { label: "Home", href: "/", icon: Home, exact: true },
+  { label: "Custody Map", href: "/location", icon: Map },
+  { label: "Ask AI", href: "/ask", icon: MessageSquare },
+  { label: "Analyze Document", href: "/upload-document", icon: FileSearch },
+];
 
 export function Header() {
   const [location] = useLocation();
 
+  const isActive = (href: string, exact = false) => {
+    if (exact) return location === href;
+    return location === href || location.startsWith(href + "/") || location.startsWith(href + "?");
+  };
+
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 bg-[#0f172a] shadow-md">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-            <Scale className="w-4 h-4 text-primary-foreground" />
+
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 group" aria-label="Custody Atlas home">
+          <div className="w-8 h-8 rounded-md bg-blue-600 flex items-center justify-center">
+            <Scale className="w-4 h-4 text-white" />
           </div>
-          <span className="font-semibold text-base tracking-tight hidden sm:block">
-            Custody Atlas
-          </span>
+          <div className="hidden sm:block">
+            <span className="font-bold text-white text-sm tracking-tight leading-none block">
+              Custody Atlas
+            </span>
+            <span className="text-blue-300/80 text-[11px] leading-none block mt-0.5">
+              Understand custody law where you live.
+            </span>
+          </div>
         </Link>
 
-        <nav className="flex items-center gap-1">
-          <Link href="/location">
-            <Button
-              variant={location === "/location" ? "secondary" : "ghost"}
-              size="sm"
-              className="flex items-center gap-1.5"
-              data-testid="nav-location"
-            >
-              <MapPin className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Find My Laws</span>
-            </Button>
-          </Link>
-          <Link href="/ask">
-            <Button
-              variant={location.startsWith("/ask") ? "secondary" : "ghost"}
-              size="sm"
-              className="flex items-center gap-1.5"
-              data-testid="nav-ask"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Ask AI</span>
-            </Button>
-          </Link>
-          <Link href="/upload-document">
-            <Button
-              variant={location.startsWith("/upload-document") ? "secondary" : "ghost"}
-              size="sm"
-              className="flex items-center gap-1.5"
-              data-testid="nav-upload"
-            >
-              <FileSearch className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Analyze Doc</span>
-            </Button>
-          </Link>
+        {/* Navigation */}
+        <nav className="flex items-center gap-0.5" aria-label="Main navigation">
+          {NAV_ITEMS.map(({ label, href, icon: Icon, exact }) => {
+            const active = isActive(href, exact);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`
+                  relative flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors
+                  ${active
+                    ? "text-white bg-white/10"
+                    : "text-slate-300 hover:text-white hover:bg-white/8"
+                  }
+                `}
+                data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className={label === "Analyze Document" ? "hidden lg:inline" : "hidden sm:inline"}>
+                  {label}
+                </span>
+                {active && (
+                  <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-400 rounded-full" />
+                )}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </header>
@@ -68,10 +79,10 @@ interface BreadcrumbProps {
 
 export function Breadcrumb({ items }: BreadcrumbProps) {
   return (
-    <nav className="flex items-center gap-1 text-sm text-muted-foreground flex-wrap">
+    <nav className="flex items-center gap-1.5 text-sm text-muted-foreground flex-wrap" aria-label="Breadcrumb">
       {items.map((item, i) => (
-        <span key={i} className="flex items-center gap-1">
-          {i > 0 && <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />}
+        <span key={i} className="flex items-center gap-1.5">
+          {i > 0 && <span className="text-muted-foreground/50" aria-hidden="true">/</span>}
           {item.href ? (
             <Link href={item.href} className="hover:text-foreground transition-colors">
               {item.label}

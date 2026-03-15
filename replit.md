@@ -1,8 +1,8 @@
-# Custody Law Near Me — replit.md
+# Custody Atlas — replit.md
 
 ## Overview
 
-**Custody Law Near Me** is a production-ready web application that helps users understand child custody laws specific to their jurisdiction (US state and county). Users can:
+**Custody Atlas** is a production-ready web application that helps users understand child custody laws specific to their jurisdiction (US state and county). Users can:
 
 1. Share their location via GPS or ZIP code
 2. View a structured summary of custody laws for their state (covering 6 key areas: custody standard, custody types, modification rules, relocation rules, enforcement options, and mediation requirements)

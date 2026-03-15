@@ -171,7 +171,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── WHAT YOU CAN DO ──────────────────────────────────────────────── */}
-      <section className="bg-muted/30 border-y">
+      <section className="bg-white border-y">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 md:py-20">
           <div className="text-center mb-12">
             <h2 className="text-2xl md:text-3xl font-bold mb-3">What you can do with Custody Atlas</h2>
@@ -261,7 +261,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── STATES COVERED ───────────────────────────────────────────────── */}
-      <section className="bg-muted/30 border-t">
+      <section className="bg-white border-t">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 w-full">
           <div className="text-center mb-8">
             <h2 className="text-xl font-bold mb-2">States Currently Covered</h2>
