@@ -274,10 +274,10 @@ export default function LandingPage() {
                 </Link>
               </div>
 
-              {/* Mini stat badges */}
+              {/* Mini stat badges — state count derives from STATES_WITH_DATA_SET so it stays accurate */}
               <div className="mt-6 flex flex-wrap gap-3">
                 {[
-                  { value: "16", label: "states with detailed data" },
+                  { value: String(STATES_WITH_DATA_SET.size), label: "states with detailed data" },
                   { value: "50", label: "states on the map" },
                   { value: "6", label: "law categories per state" },
                 ].map(({ value, label }) => (
