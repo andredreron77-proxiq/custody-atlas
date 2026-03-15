@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { mkdirSync, unlinkSync, readFileSync } from "fs";
@@ -6,7 +7,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { extractTextFromDocument } from "./documentai";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
-import { buildSystemPrompt, buildUserPrompt } from "./lib/prompts/legalAssistant";
+import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -302,6 +303,80 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (err: any) {
       console.error("Ask AI error:", err);
       return res.status(500).json({ error: "Failed to get AI response. Please try again." });
+    }
+  });
+
+  app.post("/api/ask-comparison", async (req, res) => {
+    try {
+      const schema = z.object({
+        stateA: z.string().min(1),
+        stateB: z.string().min(1),
+        userQuestion: z.string().min(3, "Question must be at least 3 characters").max(2000),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues.map((i) => i.message) });
+      }
+
+      const { stateA, stateB, userQuestion } = parsed.data;
+
+      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!hasAI) {
+        return res.status(503).json({ error: "AI service not configured." });
+      }
+
+      const buildLawText = (stateName: string) => {
+        const law = getCustodyLaw(stateName);
+        if (!law) return `No specific data available for ${stateName}. Use general US family law principles.`;
+        return [
+          `CUSTODY STANDARD:\n${law.custody_standard}`,
+          `CUSTODY TYPES:\n${law.custody_types}`,
+          `MODIFICATION RULES:\n${law.modification_rules}`,
+          `RELOCATION RULES:\n${law.relocation_rules}`,
+          `ENFORCEMENT OPTIONS:\n${law.enforcement_options}`,
+          `MEDIATION REQUIREMENTS:\n${law.mediation_requirements}`,
+        ].join("\n\n");
+      };
+
+      const openai = getOpenAIClient();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: buildComparisonSystemPrompt(stateA, stateB) },
+          {
+            role: "user",
+            content: buildComparisonUserPrompt({
+              stateA,
+              stateB,
+              lawAText: buildLawText(stateA),
+              lawBText: buildLawText(stateB),
+              userQuestion,
+            }),
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1600,
+        temperature: 0.4,
+      });
+
+      const rawContent = completion.choices[0]?.message?.content;
+      if (!rawContent) return res.status(500).json({ error: "No response from AI service." });
+
+      let parsed_response: unknown;
+      try { parsed_response = JSON.parse(rawContent); } catch {
+        return res.status(500).json({ error: "AI returned an invalid response format." });
+      }
+
+      const validated = aiLegalResponseSchema.safeParse(parsed_response);
+      if (!validated.success) {
+        console.error("Comparison AI response failed validation:", validated.error.issues);
+        return res.status(500).json({ error: "AI response structure was unexpected." });
+      }
+
+      return res.json(validated.data);
+    } catch (err: any) {
+      console.error("Ask comparison error:", err);
+      return res.status(500).json({ error: "Failed to get AI comparison response." });
     }
   });
 
