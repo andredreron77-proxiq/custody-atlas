@@ -1,0 +1,72 @@
+Enhance the Custody Atlas Case Workspace by adding a smart "Next Best Step" panel at the top of the dashboard.
+
+Goal:
+Help users understand exactly what to do next based on where they are in the product journey.
+
+Requirements:
+
+1. Create a reusable component called NextBestStepPanel
+
+2. Place it near the top of the Case Workspace, directly below the JurisdictionContextHeader if present
+
+3. The panel should show a primary recommended next action based on available user context
+
+4. Support these recommendation scenarios:
+
+A. No jurisdiction yet
+Show:
+Title: "Start by finding your jurisdiction"
+Description: "Enter your location to see the custody laws that may apply where you live."
+Primary button: "Find my location"
+
+B. Jurisdiction exists but no AI questions asked yet
+Show:
+Title: "Ask your first custody question"
+Description: "Get a plain-English explanation of custody law based on your state and county."
+Primary button: "Ask a question"
+
+C. Jurisdiction exists but no document uploaded yet
+Show:
+Title: "Upload your custody order"
+Description: "Analyze your document to identify key terms, important dates, and possible next questions."
+Primary button: "Analyze a document"
+
+D. User has uploaded a document but has not asked a follow-up document question
+Show:
+Title: "Ask about your document"
+Description: "Follow up on your document summary to better understand what it means."
+Primary button: "Ask about this document"
+
+E. User has used AI and uploaded at least one document
+Show:
+Title: "Explore the Custody Law Map"
+Description: "Compare custody laws across states and better understand how rules differ."
+Primary button: "Open Custody Map"
+
+5. Add an optional small secondary action link such as:
+- "Skip for now"
+- "View workspace"
+
+6. Styling:
+- visually prominent card
+- professional legal-tech appearance
+- soft accent background using the existing blue palette
+- clear title, description, and CTA
+- mobile responsive
+
+7. Data handling:
+- Use existing real state where available
+- If full persistence is not yet implemented, use current page/session state or a placeholder decision engine
+- Keep the logic modular so it can later be replaced with real analytics/user progress tracking
+
+8. Add a small label above the card:
+"Recommended Next Step"
+
+9. Keep all existing dashboard cards and functionality intact
+
+10. After implementation:
+Summarize:
+- component created
+- logic used for recommendations
+- where it was added
+- which scenarios are currently powered by real data vs placeholders

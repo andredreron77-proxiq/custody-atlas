@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import {
   LayoutDashboard, MapPin, MessageSquare, FileSearch, Map,
   GitCompare, ShieldCheck, Lock, FileText, ArrowRight,
-  ChevronRight, BookOpen, Scale, ExternalLink,
+  ChevronRight, BookOpen, Scale, ExternalLink, Lightbulb, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +53,167 @@ function StatusBadge({ status }: { status: RecentDocument["status"] }) {
   );
 }
 
+/* ── Next Best Step types & config ───────────────────────────────────────── */
+
+type StepScenario = "no-jurisdiction" | "no-questions" | "no-document" | "no-doc-followup" | "explore-map";
+
+interface StepConfig {
+  scenario: StepScenario;
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  description: string;
+  ctaLabel: string;
+  ctaHref: string;
+  secondaryLabel: string;
+}
+
+function resolveScenario(
+  jurisdiction: { state: string } | null,
+  hasQuestions: boolean,
+  hasDocuments: boolean,
+  hasDocFollowup: boolean,
+): StepScenario {
+  if (!jurisdiction) return "no-jurisdiction";
+  if (!hasQuestions) return "no-questions";
+  if (!hasDocuments) return "no-document";
+  if (!hasDocFollowup) return "no-doc-followup";
+  return "explore-map";
+}
+
+const STEP_CONFIGS: Record<StepScenario, Omit<StepConfig, "scenario">> = {
+  "no-jurisdiction": {
+    icon: MapPin,
+    iconBg: "bg-blue-100 dark:bg-blue-950/50",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    title: "Start by finding your jurisdiction",
+    description: "Enter your location to see the custody laws that may apply where you live.",
+    ctaLabel: "Find my location",
+    ctaHref: "/location",
+    secondaryLabel: "Skip for now",
+  },
+  "no-questions": {
+    icon: MessageSquare,
+    iconBg: "bg-blue-100 dark:bg-blue-950/50",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    title: "Ask your first custody question",
+    description: "Get a plain-English explanation of custody law based on your state and county.",
+    ctaLabel: "Ask a question",
+    ctaHref: "/ask",
+    secondaryLabel: "Skip for now",
+  },
+  "no-document": {
+    icon: FileText,
+    iconBg: "bg-emerald-100 dark:bg-emerald-950/50",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    title: "Upload your custody order",
+    description: "Analyze your document to identify key terms, important dates, and possible next questions.",
+    ctaLabel: "Analyze a document",
+    ctaHref: "/upload-document",
+    secondaryLabel: "Skip for now",
+  },
+  "no-doc-followup": {
+    icon: MessageSquare,
+    iconBg: "bg-violet-100 dark:bg-violet-950/50",
+    iconColor: "text-violet-600 dark:text-violet-400",
+    title: "Ask about your document",
+    description: "Follow up on your document summary to better understand what it means.",
+    ctaLabel: "Ask about this document",
+    ctaHref: "/ask",
+    secondaryLabel: "Skip for now",
+  },
+  "explore-map": {
+    icon: Map,
+    iconBg: "bg-blue-100 dark:bg-blue-950/50",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    title: "Explore the Custody Law Map",
+    description: "Compare custody laws across states and better understand how rules differ.",
+    ctaLabel: "Open Custody Map",
+    ctaHref: "/custody-map",
+    secondaryLabel: "View workspace",
+  },
+};
+
+/* ── NextBestStepPanel ────────────────────────────────────────────────────── */
+
+function NextBestStepPanel({
+  scenario,
+  ctaHref,
+}: {
+  scenario: StepScenario;
+  ctaHref: string;
+}) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
+  const config = STEP_CONFIGS[scenario];
+  const { icon: Icon, iconBg, iconColor, title, description, ctaLabel, secondaryLabel } = config;
+
+  return (
+    <div data-testid="panel-next-best-step">
+      {/* Label */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Recommended Next Step
+        </span>
+      </div>
+
+      {/* Card */}
+      <div className="relative rounded-xl border border-blue-200 dark:border-blue-800/60 bg-gradient-to-r from-blue-50 to-slate-50 dark:from-blue-950/30 dark:to-slate-900/30 px-5 py-4 shadow-sm">
+        {/* Dismiss button */}
+        <button
+          onClick={() => setDismissed(true)}
+          className="absolute top-3 right-3 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+          aria-label="Dismiss recommendation"
+          data-testid="button-dismiss-next-step"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+
+        <div className="flex items-start gap-4 pr-6">
+          {/* Icon */}
+          <div className={`w-10 h-10 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+            <Icon className={`w-5 h-5 ${iconColor}`} />
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <h2
+              className="font-semibold text-foreground text-base leading-tight mb-1"
+              data-testid="text-next-step-title"
+            >
+              {title}
+            </h2>
+            <p
+              className="text-sm text-muted-foreground leading-relaxed mb-3"
+              data-testid="text-next-step-description"
+            >
+              {description}
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Link href={ctaHref}>
+                <Button size="sm" className="gap-1.5 shadow-sm" data-testid="button-next-step-cta">
+                  {ctaLabel}
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </Link>
+              <button
+                onClick={() => setDismissed(true)}
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors"
+                data-testid="button-next-step-skip"
+              >
+                {secondaryLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Empty state ──────────────────────────────────────────────────────────── */
 function EmptyState({
   icon: Icon,
@@ -86,6 +248,23 @@ function EmptyState({
 
 export default function WorkspacePage() {
   const { jurisdiction, clearJurisdiction } = useJurisdiction();
+
+  // ── Decision engine (modular — swap for real analytics later) ────────────
+  const hasQuestions = RECENT_QUESTIONS.length > 0;
+  const hasDocuments = RECENT_DOCUMENTS.length > 0;
+  // "doc follow-up" = has a document AND has asked an AI question since upload
+  const hasDocFollowup = hasDocuments && hasQuestions;
+
+  const scenario = resolveScenario(jurisdiction, hasQuestions, hasDocuments, hasDocFollowup);
+
+  // Resolve the CTA href — jurisdiction-aware for AI paths
+  const scenarioCta = ((): string => {
+    const base = STEP_CONFIGS[scenario].ctaHref;
+    if ((scenario === "no-questions" || scenario === "no-doc-followup") && jurisdiction) {
+      return `/ask?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`;
+    }
+    return base;
+  })();
 
   const lawPagePath = jurisdiction
     ? `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}` +
@@ -127,6 +306,9 @@ export default function WorkspacePage() {
           changeLocationHref="/location"
         />
       )}
+
+      {/* Next Best Step */}
+      <NextBestStepPanel scenario={scenario} ctaHref={scenarioCta} />
 
       {/* Dashboard grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
