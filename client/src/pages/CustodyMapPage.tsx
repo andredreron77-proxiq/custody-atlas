@@ -202,15 +202,34 @@ function StateLawPanel({ stateName, onClose }: StateLawPanelProps) {
 
       {hasData && law && (
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-          {LAW_SECTIONS.slice(0, 4).map(({ key, label, icon: Icon }) => (
-            <div key={key} className="rounded-lg border bg-card p-3 shadow-sm">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Icon className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
-              </div>
-              <ExpandableText text={law[key] ?? ""} maxLen={220} testId={`text-panel-${key}`} />
+          {/* Quick summary blurb — shown when the field is present */}
+          {law.quick_summary && (
+            <div className="rounded-lg bg-primary/5 border border-primary/15 px-3 py-2.5" data-testid="text-panel-quick-summary">
+              <p className="text-xs leading-relaxed text-foreground">{law.quick_summary}</p>
             </div>
-          ))}
+          )}
+
+          {/* Law section cards — first 4 with expandable text */}
+          {LAW_SECTIONS.slice(0, 4).map(({ key, label, icon: Icon }, idx) => {
+            const accentColors = [
+              "text-primary border-l-primary/40",
+              "text-blue-600 dark:text-blue-400 border-l-blue-400/40",
+              "text-violet-600 dark:text-violet-400 border-l-violet-400/40",
+              "text-orange-500 dark:text-orange-400 border-l-orange-400/40",
+            ];
+            const accent = accentColors[idx] ?? accentColors[0];
+            const [iconColor, borderColor] = accent.split(" ");
+            return (
+              <div key={key} className={`rounded-lg border-l-2 border border-border bg-card p-3 shadow-sm ${borderColor}`}>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${iconColor}`} />
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
+                </div>
+                <ExpandableText text={law[key] ?? ""} maxLen={200} testId={`text-panel-${key}`} />
+              </div>
+            );
+          })}
+
           <div className="flex flex-col gap-2 pt-1 pb-2">
             <Link href={askAIPath}>
               <Button className="w-full gap-2" data-testid="button-ask-ai-state">
@@ -476,6 +495,28 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
         </div>
       )}
 
+      {/* Quick summary row — shown when both states have the field */}
+      {!isLoading && (lawA?.quick_summary || lawB?.quick_summary) && (
+        <div className="rounded-lg border bg-primary/5 border-primary/15 overflow-hidden" data-testid="comparison-row-quick-summary">
+          <div className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 border-b border-primary/15">
+            <Scale className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-primary">At a Glance</span>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-primary/15">
+            <div className="p-2.5 min-h-[56px]">
+              <p className="text-xs leading-relaxed text-foreground" data-testid="cell-a-quick-summary">
+                {lawA?.quick_summary ?? <span className="text-muted-foreground italic">Not available</span>}
+              </p>
+            </div>
+            <div className="p-2.5 min-h-[56px]">
+              <p className="text-xs leading-relaxed text-foreground" data-testid="cell-b-quick-summary">
+                {lawB?.quick_summary ?? <span className="text-muted-foreground italic">Not available</span>}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Comparison rows */}
       {!isLoading && (
         <div className="space-y-3" data-testid="comparison-rows">
@@ -488,20 +529,20 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
               </div>
               {/* Side-by-side cells */}
               <div className="grid grid-cols-2 divide-x">
-                <div className="p-2.5 bg-blue-50/40 dark:bg-blue-950/10">
+                <div className="p-2.5 min-h-[64px] bg-blue-50/40 dark:bg-blue-950/10">
                   {!hasDataA ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawA ? (
-                    <ExpandableText text={lawA[key]} testId={`cell-a-${key}`} />
+                    <ExpandableText text={lawA[key]} maxLen={150} testId={`cell-a-${key}`} />
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
                 </div>
-                <div className="p-2.5 bg-amber-50/40 dark:bg-amber-950/10">
+                <div className="p-2.5 min-h-[64px] bg-amber-50/40 dark:bg-amber-950/10">
                   {!hasDataB ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawB ? (
-                    <ExpandableText text={lawB[key]} testId={`cell-b-${key}`} />
+                    <ExpandableText text={lawB[key]} maxLen={150} testId={`cell-b-${key}`} />
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                   )}

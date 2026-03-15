@@ -33,6 +33,7 @@ export type GeocodeRequest = z.infer<typeof geocodeRequestSchema>;
  */
 export const custodyLawSchema = z.object({
   state_code: z.string().length(2),
+  quick_summary: z.string().optional(),
   custody_standard: z.string(),
   custody_types: z.string(),
   modification_rules: z.string(),
