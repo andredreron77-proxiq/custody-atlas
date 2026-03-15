@@ -206,9 +206,7 @@ function StateLawPanel({ stateName, onClose }: StateLawPanelProps) {
                 <Icon className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h3>
               </div>
-              <p className="text-sm text-foreground leading-relaxed" data-testid={`text-panel-${key}`}>
-                {truncate(law[key], 220)}
-              </p>
+              <ExpandableText text={law[key] ?? ""} maxLen={220} testId={`text-panel-${key}`} />
             </div>
           ))}
           <div className="flex flex-col gap-2 pt-1 pb-2">
