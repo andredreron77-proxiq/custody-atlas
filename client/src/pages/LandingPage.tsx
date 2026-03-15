@@ -64,11 +64,7 @@ function MiniMapPreview() {
   );
 }
 
-const STATES_COVERED = [
-  "Alabama", "Alaska", "Arizona", "California", "Colorado",
-  "Florida", "Georgia", "Illinois", "Michigan", "New York",
-  "North Carolina", "Ohio", "Pennsylvania", "Texas", "Virginia", "Washington",
-];
+const STATES_COVERED = Array.from(STATES_WITH_DATA_SET).sort();
 
 const HOW_IT_WORKS = [
   {
