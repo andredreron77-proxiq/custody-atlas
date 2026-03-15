@@ -3,7 +3,7 @@ import { Scale, Home, Map, MessageSquare, FileSearch } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/", icon: Home, exact: true },
-  { label: "Custody Map", href: "/location", icon: Map },
+  { label: "Custody Map", href: "/custody-map", icon: Map },
   { label: "Ask AI", href: "/ask", icon: MessageSquare },
   { label: "Analyze Document", href: "/upload-document", icon: FileSearch },
 ];
