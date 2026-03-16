@@ -1,0 +1,96 @@
+Enhance the Custody Atlas Case Workspace by adding a dynamic guidance component called the "Next Best Step" panel.
+
+Goal:
+Help users understand what they should do next in the product based on their activity (documents uploaded, questions asked, jurisdiction set).
+
+Requirements:
+
+1. Create a reusable component called NextBestStepPanel.
+
+2. Placement:
+   Display this panel near the top of the Case Workspace, directly below the JurisdictionContextHeader and above the dashboard cards.
+
+3. Panel Content:
+   Title:
+   "Next Best Step"
+
+Description:
+A short explanation telling the user what action would be most helpful next.
+
+Include a primary call-to-action button.
+
+Example states:
+
+STATE 1: No jurisdiction detected
+Message:
+"Start by identifying your location so we can show the custody laws that apply to you."
+Button:
+"Set Your Location"
+
+STATE 2: Jurisdiction set but no questions asked
+Message:
+"Ask a custody question to better understand how the laws in your state may apply to your situation."
+Button:
+"Ask a Custody Question"
+
+STATE 3: Questions asked but no document uploaded
+Message:
+"Upload your custody order or court notice to get a plain-English explanation."
+Button:
+"Analyze a Document"
+
+STATE 4: Document analyzed but no follow-up questions
+Message:
+"You can ask questions about the document you uploaded to better understand what it means."
+Button:
+"Ask About This Document"
+
+STATE 5: Active user
+Message:
+"Explore custody laws across states or compare legal rules."
+Button:
+"Explore Custody Map"
+
+4. Logic
+   Determine the panel state using available data:
+
+* jurisdiction detected
+* questions asked
+* documents uploaded
+* document analysis completed
+
+If real persistence does not exist yet, simulate logic using local state.
+
+5. Design
+   The panel should be visually prominent but not overwhelming.
+
+Style:
+
+* light background card
+* subtle border
+* icon indicating guidance
+* strong primary button
+* professional legal-tech design
+* responsive layout
+
+6. UX behavior
+   When the user clicks the suggested action:
+   Navigate them directly to the relevant page:
+
+Set location → location page
+Ask question → AI page
+Analyze document → upload page
+Explore map → custody map page
+
+7. Empty State
+   If no user activity exists yet, default to encouraging jurisdiction detection.
+
+8. Maintain existing functionality
+   Do not break current dashboard features.
+
+9. After implementing
+   Provide a summary of:
+
+* new component
+* logic used to determine state
+* integration points within the workspace page.

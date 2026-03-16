@@ -87,9 +87,9 @@ const STEP_CONFIGS: Record<StepScenario, Omit<StepConfig, "scenario">> = {
     icon: MapPin,
     iconBg: "bg-blue-100 dark:bg-blue-950/50",
     iconColor: "text-blue-600 dark:text-blue-400",
-    title: "Start by finding your jurisdiction",
-    description: "Enter your location to see the custody laws that may apply where you live.",
-    ctaLabel: "Find my location",
+    title: "Set your location",
+    description: "Start by identifying your location so we can show the custody laws that apply to you.",
+    ctaLabel: "Set Your Location",
     ctaHref: "/location",
     secondaryLabel: "Skip for now",
   },
@@ -97,9 +97,9 @@ const STEP_CONFIGS: Record<StepScenario, Omit<StepConfig, "scenario">> = {
     icon: MessageSquare,
     iconBg: "bg-blue-100 dark:bg-blue-950/50",
     iconColor: "text-blue-600 dark:text-blue-400",
-    title: "Ask your first custody question",
-    description: "Get a plain-English explanation of custody law based on your state and county.",
-    ctaLabel: "Ask a question",
+    title: "Ask a custody question",
+    description: "Ask a custody question to better understand how the laws in your state may apply to your situation.",
+    ctaLabel: "Ask a Custody Question",
     ctaHref: "/ask",
     secondaryLabel: "Skip for now",
   },
@@ -107,9 +107,9 @@ const STEP_CONFIGS: Record<StepScenario, Omit<StepConfig, "scenario">> = {
     icon: FileText,
     iconBg: "bg-emerald-100 dark:bg-emerald-950/50",
     iconColor: "text-emerald-600 dark:text-emerald-400",
-    title: "Upload your custody order",
-    description: "Analyze your document to identify key terms, important dates, and possible next questions.",
-    ctaLabel: "Analyze a document",
+    title: "Analyze your custody order",
+    description: "Upload your custody order or court notice to get a plain-English explanation.",
+    ctaLabel: "Analyze a Document",
     ctaHref: "/upload-document",
     secondaryLabel: "Skip for now",
   },
@@ -118,8 +118,8 @@ const STEP_CONFIGS: Record<StepScenario, Omit<StepConfig, "scenario">> = {
     iconBg: "bg-violet-100 dark:bg-violet-950/50",
     iconColor: "text-violet-600 dark:text-violet-400",
     title: "Ask about your document",
-    description: "Follow up on your document summary to better understand what it means.",
-    ctaLabel: "Ask about this document",
+    description: "You can ask questions about the document you uploaded to better understand what it means.",
+    ctaLabel: "Ask About This Document",
     ctaHref: "/ask",
     secondaryLabel: "Skip for now",
   },
@@ -127,9 +127,9 @@ const STEP_CONFIGS: Record<StepScenario, Omit<StepConfig, "scenario">> = {
     icon: Map,
     iconBg: "bg-blue-100 dark:bg-blue-950/50",
     iconColor: "text-blue-600 dark:text-blue-400",
-    title: "Explore the Custody Law Map",
-    description: "Compare custody laws across states and better understand how rules differ.",
-    ctaLabel: "Open Custody Map",
+    title: "Keep exploring",
+    description: "Explore custody laws across states or compare legal rules.",
+    ctaLabel: "Explore Custody Map",
     ctaHref: "/custody-map",
     secondaryLabel: "View workspace",
   },
@@ -156,7 +156,7 @@ function NextBestStepPanel({
       <div className="flex items-center gap-1.5 mb-2">
         <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Recommended Next Step
+          Next Best Step
         </span>
       </div>
 
