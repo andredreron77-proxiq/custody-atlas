@@ -35,6 +35,7 @@ Preferred communication style: Simple, everyday language.
   - `/ask` — AI Q&A chat interface, jurisdiction-aware
   - `/upload-document` — Document OCR analysis with AI follow-up Q&A; multi-page support (up to 5 pages); camera capture with 3-button flow (Retake / Add Another Page / Continue to Review)
   - `/custody-map` — Interactive U.S. map with explore mode (per-state panel) and compare mode (side-by-side table)
+  - `/custody-questions/:slug` — **SEO-friendly custody question pages** (12 questions covering child preference, relocation, child support, modification, enforcement, domestic violence, etc.). Each page has a quick answer panel, expanded key-factors cards, state variation section with links to state pages, related questions, CTA, and dynamic SEO title/description/OG tags. Unknown slugs show a friendly 404. Footer links to all 12 questions for crawler discovery.
   - `/custody-laws/:stateSlug` — **SEO-friendly public state pages** (e.g. `/custody-laws/georgia`, `/custody-laws/new-jersey`). Slug format: lowercase with hyphens. Displays hero, quick summary, 4 law section cards, FAQ, ChildSupportImpactCard, CTA, map link. Sets `document.title` and `<meta name="description">` + Open Graph tags dynamically. Footer links to all 22 state pages for SEO crawlability. Unsupported states show a friendly "coming soon" notice.
   - `/privacy`, `/terms` — Legal pages
 - **Component Structure**:

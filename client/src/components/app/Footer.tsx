@@ -1,5 +1,6 @@
-import { Scale, Shield, BookOpen, Map } from "lucide-react";
+import { Scale, Shield, BookOpen, Map, HelpCircle } from "lucide-react";
 import { Link } from "wouter";
+import { CUSTODY_QUESTIONS } from "@/data/custodyQuestions";
 
 const TRUST_SIGNALS = [
   { icon: Shield, label: "Secure document analysis" },
@@ -128,6 +129,31 @@ export function Footer() {
                 data-testid={`footer-link-${slug}`}
               >
                 {name}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Common Custody Questions — SEO internal links */}
+        <div className="border-t border-white/8 pt-8 pb-4">
+          <div className="flex items-center gap-2 mb-4">
+            <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
+            <h3 className="font-semibold text-white text-sm" data-testid="footer-question-links-heading">
+              Common Custody Questions
+            </h3>
+          </div>
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5"
+            data-testid="footer-question-links"
+          >
+            {CUSTODY_QUESTIONS.map(({ slug, question }) => (
+              <Link
+                key={slug}
+                href={`/custody-questions/${slug}`}
+                className="text-xs text-slate-500 hover:text-slate-200 transition-colors leading-relaxed truncate"
+                data-testid={`footer-question-${slug}`}
+              >
+                {question}
               </Link>
             ))}
           </div>
