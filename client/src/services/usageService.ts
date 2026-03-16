@@ -1,16 +1,11 @@
 /**
  * client/src/services/usageService.ts
  *
- * Provider-agnostic usage state service.
- *
- * CURRENT STATE: fetchUsageState calls GET /api/usage which returns anonymous
- * state (no limits enforced) since no auth provider is connected yet.
- *
- * TO CONNECT SUPABASE:
- *   - After auth is wired, GET /api/usage will read real counts from the
- *     Supabase daily_usage table and return accurate limit data.
- *   - No changes to this file are needed — the API contract stays the same.
+ * Fetches the current user's usage state from the server.
+ * The server reads from Supabase daily_usage / usage_limits table.
  */
+
+import { getAccessToken } from "@/lib/tokenStore";
 
 export type Tier = "anonymous" | "free" | "pro";
 
@@ -36,13 +31,13 @@ const DEFAULT_USAGE: UsageState = {
   isAtDocumentLimit: false,
 };
 
-/**
- * Fetch the current user's usage state from the server.
- * Returns a sensible default if the request fails.
- */
 export async function fetchUsageState(): Promise<UsageState> {
   try {
-    const res = await fetch("/api/usage", { credentials: "include" });
+    const token = getAccessToken();
+    const res = await fetch("/api/usage", {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (!res.ok) return DEFAULT_USAGE;
     const data = await res.json();
     return {

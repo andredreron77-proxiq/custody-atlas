@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock } from "lucide-react";
+import { AuthButton } from "./AuthButton";
+import { UsageIndicator } from "./UsageIndicator";
 
 interface NavItem {
   label: string;
@@ -43,7 +45,7 @@ export function Header() {
   return (
     <>
       <header className="sticky top-0 z-50 bg-[#0f172a] shadow-md">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 group" aria-label="Custody Atlas home">
@@ -95,9 +97,15 @@ export function Header() {
             })}
           </nav>
 
+          {/* Desktop: usage indicator + auth button */}
+          <div className="hidden md:flex items-center gap-3 ml-auto">
+            <UsageIndicator />
+            <AuthButton />
+          </div>
+
           {/* Mobile hamburger */}
           <button
-            className="md:hidden flex items-center justify-center w-9 h-9 rounded-md text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+            className="md:hidden ml-auto flex items-center justify-center w-9 h-9 rounded-md text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
             onClick={() => setMobileOpen((v) => !v)}
             aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={mobileOpen}
@@ -160,10 +168,10 @@ export function Header() {
               })}
             </ul>
 
-            <div className="max-w-6xl mx-auto px-4 pb-4 pt-1">
-              <p className="text-xs text-slate-500 text-center">
-                Custody Atlas — Understand custody law where you live.
-              </p>
+            {/* Mobile auth + usage footer */}
+            <div className="max-w-6xl mx-auto px-4 pb-4 pt-2 border-t border-white/10 flex items-center justify-between gap-3">
+              <UsageIndicator compact />
+              <AuthButton />
             </div>
           </nav>
         </div>

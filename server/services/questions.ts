@@ -1,16 +1,19 @@
 /**
  * server/services/questions.ts
  *
- * Questions ownership and history service.
+ * Supabase-backed questions service.
  *
- * CURRENT STATE: All methods are stubs — no data is persisted.
- *
- * TO CONNECT SUPABASE:
- *   - Create a `questions` table: id, user_id, jurisdiction_state,
- *     jurisdiction_county, question_text, response_json, created_at
- *   - Replace each stub below with the corresponding supabase.from("questions") call.
- *   - Enable Row Level Security so users can only read their own rows.
+ * Expected questions table schema:
+ *   id                uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY
+ *   user_id           uuid NOT NULL (FK → auth.users)
+ *   jurisdiction_state text NOT NULL
+ *   jurisdiction_county text NOT NULL
+ *   question_text     text NOT NULL
+ *   response_json     jsonb
+ *   created_at        timestamptz NOT NULL DEFAULT now()
  */
+
+import { supabaseAdmin } from "../lib/supabaseAdmin";
 
 export interface SavedQuestion {
   id: string;
@@ -19,44 +22,74 @@ export interface SavedQuestion {
   jurisdictionCounty: string;
   questionText: string;
   responseJson: Record<string, unknown>;
-  createdAt: Date;
+  createdAt: string;
 }
 
-/**
- * Retrieve all questions saved by a user, newest first.
- *
- * Supabase slot:
- *   const { data } = await supabase.from("questions")
- *     .select("*").eq("user_id", userId).order("created_at", { ascending: false });
- *   return data ?? [];
- */
-export async function getQuestions(_userId: string): Promise<SavedQuestion[]> {
-  return [];
+export async function getQuestions(userId: string): Promise<SavedQuestion[]> {
+  if (!supabaseAdmin) return [];
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("questions")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error || !data) return [];
+    return data.map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      jurisdictionState: r.jurisdiction_state,
+      jurisdictionCounty: r.jurisdiction_county,
+      questionText: r.question_text,
+      responseJson: r.response_json ?? {},
+      createdAt: r.created_at,
+    }));
+  } catch {
+    return [];
+  }
 }
 
-/**
- * Persist a question + AI response for a user.
- *
- * Supabase slot:
- *   const { data } = await supabase.from("questions").insert({ user_id: userId, ...fields }).select().single();
- *   return data;
- */
 export async function saveQuestion(
-  _userId: string,
-  _fields: Omit<SavedQuestion, "id" | "userId" | "createdAt">,
+  userId: string,
+  fields: Omit<SavedQuestion, "id" | "userId" | "createdAt">,
 ): Promise<SavedQuestion | null> {
-  return null;
+  if (!supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("questions")
+      .insert({
+        user_id: userId,
+        jurisdiction_state: fields.jurisdictionState,
+        jurisdiction_county: fields.jurisdictionCounty,
+        question_text: fields.questionText,
+        response_json: fields.responseJson,
+      })
+      .select()
+      .single();
+    if (error || !data) return null;
+    return {
+      id: data.id,
+      userId: data.user_id,
+      jurisdictionState: data.jurisdiction_state,
+      jurisdictionCounty: data.jurisdiction_county,
+      questionText: data.question_text,
+      responseJson: data.response_json ?? {},
+      createdAt: data.created_at,
+    };
+  } catch {
+    return null;
+  }
 }
 
-/**
- * Delete a saved question by ID (verifying ownership).
- *
- * Supabase slot:
- *   await supabase.from("questions").delete().eq("id", questionId).eq("user_id", userId);
- */
-export async function deleteQuestion(
-  _questionId: string,
-  _userId: string,
-): Promise<void> {
-  // no-op
+export async function deleteQuestion(questionId: string, userId: string): Promise<void> {
+  if (!supabaseAdmin) return;
+  try {
+    await supabaseAdmin
+      .from("questions")
+      .delete()
+      .eq("id", questionId)
+      .eq("user_id", userId);
+  } catch (err) {
+    console.error("[questions] deleteQuestion error:", err);
+  }
 }

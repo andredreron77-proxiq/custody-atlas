@@ -1,22 +1,19 @@
 /**
  * server/services/usage.ts
  *
- * Provider-agnostic usage-limit service.
+ * Supabase-backed usage tracking service.
+ * Tracks daily question and document usage per user in the usage_limits table.
  *
- * CURRENT STATE: Routes gated by requireAuth will never reach usage checks
- * because unauthenticated requests are rejected first. This module defines
- * the interface so it can be wired to a real backend (e.g. Supabase row counts,
- * Redis counters, or a usage table) with no changes to route handlers.
- *
- * TO CONNECT SUPABASE:
- *   - In trackQuestion / trackDocument, upsert a row in a `daily_usage` table
- *     keyed by (user_id, date).
- *   - In checkQuestionLimit / checkDocumentLimit, query that table and compare
- *     against the tier limits.
- *   - In getUsageState, join user_profiles to get tier + today's counts.
+ * Expected usage_limits table schema:
+ *   user_id        uuid  NOT NULL (FK → auth.users)
+ *   date           date  NOT NULL
+ *   questions_used int   NOT NULL DEFAULT 0
+ *   documents_used int   NOT NULL DEFAULT 0
+ *   PRIMARY KEY (user_id, date)
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { supabaseAdmin } from "../lib/supabaseAdmin";
 import { getCurrentUser, getUserTier } from "./auth";
 
 export type Tier = "anonymous" | "free" | "pro";
@@ -30,16 +27,38 @@ export interface UsageState {
   documentsLimit: number | null;
 }
 
-export const TIER_LIMITS: Record<"free" | "pro", { questions: number | null; documents: number | null }> = {
-  free:  { questions: 10, documents: 3 },
-  pro:   { questions: null, documents: null },
+export const TIER_LIMITS: Record<"free" | "pro", { questions: number; documents: number }> = {
+  free: { questions: 3,  documents: 1 },
+  pro:  { questions: 25, documents: 10 },
 };
 
+function todayDate(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
 /**
- * Return the current usage state for the requesting user.
- * Used by GET /api/usage.
- *
- * Supabase slot: query daily_usage table for today's counts.
+ * Fetch today's usage counts for a user from the usage_limits table.
+ */
+async function getTodayUsage(userId: string): Promise<{ questionsUsed: number; documentsUsed: number }> {
+  if (!supabaseAdmin) return { questionsUsed: 0, documentsUsed: 0 };
+  try {
+    const { data } = await supabaseAdmin
+      .from("usage_limits")
+      .select("questions_used, documents_used")
+      .eq("user_id", userId)
+      .eq("date", todayDate())
+      .single();
+    return {
+      questionsUsed: data?.questions_used ?? 0,
+      documentsUsed: data?.documents_used ?? 0,
+    };
+  } catch {
+    return { questionsUsed: 0, documentsUsed: 0 };
+  }
+}
+
+/**
+ * Return the full usage state for the requesting user.
  */
 export async function getUsageState(req: Request): Promise<UsageState> {
   const user = await getCurrentUser(req);
@@ -57,22 +76,21 @@ export async function getUsageState(req: Request): Promise<UsageState> {
 
   const tier = await getUserTier(user.id);
   const limits = TIER_LIMITS[tier];
+  const { questionsUsed, documentsUsed } = await getTodayUsage(user.id);
 
   return {
     isAuthenticated: true,
     tier,
-    questionsUsed: 0,
+    questionsUsed,
     questionsLimit: limits.questions,
-    documentsUsed: 0,
+    documentsUsed,
     documentsLimit: limits.documents,
   };
 }
 
 /**
- * Middleware: reject the request if the authenticated user is at their
+ * Middleware: reject the request if the authenticated user has hit their
  * daily question limit. Must be placed AFTER requireAuth.
- *
- * Supabase slot: query daily_usage table, compare to tier limits.
  */
 export async function checkQuestionLimit(
   req: Request,
@@ -87,19 +105,14 @@ export async function checkQuestionLimit(
 
   const tier = await getUserTier(user.id);
   const limit = TIER_LIMITS[tier].questions;
+  const { questionsUsed } = await getTodayUsage(user.id);
 
-  if (limit === null) {
-    next();
-    return;
-  }
-
-  const used = 0;
-  if (used >= limit) {
+  if (questionsUsed >= limit) {
     res.status(429).json({
-      error: `Daily question limit of ${limit} reached. Upgrade to Pro for unlimited questions.`,
+      error: `Daily question limit of ${limit} reached. Upgrade to Pro for more.`,
       code: "QUESTION_LIMIT_REACHED",
       limit,
-      used,
+      used: questionsUsed,
     });
     return;
   }
@@ -108,10 +121,8 @@ export async function checkQuestionLimit(
 }
 
 /**
- * Middleware: reject the request if the authenticated user is at their
+ * Middleware: reject the request if the authenticated user has hit their
  * daily document limit. Must be placed AFTER requireAuth.
- *
- * Supabase slot: same as checkQuestionLimit but for document counts.
  */
 export async function checkDocumentLimit(
   req: Request,
@@ -126,19 +137,14 @@ export async function checkDocumentLimit(
 
   const tier = await getUserTier(user.id);
   const limit = TIER_LIMITS[tier].documents;
+  const { documentsUsed } = await getTodayUsage(user.id);
 
-  if (limit === null) {
-    next();
-    return;
-  }
-
-  const used = 0;
-  if (used >= limit) {
+  if (documentsUsed >= limit) {
     res.status(429).json({
       error: `Daily document limit of ${limit} reached. Upgrade to Pro for more.`,
       code: "DOCUMENT_LIMIT_REACHED",
       limit,
-      used,
+      used: documentsUsed,
     });
     return;
   }
@@ -147,21 +153,53 @@ export async function checkDocumentLimit(
 }
 
 /**
- * Increment the question counter for the current user after a successful response.
- *
- * Supabase slot:
- *   await supabase.from("daily_usage")
- *     .upsert({ user_id, date: today, questions_used: supabase.rpc("increment", ...) })
+ * Increment the question counter for the current user (upsert today's row).
  */
-export async function trackQuestion(_req: Request): Promise<void> {
-  // no-op until Supabase usage table is wired
+export async function trackQuestion(req: Request): Promise<void> {
+  const user = (req as any).user;
+  if (!user || !supabaseAdmin) return;
+  try {
+    const today = todayDate();
+    const { data: existing } = await supabaseAdmin
+      .from("usage_limits")
+      .select("questions_used")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .single();
+
+    await supabaseAdmin.from("usage_limits").upsert({
+      user_id: user.id,
+      date: today,
+      questions_used: (existing?.questions_used ?? 0) + 1,
+      documents_used: 0,
+    }, { onConflict: "user_id,date" });
+  } catch (err) {
+    console.error("[usage] trackQuestion error:", err);
+  }
 }
 
 /**
- * Increment the document counter for the current user after a successful response.
- *
- * Supabase slot: same pattern as trackQuestion but for documents_used column.
+ * Increment the document counter for the current user (upsert today's row).
  */
-export async function trackDocument(_req: Request): Promise<void> {
-  // no-op until Supabase usage table is wired
+export async function trackDocument(req: Request): Promise<void> {
+  const user = (req as any).user;
+  if (!user || !supabaseAdmin) return;
+  try {
+    const today = todayDate();
+    const { data: existing } = await supabaseAdmin
+      .from("usage_limits")
+      .select("documents_used")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .single();
+
+    await supabaseAdmin.from("usage_limits").upsert({
+      user_id: user.id,
+      date: today,
+      questions_used: 0,
+      documents_used: (existing?.documents_used ?? 0) + 1,
+    }, { onConflict: "user_id,date" });
+  } catch (err) {
+    console.error("[usage] trackDocument error:", err);
+  }
 }

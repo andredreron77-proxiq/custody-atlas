@@ -1,20 +1,12 @@
 /**
  * server/services/auth.ts
  *
- * Provider-agnostic authentication service.
- *
- * CURRENT STATE: No auth provider is connected. getCurrentUser always returns
- * null and requireAuth always rejects with 401.
- *
- * TO CONNECT SUPABASE:
- *   1. Install @supabase/supabase-js
- *   2. In getCurrentUser, verify the Bearer JWT from the Authorization header
- *      using supabase.auth.getUser(token)
- *   3. Map the Supabase User to AuthUser (id, email, tier)
- *   4. No other files need to change — all callers use this interface.
+ * Supabase-backed authentication service.
+ * Verifies Bearer JWTs using the admin client.
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { supabaseAdmin } from "../lib/supabaseAdmin";
 
 export type UserTier = "free" | "pro";
 
@@ -25,27 +17,33 @@ export interface AuthUser {
 }
 
 /**
- * Extract and verify the current user from the request.
- * Returns null when no valid session or token is present.
- *
- * Supabase slot:
- *   const token = req.headers.authorization?.replace("Bearer ", "");
- *   if (!token) return null;
- *   const { data: { user }, error } = await supabase.auth.getUser(token);
- *   if (error || !user) return null;
- *   const tier = await getUserTierFromDb(user.id);
- *   return { id: user.id, email: user.email ?? null, tier };
+ * Extract and verify the current user from the Authorization header.
+ * Returns null when no valid token is present or Supabase is not configured.
  */
-export async function getCurrentUser(_req: Request): Promise<AuthUser | null> {
-  return null;
+export async function getCurrentUser(req: Request): Promise<AuthUser | null> {
+  if (!supabaseAdmin) return null;
+
+  const token = req.headers.authorization?.replace("Bearer ", "").trim();
+  if (!token) return null;
+
+  try {
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) return null;
+
+    const tier = await getUserTier(user.id);
+    return {
+      id: user.id,
+      email: user.email ?? null,
+      tier,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Express middleware that rejects unauthenticated requests with 401.
- * Attach the resolved user to req.user for downstream handlers.
- *
- * Usage:
- *   app.post("/api/ask", requireAuth, handler)
+ * Attaches the resolved user to req.user for downstream handlers.
  */
 export async function requireAuth(
   req: Request,
@@ -65,14 +63,19 @@ export async function requireAuth(
 }
 
 /**
- * Retrieve the tier for an already-authenticated user.
- * Override this once you have a user_profiles table.
- *
- * Supabase slot:
- *   const { data } = await supabase.from("user_profiles")
- *     .select("tier").eq("user_id", userId).single();
- *   return (data?.tier as UserTier) ?? "free";
+ * Retrieve the tier for an authenticated user from user_profiles.
+ * Falls back to "free" if the record is missing.
  */
-export async function getUserTier(_userId: string): Promise<UserTier> {
-  return "free";
+export async function getUserTier(userId: string): Promise<UserTier> {
+  if (!supabaseAdmin) return "free";
+  try {
+    const { data } = await supabaseAdmin
+      .from("user_profiles")
+      .select("tier")
+      .eq("user_id", userId)
+      .single();
+    return (data?.tier as UserTier) ?? "free";
+  } catch {
+    return "free";
+  }
 }

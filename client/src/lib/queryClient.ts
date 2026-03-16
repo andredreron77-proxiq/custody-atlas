@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { getAccessToken } from "./tokenStore";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -12,6 +13,15 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+/**
+ * Build Authorization header from the current Supabase session token.
+ * Returns an empty object when not signed in (token is null).
+ */
+function authHeader(): Record<string, string> {
+  const token = getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -19,13 +29,36 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...authHeader(),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
 
   await throwIfResNotOk(res);
   return res;
+}
+
+/**
+ * apiRequestRaw — same as apiRequest but does NOT throw on non-OK responses.
+ * Use this when you want to inspect the status code yourself (e.g. 429 handling).
+ */
+export async function apiRequestRaw(
+  method: string,
+  url: string,
+  data?: unknown,
+): Promise<Response> {
+  return fetch(url, {
+    method,
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...authHeader(),
+    },
+    body: data ? JSON.stringify(data) : undefined,
+    credentials: "include",
+  });
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -36,6 +69,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: authHeader(),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

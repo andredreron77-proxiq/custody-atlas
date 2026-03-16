@@ -16,6 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
+import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
+import { getAccessToken } from "@/lib/tokenStore";
+import { useQueryClient } from "@tanstack/react-query";
 import type { DocumentAnalysisResult, DocumentQAResponse } from "@shared/schema";
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -348,9 +351,13 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
         };
       }
 
+      const askHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      const askToken = getAccessToken();
+      if (askToken) askHeaders["Authorization"] = `Bearer ${askToken}`;
+
       const res = await fetch("/api/ask-document", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: askHeaders,
         body: JSON.stringify(body),
       });
 
@@ -717,6 +724,7 @@ function PagesReviewView({
   isPDF,
   sourceType,
   isAnalyzing,
+  analyzeDisabled = false,
   onAddCamera,
   onAddImage,
   onMoveUp,
@@ -730,6 +738,7 @@ function PagesReviewView({
   isPDF: boolean;
   sourceType: SourceType;
   isAnalyzing: boolean;
+  analyzeDisabled?: boolean;
   onAddCamera: () => void;
   onAddImage: () => void;
   onMoveUp: (index: number) => void;
@@ -901,7 +910,7 @@ function PagesReviewView({
       {/* Analyze CTA */}
       <Button
         onClick={onAnalyze}
-        disabled={pages.length === 0 || isAnalyzing}
+        disabled={pages.length === 0 || isAnalyzing || analyzeDisabled}
         className="w-full gap-2"
         data-testid="button-analyze-document"
         size="lg"
@@ -942,6 +951,8 @@ export default function UploadDocumentPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [docLimitReached, setDocLimitReached] = useState(false);
+  const queryClient = useQueryClient();
 
   // Hidden file input refs
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -1207,10 +1218,21 @@ export default function UploadDocumentPage() {
       formData.append("pageCount", String(isPDF ? 1 : pages.length));
       formData.append("sourceType", sourceType);
 
+      const headers: Record<string, string> = {};
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch("/api/analyze-document", {
         method: "POST",
+        headers,
         body: formData,
       });
+
+      if (res.status === 429) {
+        setDocLimitReached(true);
+        queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+        return;
+      }
 
       const data = await res.json();
       if (!res.ok) {
@@ -1218,6 +1240,7 @@ export default function UploadDocumentPage() {
       }
 
       setResult(data as DocumentAnalysisResult);
+      queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
     } catch (err: any) {
       const message = err?.message || "Failed to analyze document. Please try again.";
       setError(message);
@@ -1373,6 +1396,7 @@ export default function UploadDocumentPage() {
               isPDF={isPDF}
               sourceType={sourceType}
               isAnalyzing={isAnalyzing}
+              analyzeDisabled={docLimitReached}
               onAddCamera={() => addCameraInputRef.current?.click()}
               onAddImage={() => addImageInputRef.current?.click()}
               onMoveUp={(i) => movePage(i, i - 1)}
@@ -1381,6 +1405,11 @@ export default function UploadDocumentPage() {
               onClear={clearAll}
               onAnalyze={analyzeDocument}
             />
+          )}
+
+          {/* Upgrade prompt when doc limit reached */}
+          {docLimitReached && (
+            <UpgradePromptCard type="document" className="mt-2" />
           )}
 
           {/* Error display */}

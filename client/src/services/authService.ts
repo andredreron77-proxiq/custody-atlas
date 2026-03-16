@@ -1,28 +1,10 @@
 /**
  * client/src/services/authService.ts
  *
- * Provider-agnostic frontend authentication service.
- *
- * CURRENT STATE: getAuthUser always returns null (no auth provider connected).
- * signIn / signOut are no-ops.
- *
- * TO CONNECT SUPABASE:
- *   1. npm install @supabase/supabase-js
- *   2. Create client/src/lib/supabaseClient.ts:
- *        import { createClient } from "@supabase/supabase-js";
- *        export const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY);
- *   3. Replace getAuthUser:
- *        const { data: { user } } = await supabase.auth.getUser();
- *        if (!user) return null;
- *        const tier = await fetchUserTier(user.id);
- *        return { id: user.id, email: user.email ?? null, displayName: user.user_metadata?.full_name ?? null, tier, avatarUrl: user.user_metadata?.avatar_url ?? null };
- *   4. Replace signIn:
- *        await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
- *   5. Replace signOut:
- *        await supabase.auth.signOut();
- *   6. Subscribe to auth state changes in your React context:
- *        supabase.auth.onAuthStateChange((_event, session) => { ... });
+ * Supabase-backed frontend authentication service.
  */
+
+import { supabase } from "@/lib/supabaseClient";
 
 export type UserTier = "free" | "pro";
 
@@ -36,40 +18,71 @@ export interface AuthUser {
 
 /**
  * Return the currently authenticated user, or null if not signed in.
- *
- * Supabase slot: see file header.
  */
 export async function getAuthUser(): Promise<AuthUser | null> {
-  return null;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) return null;
+
+    return {
+      id: user.id,
+      email: user.email ?? null,
+      displayName: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+      tier: "free",
+      avatarUrl: user.user_metadata?.avatar_url ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Begin the sign-in flow (OAuth redirect, magic link, etc.).
- *
- * Supabase slot: supabase.auth.signInWithOAuth({ provider: "google" })
+ * Sign in with email and password.
  */
-export async function signIn(): Promise<void> {
-  // no-op until Supabase is connected
+export async function signInWithEmail(
+  email: string,
+  password: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  return { error: error?.message ?? null };
+}
+
+/**
+ * Sign up with email and password.
+ */
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.signUp({ email, password });
+  return { error: error?.message ?? null };
+}
+
+/**
+ * Sign in with Google OAuth.
+ * Requires Google provider enabled in Supabase → Authentication → Providers.
+ */
+export async function signInWithGoogle(): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/`,
+    },
+  });
+  return { error: error?.message ?? null };
 }
 
 /**
  * Sign the current user out.
- *
- * Supabase slot: supabase.auth.signOut()
  */
 export async function signOut(): Promise<void> {
-  // no-op until Supabase is connected
+  await supabase.auth.signOut();
 }
 
 /**
- * Fetch the user's tier from your database.
- * Called internally after resolving the Supabase user.
- *
- * Supabase slot:
- *   const { data } = await supabase.from("user_profiles")
- *     .select("tier").eq("user_id", userId).single();
- *   return (data?.tier as UserTier) ?? "free";
+ * Get the current session's access token for API authorization.
  */
-export async function fetchUserTier(_userId: string): Promise<UserTier> {
-  return "free";
+export async function getAccessToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
 }

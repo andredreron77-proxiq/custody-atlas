@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import type { ChatMessage, AILegalResponse, Jurisdiction } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequestRaw } from "@/lib/queryClient";
+import { UpgradePromptCard } from "./UpgradePromptCard";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface ChatBoxProps {
   jurisdiction: Jurisdiction;
@@ -149,10 +151,12 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [limitReached, setLimitReached] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -194,13 +198,20 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
     setIsLoading(true);
 
     try {
-      const res = await apiRequest("POST", "/api/ask", {
+      const res = await apiRequestRaw("POST", "/api/ask", {
         jurisdiction: {
           state: jurisdiction.state,
           county: jurisdiction.county,
         },
         userQuestion: trimmed,
       });
+
+      if (res.status === 429) {
+        setLimitReached(true);
+        setMessages((prev) => prev.slice(0, -1));
+        queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+        return;
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -215,6 +226,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
         structured: data,
       };
       setMessages((prev) => [...prev, assistantMessage]);
+      queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
     } catch (err: any) {
       const errorMessage = err?.message || "Failed to get an answer. Please try again.";
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
@@ -360,6 +372,10 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
         </div>
       )}
 
+      {limitReached && (
+        <UpgradePromptCard type="question" className="mb-2" />
+      )}
+
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <div className="flex-1 relative">
           <Textarea
@@ -368,7 +384,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={`Ask about ${jurisdiction.state} custody law... (Enter to send, Shift+Enter for new line)`}
-            disabled={isLoading}
+            disabled={isLoading || limitReached}
             className="resize-none min-h-[60px] max-h-32 pr-3"
             rows={2}
             data-testid="input-question"
@@ -382,7 +398,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
         <Button
           type="submit"
           size="icon"
-          disabled={!input.trim() || input.trim().length < 5 || isLoading}
+          disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached}
           data-testid="button-send"
           title="Send message"
         >

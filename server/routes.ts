@@ -17,6 +17,8 @@ import {
   trackQuestion,
   trackDocument,
 } from "./services/usage";
+import { saveQuestion } from "./services/questions";
+import { saveDocument } from "./services/documents";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -364,6 +366,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       await trackQuestion(req);
+      const userId = (req as any).userId as string | undefined;
+      if (userId) {
+        saveQuestion(userId, {
+          jurisdictionState: jurisdiction.state,
+          jurisdictionCounty: jurisdiction.county,
+          questionText: userQuestion,
+          responseJson: validated.data as Record<string, unknown>,
+        }).catch(() => {});
+      }
       return res.json(validated.data);
     } catch (err: any) {
       console.error("Ask AI error:", err);
@@ -595,6 +606,18 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
       // Append the extracted text so the client can use it for follow-up Q&A
       // without requiring the user to re-upload the file.
       await trackDocument(req);
+      const docUserId = (req as any).userId as string | undefined;
+      if (docUserId && req.file) {
+        const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
+        saveDocument(docUserId, {
+          fileName: req.file.originalname || "document",
+          storagePath: null,
+          mimeType: req.file.mimetype,
+          pageCount,
+          analysisJson: validated.data as Record<string, unknown>,
+          extractedText: truncatedText,
+        }).catch(() => {});
+      }
       return res.json({ ...validated.data, extractedText: truncatedText });
     } catch (err: any) {
       console.error("Document analysis error:", err);
