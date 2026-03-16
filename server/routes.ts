@@ -9,6 +9,14 @@ import { extractTextFromDocument } from "./documentai";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
+import { requireAuth } from "./services/auth";
+import {
+  getUsageState,
+  checkQuestionLimit,
+  checkDocumentLimit,
+  trackQuestion,
+  trackDocument,
+} from "./services/usage";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -147,6 +155,18 @@ const upload = multer({
 });
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+
+  // ── Usage state ────────────────────────────────────────────────────────────
+  app.get("/api/usage", async (req, res) => {
+    try {
+      const state = await getUsageState(req);
+      res.json(state);
+    } catch (err) {
+      console.error("Usage state error:", err);
+      res.status(500).json({ error: "Could not retrieve usage state." });
+    }
+  });
+
   app.post("/api/geocode/coordinates", async (req, res) => {
     try {
       const parsed = geocodeByCoordinatesSchema.safeParse(req.body);
@@ -263,7 +283,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(validated.data);
   });
 
-  app.post("/api/ask", async (req, res) => {
+  app.post("/api/ask", requireAuth, checkQuestionLimit, async (req, res) => {
     try {
       const parsed = askAIRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -343,6 +363,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
+      await trackQuestion(req);
       return res.json(validated.data);
     } catch (err: any) {
       console.error("Ask AI error:", err);
@@ -350,7 +371,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/ask-comparison", async (req, res) => {
+  app.post("/api/ask-comparison", requireAuth, async (req, res) => {
     try {
       const schema = z.object({
         stateA: z.string().min(1),
@@ -424,7 +445,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/analyze-document", upload.single("file"), async (req, res) => {
+  app.post("/api/analyze-document", requireAuth, checkDocumentLimit, upload.single("file"), async (req, res) => {
     const filePath = req.file?.path;
     try {
       if (!req.file) {
@@ -573,6 +594,7 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
 
       // Append the extracted text so the client can use it for follow-up Q&A
       // without requiring the user to re-upload the file.
+      await trackDocument(req);
       return res.json({ ...validated.data, extractedText: truncatedText });
     } catch (err: any) {
       console.error("Document analysis error:", err);
@@ -587,7 +609,7 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
   });
 
   // ── Document Follow-up Q&A ─────────────────────────────────────────────────
-  app.post("/api/ask-document", async (req, res) => {
+  app.post("/api/ask-document", requireAuth, async (req, res) => {
     try {
       const parsed = documentQARequestSchema.safeParse(req.body);
       if (!parsed.success) {

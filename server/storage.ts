@@ -1,38 +1,22 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
+/**
+ * server/storage.ts
+ *
+ * Application storage interface.
+ *
+ * Domain-specific storage (users, questions, documents) now lives in
+ * server/services/ — see auth.ts, questions.ts, documents.ts.
+ *
+ * IStorage remains here as the extension point for any future shared
+ * CRUD operations that do not belong to a specific service module.
+ *
+ * TO CONNECT SUPABASE:
+ *   - Replace MemStorage with a SupabaseStorage class that uses the
+ *     Supabase client from server/lib/supabaseClient.ts
+ *   - The service modules in server/services/ can import and use it directly.
+ */
 
-// modify the interface with any CRUD methods
-// you might need
+export interface IStorage {}
 
-export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-}
-
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
-  }
-}
+export class MemStorage implements IStorage {}
 
 export const storage = new MemStorage();

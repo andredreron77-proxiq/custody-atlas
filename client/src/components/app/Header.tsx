@@ -1,13 +1,21 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard } from "lucide-react";
+import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock } from "lucide-react";
 
-const NAV_ITEMS = [
-  { label: "Home", href: "/", icon: Home, exact: true },
-  { label: "Workspace", href: "/workspace", icon: LayoutDashboard },
-  { label: "Custody Map", href: "/custody-map", icon: Map },
-  { label: "Ask AI", href: "/ask", icon: MessageSquare },
-  { label: "Analyze Document", href: "/upload-document", icon: FileSearch },
+interface NavItem {
+  label: string;
+  href: string;
+  icon: typeof Home;
+  exact?: boolean;
+  gated?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { label: "Home",             href: "/",               icon: Home,            exact: true },
+  { label: "Workspace",        href: "/workspace",       icon: LayoutDashboard, gated: true },
+  { label: "Custody Map",      href: "/custody-map",     icon: Map },
+  { label: "Ask AI",           href: "/ask",             icon: MessageSquare,   gated: true },
+  { label: "Analyze Document", href: "/upload-document", icon: FileSearch,      gated: true },
 ];
 
 export function Header() {
@@ -57,7 +65,7 @@ export function Header() {
 
           {/* Desktop navigation */}
           <nav className="hidden md:flex items-center gap-0.5" aria-label="Main navigation">
-            {NAV_ITEMS.map(({ label, href, icon: Icon, exact }) => {
+            {NAV_ITEMS.map(({ label, href, icon: Icon, exact, gated }) => {
               const active = isActive(href, exact);
               return (
                 <Link
@@ -76,6 +84,9 @@ export function Header() {
                   <span className={label === "Analyze Document" ? "hidden lg:inline" : ""}>
                     {label}
                   </span>
+                  {gated && (
+                    <Lock className="w-2.5 h-2.5 text-slate-500 flex-shrink-0" aria-label="Sign-in required" />
+                  )}
                   {active && (
                     <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-400 rounded-full" />
                   )}
@@ -118,7 +129,7 @@ export function Header() {
             aria-label="Mobile navigation"
           >
             <ul className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1">
-              {NAV_ITEMS.map(({ label, href, icon: Icon, exact }) => {
+              {NAV_ITEMS.map(({ label, href, icon: Icon, exact, gated }) => {
                 const active = isActive(href, exact);
                 return (
                   <li key={href}>
@@ -136,9 +147,12 @@ export function Header() {
                       <span className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${active ? "bg-blue-600" : "bg-white/10"}`}>
                         <Icon className="w-4 h-4" />
                       </span>
-                      <span>{label}</span>
+                      <span className="flex-1">{label}</span>
+                      {gated && (
+                        <Lock className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" aria-label="Sign-in required" />
+                      )}
                       {active && (
-                        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                       )}
                     </Link>
                   </li>
