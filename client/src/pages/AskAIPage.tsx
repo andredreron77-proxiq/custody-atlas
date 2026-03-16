@@ -9,6 +9,7 @@ import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
+import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import type { Jurisdiction } from "@shared/schema";
 
 export default function AskAIPage() {
@@ -133,6 +134,13 @@ export default function AskAIPage() {
       <p className="text-xs text-muted-foreground border rounded-md px-3 py-2 bg-muted/40 leading-relaxed" data-testid="text-ai-notice">
         This assistant provides educational information about custody law based on your jurisdiction. It is not a substitute for a licensed attorney.
       </p>
+
+      {/* Child support educational card */}
+      <ChildSupportImpactCard
+        state={jurisdiction.state}
+        county={jurisdiction.county}
+        country={jurisdiction.country ?? "United States"}
+      />
 
       <Card className="flex-1 min-h-0 flex flex-col">
         <CardContent className="flex-1 min-h-0 flex flex-col p-4">

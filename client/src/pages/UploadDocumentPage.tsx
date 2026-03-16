@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
+import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import type { DocumentAnalysisResult, DocumentQAResponse } from "@shared/schema";
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -1431,6 +1432,31 @@ export default function UploadDocumentPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Child Support Impact Card ────────────────────────────────── */}
+      {result && !isAnalyzing && (() => {
+        const haystack = [
+          result.document_type,
+          result.summary,
+          ...result.important_terms,
+          ...result.possible_implications,
+        ].join(" ").toLowerCase();
+        const mentionsSupport =
+          haystack.includes("child support") ||
+          haystack.includes("support order") ||
+          haystack.includes("support payment") ||
+          haystack.includes("support obligation") ||
+          haystack.includes("support modification") ||
+          haystack.includes("financial support");
+        if (!mentionsSupport) return null;
+        return (
+          <ChildSupportImpactCard
+            state={jurisdiction?.state}
+            county={jurisdiction?.county}
+            country={jurisdiction?.country ?? "United States"}
+          />
+        );
+      })()}
 
       {/* ── Document Q&A ─────────────────────────────────────────────── */}
       {result && !isAnalyzing && (

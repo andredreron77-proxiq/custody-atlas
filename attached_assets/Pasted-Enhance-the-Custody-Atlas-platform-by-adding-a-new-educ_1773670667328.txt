@@ -1,0 +1,68 @@
+Enhance the Custody Atlas platform by adding a new educational feature explaining how custody arrangements may influence child support.
+
+Goal:
+Provide users with plain-English explanations of how custody and parenting time may impact child support in their jurisdiction without building a full support calculator.
+
+Requirements:
+
+1. Create a reusable component called ChildSupportImpactCard.
+
+2. Display this card on the following pages:
+
+* jurisdiction law summary page
+* AI answer results (when relevant)
+* document analysis results if the document references child support
+
+3. Card Content Structure:
+
+Title:
+"Custody and Child Support"
+
+Description:
+Explain that child support laws vary by state and that parenting time can influence support obligations.
+
+Include examples such as:
+
+* If one parent has the child most of the time, the other parent may pay more support.
+* Shared custody arrangements may change support amounts depending on income and expenses.
+
+4. Jurisdiction Awareness
+
+If jurisdiction data exists, display the support calculation model used by that state when available.
+
+Example:
+"Georgia generally uses the Income Shares Model for calculating child support."
+
+Use placeholder data if the dataset does not yet include this field.
+
+5. Add a CTA button:
+   "Ask about child support in your state"
+
+This button should open the AI question interface with the jurisdiction context.
+
+6. UX Design
+
+Use the same card design style as other components:
+
+* white card
+* subtle shadow
+* rounded corners
+* professional legal-tech appearance
+
+7. Trust Messaging
+
+Include a small note at the bottom:
+
+"Custody Atlas provides educational information about custody and child support. It does not replace legal advice from a licensed attorney."
+
+8. Maintain existing functionality
+
+Do not modify the current custody law dataset or AI routes unless necessary.
+
+9. After implementation
+
+Provide a summary of:
+
+* new components created
+* pages where the card appears
+* any placeholder data used.

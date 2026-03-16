@@ -16,6 +16,7 @@ import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextH
 import { LawSectionCard } from "@/components/app/LawSectionCard";
 import { EnforcementList } from "@/components/app/EnforcementList";
 import { UnsupportedStateNotice } from "@/components/app/UnsupportedStateNotice";
+import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { ChatBox } from "@/components/app/ChatBox";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import type { CustodyLawRecord, CountyProcedureRecord, Jurisdiction } from "@shared/schema";
@@ -397,6 +398,13 @@ export default function JurisdictionPage() {
           <EnforcementList
             enforcementText={law.enforcement_options}
             state={state}
+          />
+
+          {/* Child support educational card */}
+          <ChildSupportImpactCard
+            state={state}
+            county={county}
+            country={jurisdiction.country ?? "United States"}
           />
 
           {/*
