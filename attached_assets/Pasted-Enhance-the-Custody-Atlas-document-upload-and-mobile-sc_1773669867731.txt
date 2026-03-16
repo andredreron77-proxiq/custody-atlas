@@ -1,0 +1,105 @@
+Enhance the Custody Atlas document upload and mobile scanning feature to support multi-page document capture and combined analysis.
+
+Goal:
+Allow users to scan or upload multiple pages as a single custody-related document and analyze them together in the correct order.
+
+Requirements:
+
+1. Upload/Scan Flow
+Update the Analyze Document experience to support:
+- single PDF upload
+- single image upload
+- multiple image upload
+- multi-page camera capture on mobile
+
+2. Mobile Camera Capture
+When the user selects "Take Photo / Scan Document":
+- allow the user to capture page 1
+- after capture, show actions:
+  - Add another page
+  - Retake this page
+  - Continue to review
+- allow repeated page capture until the user finishes
+
+3. Multi-Page Review Screen
+Create a review step before submission where the user can:
+- see page thumbnails in order
+- remove a page
+- reorder pages
+- add another page
+- confirm final document submission
+
+4. Data Model
+Treat all selected/captured pages as one logical document.
+
+Create a document object structure like:
+{
+  id: string,
+  documentName: string,
+  pages: [
+    { pageNumber: 1, file: ..., previewUrl: ... },
+    { pageNumber: 2, file: ..., previewUrl: ... }
+  ],
+  sourceType: "pdf" | "images" | "camera-scan"
+}
+
+5. OCR Pipeline
+Send all pages together through the document analysis flow.
+
+Preferred behavior:
+- if a PDF is uploaded, process as one document
+- if multiple images are uploaded/captured, combine them into one ordered document input for OCR
+- preserve page order
+
+6. Document AI Integration
+Ensure Google Document AI processes the document with page order preserved.
+
+If multiple image files are used:
+- either combine them into a single PDF before OCR
+- or send them through a supported multi-page workflow
+Choose the simplest robust implementation for the MVP.
+
+7. AI Analysis
+After OCR, send the full extracted text from all pages to the existing AI analysis route.
+
+Update the document analysis prompt so it understands the uploaded file may contain multiple pages from a single court document.
+
+The analysis should consider the full document context before generating:
+- documentType
+- summary
+- importantTerms
+- keyDates
+- possibleImplications
+- questionsToAskAttorney
+
+8. UI Messaging
+On the upload/scan page, add helper text:
+"Many custody orders and court notices are multiple pages. Scan or upload all pages together for a more accurate analysis."
+
+9. UX and Mobile Design
+Make the multi-page flow mobile-friendly:
+- large buttons
+- clear page count indicator
+- obvious review/confirm actions
+- clean thumbnail layout
+
+10. Error Handling
+Handle:
+- user submits with zero pages
+- duplicate pages
+- image upload failures
+- OCR failure on one or more pages
+- very large multi-page uploads
+
+11. Maintain Existing Functionality
+Do not break:
+- existing PDF upload
+- existing single image upload
+- existing document analysis results page
+
+12. After implementation
+Provide a summary of:
+- components added
+- how multi-page files are stored in state
+- how pages are combined for OCR
+- any new limitations or assumptions

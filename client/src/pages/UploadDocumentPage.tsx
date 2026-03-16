@@ -5,7 +5,8 @@ import {
   Loader2, Scale, HelpCircle, Calendar, FileSearch,
   ArrowLeft, X, ChevronRight, Lock, MessageSquare,
   MapPin, Send, BookOpen, TriangleAlert, ShieldAlert,
-  Camera, RotateCcw, Check, Shield, Plus,
+  Camera, RotateCcw, Check, Shield, Plus, ArrowUp, ArrowDown,
+  ScanLine, GripVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -571,6 +572,15 @@ function UploadSelector({
         <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary transition-colors flex-shrink-0" />
       </button>
 
+      {/* Multi-page tip */}
+      <div className="rounded-lg border border-blue-200 dark:border-blue-800/40 bg-blue-50 dark:bg-blue-950/30 p-3 flex items-start gap-2.5" data-testid="text-multipage-tip">
+        <ScanLine className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
+          <span className="font-semibold">Many custody orders and court notices are multiple pages.</span>{" "}
+          Scan or upload all pages together for a more accurate analysis.
+        </p>
+      </div>
+
       {/* Drag hint — desktop only */}
       <p className="text-center text-xs text-muted-foreground/60 hidden sm:block">
         or drag and drop a file anywhere above
@@ -592,55 +602,94 @@ function UploadSelector({
 
 /* ── CameraPreviewView ─────────────────────────────────────────────────────
  *
- * Shows the captured photo before the user commits to using it.
- * "Retake" re-opens the camera input; "Use This Image" adds it to pages.
+ * Shows the captured photo with three actions:
+ *   1. Retake This Page      — discard and re-open camera
+ *   2. Add Another Page      — keep this page and immediately capture next
+ *   3. Continue to Review    — keep this page and proceed to review screen
+ *
+ * When the user is at the page limit, "Add Another Page" is hidden.
  * ──────────────────────────────────────────────────────────────────────── */
 function CameraPreviewView({
   url,
-  onUse,
+  pageNumber,
+  canAddMore,
   onRetake,
+  onConfirmAndContinue,
+  onConfirmAndAddAnother,
 }: {
   url: string;
-  onUse: () => void;
+  pageNumber: number;
+  canAddMore: boolean;
   onRetake: () => void;
+  onConfirmAndContinue: () => void;
+  onConfirmAndAddAnother: () => void;
 }) {
   return (
     <div className="space-y-4" data-testid="camera-preview-view">
-      <div className="flex items-center gap-2">
-        <Camera className="w-4 h-4 text-primary" />
-        <p className="text-sm font-semibold">Photo Preview</p>
+
+      {/* Header with page label */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Camera className="w-4 h-4 text-primary" />
+          <p className="text-sm font-semibold">
+            Page {pageNumber} — Review Photo
+          </p>
+        </div>
+        <Badge variant="secondary" className="text-xs">
+          {pageNumber > 1 ? `Adding to document` : "New document"}
+        </Badge>
       </div>
 
       {/* Image preview */}
-      <div className="rounded-xl overflow-hidden border bg-muted/20 flex items-center justify-center max-h-[55vh]">
+      <div className="rounded-xl overflow-hidden border bg-muted/20 flex items-center justify-center max-h-[52vh]">
         <img
           src={url}
-          alt="Captured document"
-          className="max-w-full max-h-[55vh] object-contain"
+          alt={`Captured page ${pageNumber}`}
+          className="max-w-full max-h-[52vh] object-contain"
           data-testid="img-camera-preview"
         />
       </div>
 
-      {/* Actions */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Retake */}
+      <Button
+        variant="outline"
+        onClick={onRetake}
+        className="w-full gap-2"
+        data-testid="button-retake-photo"
+      >
+        <RotateCcw className="w-4 h-4" />
+        Retake This Page
+      </Button>
+
+      {/* Add another page (hidden at limit) */}
+      {canAddMore && (
         <Button
           variant="outline"
-          onClick={onRetake}
-          className="gap-2"
-          data-testid="button-retake-photo"
+          onClick={onConfirmAndAddAnother}
+          className="w-full gap-2 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+          data-testid="button-add-another-page"
         >
-          <RotateCcw className="w-4 h-4" />
-          Retake Photo
+          <Camera className="w-4 h-4" />
+          Add Another Page
         </Button>
-        <Button
-          onClick={onUse}
-          className="gap-2"
-          data-testid="button-use-photo"
-        >
-          <Check className="w-4 h-4" />
-          Use This Image
-        </Button>
-      </div>
+      )}
+
+      {/* Continue to review */}
+      <Button
+        onClick={onConfirmAndContinue}
+        className="w-full gap-2"
+        data-testid="button-use-photo"
+        size="lg"
+      >
+        <Check className="w-4 h-4" />
+        {pageNumber === 1 && !canAddMore
+          ? "Use This Image"
+          : "Continue to Review"}
+      </Button>
+
+      <p className="text-center text-xs text-muted-foreground">
+        Make sure the page is in focus and clearly readable before continuing.
+      </p>
     </div>
   );
 }
@@ -648,17 +697,29 @@ function CameraPreviewView({
 /* ── PagesReviewView ───────────────────────────────────────────────────────
  *
  * Review screen before analysis.
- *   • PDF: single file card with filename + size.
- *   • Images: scrollable thumbnail row with page numbers, remove buttons,
- *             and add-more controls (camera / gallery).
+ *   • PDF: single file card — no reordering needed.
+ *   • Images: thumbnail cards with reorder (↑/↓), remove (×), and
+ *             add-more controls (camera / gallery).
  * ──────────────────────────────────────────────────────────────────────── */
+
+type SourceType = "pdf" | "images" | "camera-scan";
+
+const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
+  pdf: "PDF Document",
+  images: "Uploaded Images",
+  "camera-scan": "Camera Scan",
+};
+
 function PagesReviewView({
   pages,
   previews,
   isPDF,
+  sourceType,
   isAnalyzing,
   onAddCamera,
   onAddImage,
+  onMoveUp,
+  onMoveDown,
   onRemovePage,
   onClear,
   onAnalyze,
@@ -666,9 +727,12 @@ function PagesReviewView({
   pages: File[];
   previews: string[];
   isPDF: boolean;
+  sourceType: SourceType;
   isAnalyzing: boolean;
   onAddCamera: () => void;
   onAddImage: () => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
   onRemovePage: (index: number) => void;
   onClear: () => void;
   onAnalyze: () => void;
@@ -680,15 +744,20 @@ function PagesReviewView({
 
       {/* Header row */}
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-foreground">
-          {isPDF
-            ? "Document ready to analyze"
-            : `${pages.length} page${pages.length !== 1 ? "s" : ""} ready`}
-        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-semibold text-foreground">
+            {isPDF
+              ? "Document ready"
+              : `${pages.length} page${pages.length !== 1 ? "s" : ""} ready`}
+          </p>
+          <Badge variant="secondary" className="text-xs font-normal" data-testid="text-source-type">
+            {SOURCE_TYPE_LABELS[sourceType]}
+          </Badge>
+        </div>
         <button
           onClick={onClear}
           disabled={isAnalyzing}
-          className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
+          className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40 flex-shrink-0"
           data-testid="button-start-over"
         >
           Start over
@@ -722,73 +791,110 @@ function PagesReviewView({
         </div>
       )}
 
-      {/* Images: horizontal thumbnail strip */}
+      {/* Images: thumbnail cards with reorder controls */}
       {!isPDF && (
-        <div
-          className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1"
-          data-testid="pages-thumbnail-strip"
-        >
-          {previews.map((url, i) => (
-            <div
-              key={i}
-              className="relative flex-shrink-0"
-              data-testid={`page-thumbnail-${i}`}
-            >
-              <img
-                src={url}
-                alt={`Page ${i + 1}`}
-                className="w-24 h-28 object-cover rounded-lg border shadow-sm"
-              />
-              {/* Page number badge */}
-              <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-sm">
-                <span className="text-[10px] font-bold text-primary-foreground leading-none">
-                  {i + 1}
-                </span>
-              </div>
-              {/* Remove button */}
-              {!isAnalyzing && (
-                <button
-                  onClick={() => onRemovePage(i)}
-                  className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-destructive/90 hover:bg-destructive flex items-center justify-center transition-colors shadow-sm"
-                  aria-label={`Remove page ${i + 1}`}
-                  data-testid={`button-remove-page-${i}`}
-                >
-                  <X className="w-3 h-3 text-white" />
-                </button>
-              )}
-            </div>
-          ))}
-
-          {/* Add more page tiles */}
-          {canAddMore && !isAnalyzing && (
-            <div className="flex flex-col gap-2 flex-shrink-0">
-              <button
-                onClick={onAddCamera}
-                className="w-24 h-[52px] rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-1"
-                data-testid="button-add-page-camera"
-              >
-                <Camera className="w-4 h-4 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground leading-none">Camera</span>
-              </button>
-              <button
-                onClick={onAddImage}
-                className="w-24 h-[52px] rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-1"
-                data-testid="button-add-page-gallery"
-              >
-                <Image className="w-4 h-4 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground leading-none">Gallery</span>
-              </button>
-            </div>
+        <>
+          {/* Reorder hint (only when >1 page) */}
+          {pages.length > 1 && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <GripVertical className="w-3.5 h-3.5" />
+              Use the arrows to set the correct page order before analyzing.
+            </p>
           )}
-        </div>
-      )}
 
-      {/* Page count hint */}
-      {canAddMore && !isPDF && (
-        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <Plus className="w-3 h-3" />
-          You can add up to {MAX_PAGES} pages. {pages.length}/{MAX_PAGES} added.
-        </p>
+          <div
+            className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1"
+            data-testid="pages-thumbnail-strip"
+          >
+            {previews.map((url, i) => (
+              <div
+                key={i}
+                className="flex flex-col gap-1 flex-shrink-0"
+                data-testid={`page-thumbnail-${i}`}
+              >
+                {/* Thumbnail image */}
+                <div className="relative">
+                  <img
+                    src={url}
+                    alt={`Page ${i + 1}`}
+                    className="w-24 h-28 object-cover rounded-lg border shadow-sm"
+                  />
+                  {/* Page number badge */}
+                  <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-sm">
+                    <span className="text-[10px] font-bold text-primary-foreground leading-none">
+                      {i + 1}
+                    </span>
+                  </div>
+                  {/* Remove button */}
+                  {!isAnalyzing && (
+                    <button
+                      onClick={() => onRemovePage(i)}
+                      className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-destructive/90 hover:bg-destructive flex items-center justify-center transition-colors shadow-sm"
+                      aria-label={`Remove page ${i + 1}`}
+                      data-testid={`button-remove-page-${i}`}
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Reorder buttons — shown below thumbnail when >1 page */}
+                {pages.length > 1 && !isAnalyzing && (
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => onMoveUp(i)}
+                      disabled={i === 0}
+                      className="flex-1 h-7 rounded border border-border bg-muted/40 hover:bg-muted hover:border-primary/40 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label={`Move page ${i + 1} earlier`}
+                      data-testid={`button-move-up-${i}`}
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => onMoveDown(i)}
+                      disabled={i === pages.length - 1}
+                      className="flex-1 h-7 rounded border border-border bg-muted/40 hover:bg-muted hover:border-primary/40 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label={`Move page ${i + 1} later`}
+                      data-testid={`button-move-down-${i}`}
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Add-more tiles */}
+            {canAddMore && !isAnalyzing && (
+              <div className="flex flex-col gap-2 flex-shrink-0 mt-0">
+                <button
+                  onClick={onAddCamera}
+                  className="w-24 h-[52px] rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-1"
+                  data-testid="button-add-page-camera"
+                >
+                  <Camera className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground leading-none">Camera</span>
+                </button>
+                <button
+                  onClick={onAddImage}
+                  className="w-24 h-[52px] rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-colors flex flex-col items-center justify-center gap-1"
+                  data-testid="button-add-page-gallery"
+                >
+                  <Image className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground leading-none">Gallery</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Page count status */}
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Plus className="w-3 h-3" />
+            {canAddMore
+              ? `You can add up to ${MAX_PAGES} pages. ${pages.length}/${MAX_PAGES} added.`
+              : `Maximum ${MAX_PAGES} pages reached.`}
+          </p>
+        </>
       )}
 
       {/* Analyze CTA */}
@@ -822,6 +928,9 @@ export default function UploadDocumentPage() {
   const [pages, setPages] = useState<File[]>([]);
   const [pagePreviews, setPagePreviews] = useState<string[]>([]);
 
+  // Tracks how the document was sourced (set on first file added)
+  const [sourceType, setSourceType] = useState<SourceType>("images");
+
   // Camera capture: the photo taken is held here until the user confirms it
   const [pendingPhoto, setPendingPhoto] = useState<{ file: File; url: string } | null>(null);
 
@@ -850,6 +959,11 @@ export default function UploadDocumentPage() {
   const showSelector = !hasPages && !showCameraPreview;
   const showReview = hasPages && !showCameraPreview;
 
+  // The page number the pending photo would become (1-indexed)
+  const pendingPageNumber = pages.filter((p) => p.type !== "application/pdf").length + 1;
+  // Whether "Add Another Page" should be offered in camera preview
+  const cameraCanAddMore = pendingPageNumber < MAX_PAGES;
+
   /* ── Validation ──────────────────────────────────────────────────────── */
 
   const validateFile = (file: File): string | null => {
@@ -873,6 +987,7 @@ export default function UploadDocumentPage() {
     pagePreviews.forEach((url) => URL.revokeObjectURL(url));
     setPages([file]);
     setPagePreviews([]);
+    setSourceType("pdf");
     setResult(null);
     setError(null);
     e.target.value = "";
@@ -883,19 +998,28 @@ export default function UploadDocumentPage() {
     if (!file) return;
     const err = validateFile(file);
     if (err) { setError(err); e.target.value = ""; return; }
+    // Enforce page limit
+    const imageCount = pages.filter((p) => p.type !== "application/pdf").length;
+    if (imageCount >= MAX_PAGES) {
+      setError(`Maximum ${MAX_PAGES} pages allowed. Remove a page before adding more.`);
+      e.target.value = "";
+      return;
+    }
     setError(null);
     setResult(null);
-    // Images are appended (clearing any PDF)
     const url = URL.createObjectURL(file);
     setPages((prev) => {
       const withoutPDF = prev.filter((p) => p.type !== "application/pdf");
       return [...withoutPDF, file];
     });
     setPagePreviews((prev) => {
-      // If there was a PDF, clear previews first
       const cleanPrev = pages.some((p) => p.type === "application/pdf") ? [] : prev;
       return [...cleanPrev, url];
     });
+    // Set source type only on first image (don't override "camera-scan")
+    if (pages.length === 0 || pages.every((p) => p.type === "application/pdf")) {
+      setSourceType("images");
+    }
     e.target.value = "";
   };
 
@@ -913,30 +1037,62 @@ export default function UploadDocumentPage() {
 
   /* ── Camera preview actions ──────────────────────────────────────────── */
 
-  const confirmPhoto = () => {
-    if (!pendingPhoto) return;
+  // Shared helper: commits pendingPhoto to the pages array
+  const _commitPendingPhoto = (photo: { file: File; url: string }) => {
     setError(null);
     setResult(null);
     setPages((prev) => {
       const withoutPDF = prev.filter((p) => p.type !== "application/pdf");
-      return [...withoutPDF, pendingPhoto.file];
+      return [...withoutPDF, photo.file];
     });
     setPagePreviews((prev) => {
       const cleanPrev = pages.some((p) => p.type === "application/pdf") ? [] : prev;
-      return [...cleanPrev, pendingPhoto.url];
+      return [...cleanPrev, photo.url];
     });
+    // First camera capture sets source type; mixed (camera + gallery) stays "camera-scan"
+    setSourceType((prev) =>
+      prev === "pdf" || prev === "images" ? "camera-scan" : prev,
+    );
+  };
+
+  // "Continue to Review" — commit photo and show the review screen
+  const confirmPhotoAndContinue = () => {
+    if (!pendingPhoto) return;
+    _commitPendingPhoto(pendingPhoto);
     setPendingPhoto(null);
   };
 
+  // "Add Another Page" — commit photo then immediately open camera for next page
+  const confirmPhotoAndAddAnother = () => {
+    if (!pendingPhoto) return;
+    const currentImageCount = pages.filter((p) => p.type !== "application/pdf").length;
+    if (currentImageCount >= MAX_PAGES - 1) {
+      // Already at limit after this commit — commit and go to review
+      toast({
+        title: "Page limit reached",
+        description: `Maximum ${MAX_PAGES} pages. Proceeding to review.`,
+      });
+      _commitPendingPhoto(pendingPhoto);
+      setPendingPhoto(null);
+      return;
+    }
+    _commitPendingPhoto(pendingPhoto);
+    setPendingPhoto(null);
+    // Small delay so state flushes before re-opening camera
+    setTimeout(() => addCameraInputRef.current?.click(), 80);
+  };
+
+  // "Retake This Page" — discard and re-open camera
   const retakePhoto = () => {
     if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
     setPendingPhoto(null);
-    // Re-open whichever camera input is relevant
-    if (hasPages) {
-      addCameraInputRef.current?.click();
-    } else {
-      cameraInputRef.current?.click();
-    }
+    setTimeout(() => {
+      if (hasPages) {
+        addCameraInputRef.current?.click();
+      } else {
+        cameraInputRef.current?.click();
+      }
+    }, 80);
   };
 
   /* ── Page management ─────────────────────────────────────────────────── */
@@ -956,12 +1112,28 @@ export default function UploadDocumentPage() {
     });
   };
 
+  // Swap a page with the one before (↑) or after (↓) it to reorder
+  const movePage = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= pages.length) return;
+    setPages((prev) => {
+      const next = [...prev];
+      [next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]];
+      return next;
+    });
+    setPagePreviews((prev) => {
+      const next = [...prev];
+      [next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]];
+      return next;
+    });
+  };
+
   const clearAll = () => {
     pagePreviews.forEach((url) => URL.revokeObjectURL(url));
     if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
     setPages([]);
     setPagePreviews([]);
     setPendingPhoto(null);
+    setSourceType("images");
     setResult(null);
     setError(null);
   };
@@ -982,13 +1154,22 @@ export default function UploadDocumentPage() {
         pagePreviews.forEach((url) => URL.revokeObjectURL(url));
         setPages([file]);
         setPagePreviews([]);
+        setSourceType("pdf");
       } else {
+        const imageCount = pages.filter((p) => p.type !== "application/pdf").length;
+        if (imageCount >= MAX_PAGES) {
+          setError(`Maximum ${MAX_PAGES} pages allowed.`);
+          return;
+        }
         const url = URL.createObjectURL(file);
         setPages((prev) => [...prev.filter((p) => p.type !== "application/pdf"), file]);
         setPagePreviews((prev) => {
           const clean = pages.some((p) => p.type === "application/pdf") ? [] : prev;
           return [...clean, url];
         });
+        if (pages.length === 0 || pages.every((p) => p.type === "application/pdf")) {
+          setSourceType("images");
+        }
       }
     },
     [pages, pagePreviews],
@@ -997,7 +1178,10 @@ export default function UploadDocumentPage() {
   /* ── Analysis ────────────────────────────────────────────────────────── */
 
   const analyzeDocument = async () => {
-    if (pages.length === 0) return;
+    if (pages.length === 0) {
+      setError("Please add at least one page before analyzing.");
+      return;
+    }
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
@@ -1012,12 +1196,15 @@ export default function UploadDocumentPage() {
         // Single image: compress if oversized
         fileToSubmit = await compressImage(pages[0]);
       } else {
-        // Multiple images: stack vertically into one JPEG
+        // Multiple images: stack vertically into one JPEG preserving page order
         fileToSubmit = await combineImagePages(pages);
       }
 
       const formData = new FormData();
       formData.append("file", fileToSubmit);
+      // Let the server know how many logical pages were combined
+      formData.append("pageCount", String(isPDF ? 1 : pages.length));
+      formData.append("sourceType", sourceType);
 
       const res = await fetch("/api/analyze-document", {
         method: "POST",
@@ -1169,8 +1356,11 @@ export default function UploadDocumentPage() {
           {showCameraPreview && pendingPhoto && (
             <CameraPreviewView
               url={pendingPhoto.url}
-              onUse={confirmPhoto}
+              pageNumber={pendingPageNumber}
+              canAddMore={cameraCanAddMore}
               onRetake={retakePhoto}
+              onConfirmAndContinue={confirmPhotoAndContinue}
+              onConfirmAndAddAnother={confirmPhotoAndAddAnother}
             />
           )}
 
@@ -1180,9 +1370,12 @@ export default function UploadDocumentPage() {
               pages={pages}
               previews={pagePreviews}
               isPDF={isPDF}
+              sourceType={sourceType}
               isAnalyzing={isAnalyzing}
               onAddCamera={() => addCameraInputRef.current?.click()}
               onAddImage={() => addImageInputRef.current?.click()}
+              onMoveUp={(i) => movePage(i, i - 1)}
+              onMoveDown={(i) => movePage(i, i + 1)}
               onRemovePage={removePage}
               onClear={clearAll}
               onAnalyze={analyzeDocument}

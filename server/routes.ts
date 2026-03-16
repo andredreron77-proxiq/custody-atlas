@@ -470,7 +470,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const truncatedText = extractedText.slice(0, 12000);
+      const truncatedText = extractedText.slice(0, 14000);
+
+      // Read optional metadata sent by the client
+      const pageCount = parseInt(req.body?.pageCount ?? "1", 10) || 1;
+      const sourceType: string = req.body?.sourceType ?? "unknown";
+      const isMultiPage = pageCount > 1;
 
       const systemPrompt = `You are an assistant that analyzes custody-related legal documents and explains them in plain English.
 
@@ -479,6 +484,8 @@ Rules:
 - Explain legal terms in simple, accessible language.
 - Be accurate and thorough in identifying key information.
 - Always remind users to consult a licensed family law attorney.
+- The document text provided may come from a single PDF, a single scanned image, or multiple scanned pages combined in order. Treat the full text as one complete legal document regardless of how many pages were submitted.
+- When analyzing multi-page documents, consider the full context across all pages before generating your response. Important information such as signature blocks, effective dates, and final orders often appear on later pages.
 
 You MUST respond with valid JSON in exactly this structure:
 {
@@ -497,7 +504,11 @@ You MUST respond with valid JSON in exactly this structure:
 
 CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use nested objects, key-value pairs, or sub-arrays inside any of the arrays.`;
 
-      const userPrompt = `Analyze the following custody document text:\n\n${truncatedText}`;
+      const pageNote = isMultiPage
+        ? `\n\nNote: This text was extracted from a ${pageCount}-page document (source: ${sourceType}). The pages have been combined in their original order. Analyze the full text as one complete document.`
+        : "";
+
+      const userPrompt = `Analyze the following custody document text:${pageNote}\n\n${truncatedText}`;
 
       const openai = getOpenAIClient();
       const completion = await openai.chat.completions.create({
