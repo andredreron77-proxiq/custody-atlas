@@ -1,10 +1,35 @@
-import { Scale, Shield, BookOpen } from "lucide-react";
+import { Scale, Shield, BookOpen, Map } from "lucide-react";
 import { Link } from "wouter";
 
 const TRUST_SIGNALS = [
   { icon: Shield, label: "Secure document analysis" },
   { icon: BookOpen, label: "Educational legal information" },
   { icon: Scale, label: "Not a substitute for a lawyer" },
+];
+
+const STATE_PAGES: { name: string; slug: string }[] = [
+  { name: "Alabama", slug: "alabama" },
+  { name: "Alaska", slug: "alaska" },
+  { name: "Arizona", slug: "arizona" },
+  { name: "California", slug: "california" },
+  { name: "Colorado", slug: "colorado" },
+  { name: "Florida", slug: "florida" },
+  { name: "Georgia", slug: "georgia" },
+  { name: "Illinois", slug: "illinois" },
+  { name: "Indiana", slug: "indiana" },
+  { name: "Louisiana", slug: "louisiana" },
+  { name: "Massachusetts", slug: "massachusetts" },
+  { name: "Michigan", slug: "michigan" },
+  { name: "Nevada", slug: "nevada" },
+  { name: "New Jersey", slug: "new-jersey" },
+  { name: "New York", slug: "new-york" },
+  { name: "North Carolina", slug: "north-carolina" },
+  { name: "Ohio", slug: "ohio" },
+  { name: "Oklahoma", slug: "oklahoma" },
+  { name: "Pennsylvania", slug: "pennsylvania" },
+  { name: "Texas", slug: "texas" },
+  { name: "Virginia", slug: "virginia" },
+  { name: "Washington", slug: "washington" },
 ];
 
 export function Footer() {
@@ -80,6 +105,31 @@ export function Footer() {
             <p className="text-xs text-slate-500 leading-relaxed">
               This tool provides general legal information, not legal advice. Always consult a licensed family law attorney.
             </p>
+          </div>
+        </div>
+
+        {/* Custody Laws by State — SEO internal links */}
+        <div className="border-t border-white/8 pt-8 pb-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Map className="w-3.5 h-3.5 text-blue-400" />
+            <h3 className="font-semibold text-white text-sm" data-testid="footer-state-links-heading">
+              Custody Laws by State
+            </h3>
+          </div>
+          <div
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-1.5"
+            data-testid="footer-state-links"
+          >
+            {STATE_PAGES.map(({ name, slug }) => (
+              <Link
+                key={slug}
+                href={`/custody-laws/${slug}`}
+                className="text-xs text-slate-500 hover:text-slate-200 transition-colors leading-relaxed"
+                data-testid={`footer-link-${slug}`}
+              >
+                {name}
+              </Link>
+            ))}
           </div>
         </div>
 

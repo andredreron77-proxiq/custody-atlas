@@ -14,6 +14,7 @@ import CustodyMapPage from "@/pages/CustodyMapPage";
 import WorkspacePage from "@/pages/WorkspacePage";
 import PrivacyPage from "@/pages/PrivacyPage";
 import TermsPage from "@/pages/TermsPage";
+import CustodyLawsStatePage from "@/pages/CustodyLawsStatePage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/upload-document" component={UploadDocumentPage} />
       <Route path="/custody-map" component={CustodyMapPage} />
       <Route path="/workspace" component={WorkspacePage} />
+      <Route path="/custody-laws/:stateSlug" component={CustodyLawsStatePage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
       <Route component={NotFound} />

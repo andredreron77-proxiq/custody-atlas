@@ -33,8 +33,9 @@ Preferred communication style: Simple, everyday language.
   - `/location` — Location selection page (GPS or ZIP code)
   - `/jurisdiction/:state/:county` — Displays state custody law summary (6 sections) with collapsible cards
   - `/ask` — AI Q&A chat interface, jurisdiction-aware
-  - `/upload-document` — Document OCR analysis with AI follow-up Q&A
+  - `/upload-document` — Document OCR analysis with AI follow-up Q&A; multi-page support (up to 5 pages); camera capture with 3-button flow (Retake / Add Another Page / Continue to Review)
   - `/custody-map` — Interactive U.S. map with explore mode (per-state panel) and compare mode (side-by-side table)
+  - `/custody-laws/:stateSlug` — **SEO-friendly public state pages** (e.g. `/custody-laws/georgia`, `/custody-laws/new-jersey`). Slug format: lowercase with hyphens. Displays hero, quick summary, 4 law section cards, FAQ, ChildSupportImpactCard, CTA, map link. Sets `document.title` and `<meta name="description">` + Open Graph tags dynamically. Footer links to all 22 state pages for SEO crawlability. Unsupported states show a friendly "coming soon" notice.
   - `/privacy`, `/terms` — Legal pages
 - **Component Structure**:
   - `client/src/pages/` — Top-level page components
@@ -46,7 +47,8 @@ Preferred communication style: Simple, everyday language.
     - `LawSectionCard` — Collapsible card for each law category
     - `EnforcementList` — Structured bullet list for enforcement options
     - `UnsupportedStateNotice` — Amber notice card for states not in the dataset
-    - `Header`, `Footer` — App-wide chrome with mobile hamburger drawer nav
+    - `ChildSupportImpactCard` — Educational card explaining how custody affects child support; includes state-specific calculation model (Income Shares vs Percentage of Income); shown on JurisdictionPage, AskAIPage, and conditionally on UploadDocumentPage (when AI result mentions "child support")
+    - `Header`, `Footer` — App-wide chrome with mobile hamburger drawer nav; Footer includes SEO internal links to all 22 `/custody-laws/:slug` pages
   - `client/src/components/ui/` — shadcn/ui base components
 - **Session Persistence**: `useJurisdiction` hook reads/writes `"custody_jurisdiction"` to `sessionStorage`. JurisdictionPage, AskAIPage all write on load; WorkspacePage reads it to populate the dashboard without requiring re-entry.
 
