@@ -65,6 +65,10 @@ export async function requireAuth(
 /**
  * Retrieve the tier for an authenticated user from user_profiles.
  * Falls back to "free" if the record is missing.
+ *
+ * NOTE: user_profiles uses "id" (not "user_id") as the primary key.
+ * The value is the Supabase auth.users UUID — the same ID returned
+ * by supabaseAdmin.auth.getUser().
  */
 export async function getUserTier(userId: string): Promise<UserTier> {
   if (!supabaseAdmin) return "free";
@@ -72,7 +76,7 @@ export async function getUserTier(userId: string): Promise<UserTier> {
     const { data } = await supabaseAdmin
       .from("user_profiles")
       .select("tier")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .single();
     return (data?.tier as UserTier) ?? "free";
   } catch {

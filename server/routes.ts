@@ -366,7 +366,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       await trackQuestion(req);
-      const userId = (req as any).userId as string | undefined;
+      const userId = (req as any).user?.id as string | undefined;
       if (userId) {
         saveQuestion(userId, {
           jurisdictionState: jurisdiction.state,
@@ -606,7 +606,7 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
       // Append the extracted text so the client can use it for follow-up Q&A
       // without requiring the user to re-upload the file.
       await trackDocument(req);
-      const docUserId = (req as any).userId as string | undefined;
+      const docUserId = (req as any).user?.id as string | undefined;
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
         saveDocument(docUserId, {
