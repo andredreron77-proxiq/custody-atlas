@@ -153,22 +153,40 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const lastAssistantRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const lastMessageRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const justSubmitted = useRef(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Scroll the container so the target element's top sits near the top of the
+  // visible area (with a small breathing-room offset).
+  const scrollContainerToTop = (container: HTMLElement, el: HTMLElement, topPad = 12) => {
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const newScrollTop = container.scrollTop + (elRect.top - containerRect.top) - topPad;
+    container.scrollTo({ top: newScrollTop, behavior: "smooth" });
+  };
+
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (!justSubmitted.current || messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role === "assistant") {
-      // Scroll to the TOP of the new AI response so the reader starts at the beginning
-      lastMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    } else {
-      // User just submitted — scroll to bottom to reveal the loading indicator
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+
+    // Use rAF to let React flush the DOM before measuring positions.
+    requestAnimationFrame(() => {
+      if (lastMsg.role === "assistant") {
+        // Scroll so the top of the new AI response card is near the top of the chat area.
+        if (chatContainerRef.current && lastAssistantRef.current) {
+          scrollContainerToTop(chatContainerRef.current, lastAssistantRef.current);
+        }
+        justSubmitted.current = false;
+      } else {
+        // User message just added — scroll to the bottom to reveal the loading indicator.
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    });
   }, [messages]);
 
   const sendMessage = async (question: string) => {
@@ -193,6 +211,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
       return;
     }
 
+    justSubmitted.current = true;
     const userMessage: ChatMessage = { role: "user", content: trimmed };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -336,11 +355,13 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
-          {messages.map((msg, i) => (
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+          {messages.map((msg, i) => {
+            const isLastAssistant = msg.role === "assistant" && i === messages.length - 1;
+            return (
             <div
               key={i}
-              ref={i === messages.length - 1 ? lastMessageRef : null}
+              ref={isLastAssistant ? lastAssistantRef : null}
               className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
               data-testid={`message-${msg.role}-${i}`}
             >
@@ -388,7 +409,8 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
                 </Card>
               )}
             </div>
-          ))}
+          );
+          })}
 
           {isLoading && (
             <div className="flex items-start gap-3">

@@ -335,13 +335,41 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
   const [qaMessages, setQaMessages] = useState<DocQAMessage[]>([]);
   const [qaError, setQaError] = useState<string | null>(null);
   const [qaLimitReached, setQaLimitReached] = useState(false);
-  const threadEndRef = useRef<HTMLDivElement>(null);
+  const docContainerRef = useRef<HTMLDivElement>(null);
+  const lastAssistantDocRef = useRef<HTMLDivElement>(null);
+  const docJustSubmitted = useRef(false);
   const { toast } = useToast();
 
+  // Scroll the container so the target element's top sits near the top of
+  // the visible area (with a small breathing-room top offset).
+  const scrollDocContainerToTop = (container: HTMLElement, el: HTMLElement, topPad = 12) => {
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const newScrollTop = container.scrollTop + (elRect.top - containerRect.top) - topPad;
+    container.scrollTo({ top: newScrollTop, behavior: "smooth" });
+  };
+
   useEffect(() => {
-    if (qaMessages.length > 0) {
-      threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
+    if (!docJustSubmitted.current || qaMessages.length === 0) return;
+    const lastMsg = qaMessages[qaMessages.length - 1];
+
+    requestAnimationFrame(() => {
+      if (lastMsg.role === "assistant") {
+        // Scroll so the new response card's top is near the top of the thread area.
+        if (docContainerRef.current && lastAssistantDocRef.current) {
+          scrollDocContainerToTop(docContainerRef.current, lastAssistantDocRef.current);
+        }
+        docJustSubmitted.current = false;
+      } else {
+        // User message just added — scroll to the bottom to show the loading spinner.
+        if (docContainerRef.current) {
+          docContainerRef.current.scrollTo({
+            top: docContainerRef.current.scrollHeight,
+            behavior: "smooth",
+          });
+        }
+      }
+    });
   }, [qaMessages]);
 
   const submitQuestion = async (q: string) => {
@@ -353,6 +381,7 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
       .slice(-16)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    docJustSubmitted.current = true;
     setQaMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setQuestion("");
     setIsLoading(true);
@@ -487,9 +516,15 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
 
         {/* Conversation thread */}
         {hasMessages && (
-          <div className="space-y-4 max-h-[520px] overflow-y-auto pr-1">
-            {qaMessages.map((msg, i) => (
-              <div key={i} data-testid={`doc-qa-message-${msg.role}-${i}`}>
+          <div ref={docContainerRef} className="space-y-4 max-h-[520px] overflow-y-auto pr-1">
+            {qaMessages.map((msg, i) => {
+              const isLastAssistant = msg.role === "assistant" && i === qaMessages.length - 1;
+              return (
+              <div
+                key={i}
+                ref={isLastAssistant ? lastAssistantDocRef : null}
+                data-testid={`doc-qa-message-${msg.role}-${i}`}
+              >
                 {msg.role === "user" ? (
                   <div className="flex items-start gap-2 flex-row-reverse">
                     <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center flex-shrink-0">
@@ -514,7 +549,8 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
 
             {isLoading && (
               <div className="flex items-start gap-2" data-testid="qa-loading">
@@ -529,8 +565,6 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
                 </div>
               </div>
             )}
-
-            <div ref={threadEndRef} />
           </div>
         )}
 
