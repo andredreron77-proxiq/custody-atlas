@@ -28,7 +28,7 @@ export interface UsageState {
 }
 
 export const TIER_LIMITS: Record<"free" | "pro", { questions: number; documents: number }> = {
-  free: { questions: 3,  documents: 1 },
+  free: { questions: 5,  documents: 1 },
   pro:  { questions: 25, documents: 10 },
 };
 
