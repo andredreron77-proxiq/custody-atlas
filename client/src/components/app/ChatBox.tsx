@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Send, Loader2, Bot, User, AlertTriangle, Sparkles,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
-  MessageSquare, RotateCcw,
+  MessageSquare, RotateCcw, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -331,28 +331,46 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
     setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 100);
   };
 
+  const jurisdictionLabel = formatJurisdictionLabel(jurisdiction.state, jurisdiction.county);
+
   return (
     <div ref={wrapperRef} className="flex flex-col h-full min-h-0 gap-4">
-      {/* Thread label — only visible once a conversation has started */}
+      {/* Conversation context bar — two labeled rows, visible once a conversation has started */}
       {messages.length > 0 && (
-        <div className="flex items-center justify-between gap-2 px-0.5 flex-shrink-0">
-          <div className="flex items-center gap-1.5">
-            <MessageSquare className="w-3.5 h-3.5 text-primary/70" />
-            <span className="text-xs font-medium text-muted-foreground tracking-wide">
-              General Custody Conversation
-            </span>
-            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal">
-              {Math.ceil(messages.length / 2)} Q&amp;A
-            </Badge>
+        <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3 flex-shrink-0">
+          <div className="space-y-1 min-w-0 flex-1">
+            {/* Row 1: Conversation */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Conversation</span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <MessageSquare className="w-3 h-3 text-primary/70 flex-shrink-0" />
+                <span className="text-xs font-medium text-foreground">
+                  General Custody Conversation
+                </span>
+                <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal flex-shrink-0">
+                  {Math.ceil(messages.length / 2)} Q&amp;A
+                </Badge>
+              </div>
+            </div>
+            {/* Row 2: Jurisdiction — only rendered when we have a usable label */}
+            {jurisdictionLabel && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Jurisdiction</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <MapPin className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                  <span className="text-xs font-medium text-foreground">{jurisdictionLabel}</span>
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={clearConversation}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 pt-0.5"
             data-testid="button-new-conversation"
             title="Start a new conversation"
           >
             <RotateCcw className="w-3 h-3" />
-            New conversation
+            New
           </button>
         </div>
       )}

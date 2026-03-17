@@ -1,0 +1,70 @@
+Improve the Ask AI header and conversation context UI in Custody Atlas by separating conversation mode from jurisdiction display.
+
+Goal:
+Prevent future formatting bugs like "General County, {State}" and make the chat interface feel clearer and more professional.
+
+Requirements:
+
+1. Refactor the Ask AI conversation header so it has two clearly separated fields:
+
+Field 1:
+Label: "Conversation"
+Value examples:
+- "General Custody Conversation"
+- "Questions About This Document"
+- "State Comparison Conversation"
+
+Field 2:
+Label: "Jurisdiction"
+Value examples:
+- "Fulton County, Georgia"
+- "Georgia"
+- "Texas"
+
+2. Use the shared jurisdiction formatter everywhere for the Jurisdiction field.
+
+Formatting rules:
+- county + state → "Fulton County, Georgia"
+- state only → "Georgia"
+- county only → "Fulton County"
+- neither → hide the Jurisdiction field entirely or show "Not set" if needed
+
+3. Never combine conversation mode text and jurisdiction text into one string.
+
+Examples of invalid UI that must never appear:
+- "General County, Georgia"
+- "Questions About This Document, Texas"
+- "County, {State}"
+
+4. Update all relevant screens/components:
+- Ask AI page
+- state CTA initiated chat
+- child support CTA initiated chat
+- restored conversation thread view
+- document follow-up Q&A if it shows context
+- workspace preview cards if they show current conversation context
+
+5. Visual design:
+- Use a clean two-line or two-row card/header layout
+- Keep the look professional and legal-tech oriented
+- Make labels subtle and values prominent
+- Ensure the layout works on mobile and desktop
+
+6. UX behavior:
+- if only conversation mode exists, show only that row
+- if jurisdiction exists, show it as a separate row
+- if both exist, show both clearly
+- if neither exists, avoid placeholder text and render a clean empty state
+
+7. Keep all existing functionality intact:
+- thread memory
+- AI response rendering
+- usage limits
+- Supabase logging
+- state CTA flows
+
+8. After implementation, summarize:
+- files changed
+- components updated
+- how the new header prevents malformed combined labels
+- where the shared formatter is being reused

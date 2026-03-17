@@ -18,6 +18,7 @@ import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextH
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { getAccessToken } from "@/lib/tokenStore";
+import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DocumentAnalysisResult, DocumentQAResponse } from "@shared/schema";
 
@@ -457,41 +458,55 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
 
   const hasMessages = qaMessages.length > 0;
 
+  const jurisdictionLabel = formatJurisdictionLabel(jurisdiction?.state ?? "", jurisdiction?.county ?? "");
+
   return (
     <Card className="border-t-2 border-t-primary/30" data-testid="card-document-qa">
       <CardHeader className="pb-3">
-        {/* Thread label row */}
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-primary" />
-            Questions About This Document
-          </CardTitle>
+        {/* Two-row context bar: Conversation + Jurisdiction as separate labeled fields */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1 min-w-0 flex-1">
+            {/* Row 1: Conversation */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Conversation</span>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <MessageSquare className="w-3 h-3 text-primary flex-shrink-0" />
+                <span className="text-sm font-semibold text-foreground">Questions About This Document</span>
+                {hasMessages && (
+                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal flex-shrink-0">
+                    {Math.ceil(qaMessages.length / 2)} Q&amp;A
+                  </Badge>
+                )}
+              </div>
+            </div>
+            {/* Row 2: Jurisdiction — only rendered when we have a usable label */}
+            {jurisdictionLabel && (
+              <div className="flex items-center gap-2 flex-wrap" data-testid="text-jurisdiction-badge">
+                <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Jurisdiction</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <MapPin className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                  <span className="text-xs font-medium text-foreground">{jurisdictionLabel}</span>
+                </div>
+              </div>
+            )}
+          </div>
           {hasMessages && (
             <button
               onClick={() => { setQaMessages([]); setQaError(null); }}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 pt-0.5"
               data-testid="button-new-doc-thread"
               title="Clear conversation and start over"
             >
               <RotateCcw className="w-3 h-3" />
-              New thread
+              New
             </button>
           )}
         </div>
 
         {!hasMessages && (
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground mt-2">
             Ask follow-up questions about this document's terms, dates, or implications.
           </p>
-        )}
-
-        {jurisdiction?.state && (
-          <div className="flex items-center gap-1.5 mt-1" data-testid="text-jurisdiction-badge">
-            <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-            <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-              Answers tailored to {jurisdiction.state} law
-            </span>
-          </div>
         )}
       </CardHeader>
 
