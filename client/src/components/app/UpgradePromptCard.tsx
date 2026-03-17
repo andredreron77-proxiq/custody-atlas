@@ -17,7 +17,7 @@ const COPY: Record<LimitType, { title: string; description: string }> = {
   question: {
     title: "Daily question limit reached",
     description:
-      "You've used all 3 free AI questions for today. Limits reset at midnight, or upgrade to Pro for 25 questions per day.",
+      "You've used all 5 free AI questions for today. Limits reset at midnight, or upgrade to Pro for 25 questions per day.",
   },
   document: {
     title: "Daily document limit reached",
