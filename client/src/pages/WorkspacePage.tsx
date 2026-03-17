@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
+import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
 
 /* ── Placeholder types for recent activity ────────────────────────────────── */
 
@@ -328,7 +329,7 @@ export default function WorkspacePage() {
                   <p className="text-xl font-bold text-foreground" data-testid="text-workspace-state">
                     {jurisdiction.state}
                   </p>
-                  {jurisdiction.county && (
+                  {!isStateOnlyCounty(jurisdiction.county) && (
                     <p className="text-sm text-muted-foreground mt-0.5" data-testid="text-workspace-county">
                       {jurisdiction.county} County
                     </p>

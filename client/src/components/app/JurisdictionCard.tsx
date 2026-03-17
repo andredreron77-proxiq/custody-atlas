@@ -2,6 +2,7 @@ import { MapPin, Building, Globe, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Jurisdiction } from "@shared/schema";
+import { formatJurisdictionLabel, isStateOnlyCounty } from "@/lib/jurisdictionUtils";
 
 interface JurisdictionCardProps {
   jurisdiction: Jurisdiction;
@@ -9,6 +10,9 @@ interface JurisdictionCardProps {
 }
 
 export function JurisdictionCard({ jurisdiction, hasLawData }: JurisdictionCardProps) {
+  const stateOnly = isStateOnlyCounty(jurisdiction.county);
+  const locationLabel = formatJurisdictionLabel(jurisdiction.state, jurisdiction.county);
+
   return (
     <Card className="hover-elevate">
       <CardContent className="p-5">
@@ -21,7 +25,7 @@ export function JurisdictionCard({ jurisdiction, hasLawData }: JurisdictionCardP
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Your Jurisdiction</p>
                 <p className="font-semibold text-sm truncate" data-testid="text-jurisdiction">
-                  {jurisdiction.county} County, {jurisdiction.state}
+                  {locationLabel}
                 </p>
               </div>
             </div>
@@ -33,10 +37,12 @@ export function JurisdictionCard({ jurisdiction, hasLawData }: JurisdictionCardP
             )}
 
             <div className="flex items-center gap-3 pl-10 flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <Building className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">{jurisdiction.county} County</span>
-              </div>
+              {!stateOnly && (
+                <div className="flex items-center gap-1.5">
+                  <Building className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{jurisdiction.county} County</span>
+                </div>
+              )}
               <div className="flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">{jurisdiction.state}</span>

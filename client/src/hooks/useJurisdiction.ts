@@ -23,7 +23,14 @@ const STORAGE_KEY = "custody_jurisdiction";
 function readFromStorage(): Jurisdiction | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Jurisdiction) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Jurisdiction;
+    // Discard corrupt entries with no usable state.
+    if (!parsed.state?.trim()) return null;
+    // Trim state whitespace. County sentinel values ("General", "general", etc.)
+    // are kept as-is: they pass ChatBox validation and every display component
+    // is sentinel-aware via isStateOnlyCounty / formatJurisdictionLabel.
+    return { ...parsed, state: parsed.state.trim() };
   } catch {
     return null;
   }

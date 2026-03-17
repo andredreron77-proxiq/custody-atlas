@@ -1,0 +1,69 @@
+Fix the remaining jurisdiction display bug across all Ask AI entry paths in Custody Atlas.
+
+Problem:
+When the user previously selected only a state (without a county), then navigates Home → Ask AI, the UI still shows incorrect text like:
+- "General County, {State}"
+This means the prior fix did not cover all scenarios.
+
+Goal:
+Ensure jurisdiction text is always displayed correctly across every screen and navigation path, including restored state, persisted context, home navigation, and thread-based Ask AI entry.
+
+Requirements:
+
+1. Audit all code paths that build or display jurisdiction text in:
+- Ask AI screen
+- Jurisdiction context header
+- Home → Ask AI navigation
+- state CTA initiated conversations
+- restored/persisted session state
+- thread-based conversation loading
+- workspace cards if applicable
+
+2. Create a single reusable jurisdiction formatter utility and use it everywhere.
+
+Formatting rules:
+- if county and state both exist: "Fulton County, Georgia"
+- if only state exists: "Georgia"
+- if only county exists: "Fulton County"
+- if neither exists: show no broken placeholder text
+
+3. Remove all fallback strings and concatenation logic that can produce:
+- "County, {State}"
+- "General County, {State}"
+- literal template placeholders
+- any hardcoded placeholder county labels
+
+4. Separate conversation mode labels from jurisdiction labels.
+
+Examples:
+- conversation mode: "General Custody Conversation"
+- jurisdiction text: "Georgia"
+
+Do not combine these into malformed strings.
+
+5. Ensure persisted state and restored threads handle missing county correctly.
+If prior session data only contains state, the UI should display only the state.
+
+6. Add defensive normalization:
+- trim empty strings
+- treat placeholder values like "County" or "{State}" as invalid
+- do not render placeholder fragments to the UI
+
+7. Apply this fix consistently to:
+- general Ask AI
+- state-driven AI entry
+- child support button entry
+- document follow-up if jurisdiction appears there
+- workspace / context header if affected
+
+8. Keep all existing functionality intact:
+- thread memory
+- AI responses
+- usage limits
+- Supabase logging
+
+9. After implementation, summarize:
+- all files changed
+- the root cause of the remaining bug
+- the new shared formatter/helper location
+- which previously missed scenario is now covered
