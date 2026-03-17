@@ -1,0 +1,81 @@
+Enhance Custody Atlas AI conversations so follow-up questions remember prior context instead of treating every question as standalone.
+
+Goal:
+Make AI conversations stateful within a thread, so follow-up questions can reference previous questions and answers.
+
+Requirements:
+
+1. Add conversation thread support.
+
+Create a threads model and message history model for AI conversations.
+
+Each thread should support:
+- user_id
+- thread_type ("general", "document", "comparison")
+- jurisdiction_state
+- jurisdiction_county
+- document_id if applicable
+- created_at
+
+2. Store messages for each thread.
+
+Each message should include:
+- thread_id
+- role ("user" or "assistant")
+- message_text
+- structured_response_json if applicable
+- created_at
+
+3. Update the Ask AI experience.
+
+When a user asks a follow-up question:
+- use the current active thread
+- load recent message history from that thread
+- send the recent conversation history along with the current question to the AI
+
+4. Context behavior
+
+For general custody Q&A:
+- preserve recent question/answer history
+- preserve jurisdiction context
+
+For document follow-up Q&A:
+- preserve recent conversation history
+- preserve analyzed document context
+- preserve extracted text or summarized context
+
+5. History window
+
+For MVP, include the last 6 to 10 messages from the active thread.
+Do not send unlimited history.
+
+6. UI improvements
+
+Show a visible conversation thread in the Ask AI interface.
+Keep prior messages visible on the screen.
+Allow the user to continue the current conversation naturally.
+
+7. Thread creation rules
+
+- Create a new thread when the user starts a brand new general custody conversation
+- Create a separate thread for each analyzed document
+- Keep document questions tied to that document's thread
+
+8. Suggested UX
+
+Add a small label above the chat:
+- "General Custody Conversation"
+or
+- "Questions About This Document"
+
+9. Maintain existing functionality
+
+Do not break:
+- AI structured responses
+- jurisdiction-aware answers
+- document analysis flow
+
+10. Summarize after implementation:
+- tables or storage structures added
+- how thread context is loaded
+- how many prior messages are included per AI call

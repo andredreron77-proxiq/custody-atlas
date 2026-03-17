@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import {
   Send, Loader2, Bot, User, AlertTriangle, Sparkles,
-  CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight
+  CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
+  MessageSquare, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import type { ChatMessage, AILegalResponse, Jurisdiction } from "@shared/schema";
+import type { ChatMessage, AILegalResponse, Jurisdiction, ConversationHistoryItem } from "@shared/schema";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { UpgradePromptCard } from "./UpgradePromptCard";
 import { useQueryClient } from "@tanstack/react-query";
@@ -197,6 +198,13 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
     setInput("");
     setIsLoading(true);
 
+    // Build history from the current messages state (before the new user message
+    // is reflected in the render — React batches setState, so `messages` here
+    // is still the previous value). Cap to last 8 pairs = 16 turns.
+    const historySnapshot: ConversationHistoryItem[] = messages
+      .slice(-16)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     try {
       const res = await apiRequestRaw("POST", "/api/ask", {
         jurisdiction: {
@@ -204,6 +212,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
           county: jurisdiction.county,
         },
         userQuestion: trimmed,
+        history: historySnapshot.length > 0 ? historySnapshot : undefined,
       });
 
       if (res.status === 429) {
@@ -252,8 +261,38 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
   const isLastMessageAssistant =
     messages.length > 0 && messages[messages.length - 1].role === "assistant";
 
+  const clearConversation = () => {
+    setMessages([]);
+    setLimitReached(false);
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
+
   return (
     <div className="flex flex-col h-full min-h-0 gap-4">
+      {/* Thread label — only visible once a conversation has started */}
+      {messages.length > 0 && (
+        <div className="flex items-center justify-between gap-2 px-0.5 flex-shrink-0">
+          <div className="flex items-center gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5 text-primary/70" />
+            <span className="text-xs font-medium text-muted-foreground tracking-wide">
+              General Custody Conversation
+            </span>
+            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal">
+              {Math.ceil(messages.length / 2)} Q&amp;A
+            </Badge>
+          </div>
+          <button
+            onClick={clearConversation}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="button-new-conversation"
+            title="Start a new conversation"
+          >
+            <RotateCcw className="w-3 h-3" />
+            New conversation
+          </button>
+        </div>
+      )}
+
       {messages.length === 0 ? (
         /* Scrollable-centering pattern:
            outer = flex-1 overflow-y-auto (allows scroll when content is too tall)

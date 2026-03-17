@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "wouter";
 import {
   Upload, FileText, Image, AlertTriangle, CheckCircle2,
@@ -6,7 +6,7 @@ import {
   ArrowLeft, X, ChevronRight, Lock, MessageSquare,
   MapPin, Send, BookOpen, TriangleAlert, ShieldAlert,
   Camera, RotateCcw, Check, Shield, Plus, ArrowUp, ArrowDown,
-  ScanLine, GripVertical,
+  ScanLine, GripVertical, Bot, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -318,6 +318,12 @@ function QAResponseCard({ response }: { response: DocumentQAResponse }) {
   );
 }
 
+interface DocQAMessage {
+  role: "user" | "assistant";
+  content: string;
+  response?: DocumentQAResponse;
+}
+
 interface DocumentQASectionProps {
   result: DocumentAnalysisResult;
   jurisdiction: { state: string; county: string; country?: string } | null;
@@ -326,14 +332,29 @@ interface DocumentQASectionProps {
 function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [qaResponse, setQaResponse] = useState<DocumentQAResponse | null>(null);
+  const [qaMessages, setQaMessages] = useState<DocQAMessage[]>([]);
   const [qaError, setQaError] = useState<string | null>(null);
+  const [qaLimitReached, setQaLimitReached] = useState(false);
+  const threadEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (qaMessages.length > 0) {
+      threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [qaMessages]);
 
   const submitQuestion = async (q: string) => {
     const trimmed = q.trim();
-    if (!trimmed) return;
+    if (!trimmed || isLoading) return;
 
+    // Snapshot history BEFORE adding the new user message
+    const history = qaMessages
+      .slice(-16)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    setQaMessages((prev) => [...prev, { role: "user", content: trimmed }]);
+    setQuestion("");
     setIsLoading(true);
     setQaError(null);
 
@@ -342,6 +363,7 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
         documentAnalysis: result,
         extractedText: result.extractedText ?? "",
         userQuestion: trimmed,
+        history: history.length > 0 ? history : undefined,
       };
       if (jurisdiction) {
         body.jurisdiction = {
@@ -362,24 +384,31 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
       });
 
       const data = await res.json();
+      if (res.status === 429) {
+        setQaLimitReached(true);
+        setQaMessages((prev) => prev.slice(0, -1));
+        return;
+      }
       if (!res.ok) {
         throw new Error(data.error || `Server error (${res.status})`);
       }
 
-      setQaResponse(data as DocumentQAResponse);
+      const responseData = data as DocumentQAResponse;
+      setQaMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: responseData.answer, response: responseData },
+      ]);
     } catch (err: any) {
       const message = err?.message || "Failed to get an answer. Please try again.";
       setQaError(message);
+      setQaMessages((prev) => prev.slice(0, -1));
       toast({ title: "Question Failed", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSuggestedQuestion = (q: string) => {
-    setQuestion(q);
-    submitQuestion(q);
-  };
+  const handleSuggestedQuestion = (q: string) => submitQuestion(q);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,74 +422,121 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
     }
   };
 
+  const hasMessages = qaMessages.length > 0;
+
   return (
     <Card className="border-t-2 border-t-primary/30" data-testid="card-document-qa">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-primary" />
-          Ask About This Document
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Ask follow-up questions about this document's summary, terms, dates, or possible implications.
-        </p>
+        {/* Thread label row */}
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            Questions About This Document
+          </CardTitle>
+          {hasMessages && (
+            <button
+              onClick={() => { setQaMessages([]); setQaError(null); }}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+              data-testid="button-new-doc-thread"
+              title="Clear conversation and start over"
+            >
+              <RotateCcw className="w-3 h-3" />
+              New thread
+            </button>
+          )}
+        </div>
+
+        {!hasMessages && (
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Ask follow-up questions about this document's terms, dates, or implications.
+          </p>
+        )}
+
         {jurisdiction?.state && (
           <div className="flex items-center gap-1.5 mt-1" data-testid="text-jurisdiction-badge">
             <MapPin className="w-3.5 h-3.5 text-emerald-500" />
             <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-              Answer tailored to {jurisdiction.state} law
+              Answers tailored to {jurisdiction.state} law
             </span>
           </div>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
-            Suggested questions
-          </p>
-          <div className="flex flex-wrap gap-2" data-testid="suggested-questions">
-            {SUGGESTED_QUESTIONS.map((q) => (
-              <button
-                key={q}
-                onClick={() => handleSuggestedQuestion(q)}
-                disabled={isLoading}
-                className="text-xs px-3 py-1.5 rounded-full border border-border bg-muted/40 hover:bg-muted hover:border-primary/40 text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                data-testid={`suggested-question-${q.slice(0, 20).replace(/\s+/g, "-").toLowerCase()}`}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <Textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your question about this document…"
-            className="resize-none min-h-[80px] text-sm"
-            disabled={isLoading}
-            data-testid="input-qa-question"
-          />
-          <Button
-            type="submit"
-            disabled={!question.trim() || isLoading}
-            className="w-full gap-2"
-            data-testid="button-ask-document"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Getting answer…
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Ask about this document
-              </>
+      <CardContent className="space-y-4">
+        {/* Suggested questions — shown only before first message */}
+        {!hasMessages && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+              Suggested questions
+            </p>
+            <div className="flex flex-wrap gap-2" data-testid="suggested-questions">
+              {SUGGESTED_QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => handleSuggestedQuestion(q)}
+                  disabled={isLoading}
+                  className="text-xs px-3 py-1.5 rounded-full border border-border bg-muted/40 hover:bg-muted hover:border-primary/40 text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                  data-testid={`suggested-question-${q.slice(0, 20).replace(/\s+/g, "-").toLowerCase()}`}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Conversation thread */}
+        {hasMessages && (
+          <div className="space-y-4 max-h-[520px] overflow-y-auto pr-1">
+            {qaMessages.map((msg, i) => (
+              <div key={i} data-testid={`doc-qa-message-${msg.role}-${i}`}>
+                {msg.role === "user" ? (
+                  <div className="flex items-start gap-2 flex-row-reverse">
+                    <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center flex-shrink-0">
+                      <User className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="max-w-[82%] rounded-lg bg-primary text-primary-foreground px-3.5 py-2.5 text-sm leading-relaxed">
+                      {msg.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <div className="w-7 h-7 rounded-full bg-muted text-muted-foreground flex items-center justify-center flex-shrink-0">
+                      <Bot className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0 rounded-lg border bg-muted/20 p-3.5" data-testid={`doc-qa-response-${i}`}>
+                      {msg.response ? (
+                        <QAResponseCard response={msg.response} />
+                      ) : (
+                        <p className="text-sm">{msg.content}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex items-start gap-2" data-testid="qa-loading">
+                <div className="w-7 h-7 rounded-full bg-muted text-muted-foreground flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-3.5 h-3.5" />
+                </div>
+                <div className="rounded-lg border bg-muted/20 px-3.5 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Analyzing document…</span>
+                  </div>
+                </div>
+              </div>
             )}
-          </Button>
-        </form>
+
+            <div ref={threadEndRef} />
+          </div>
+        )}
+
+        {qaLimitReached && (
+          <UpgradePromptCard type="document" className="mt-2" />
+        )}
 
         {qaError && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5" data-testid="text-qa-error">
@@ -469,17 +545,45 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
           </div>
         )}
 
-        {isLoading && (
-          <div className="flex flex-col items-center gap-2 py-4 text-center" data-testid="qa-loading">
+        {/* Loading state (first message — no thread visible yet) */}
+        {isLoading && !hasMessages && (
+          <div className="flex flex-col items-center gap-2 py-4 text-center" data-testid="qa-loading-initial">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Analyzing document and generating your answer…</p>
+            <p className="text-sm text-muted-foreground">Generating your answer…</p>
           </div>
         )}
 
-        {qaResponse && !isLoading && (
-          <div className="rounded-lg border bg-muted/20 p-4" data-testid="qa-response-container">
-            <QAResponseCard response={qaResponse} />
-          </div>
+        {/* Input form */}
+        {!qaLimitReached && (
+          <form onSubmit={handleSubmit} className="space-y-2">
+            <Textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={hasMessages ? "Ask a follow-up question…" : "Type your question about this document…"}
+              className="resize-none min-h-[72px] text-sm"
+              disabled={isLoading}
+              data-testid="input-qa-question"
+            />
+            <Button
+              type="submit"
+              disabled={!question.trim() || isLoading}
+              className="w-full gap-2"
+              data-testid="button-ask-document"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Getting answer…
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  {hasMessages ? "Ask follow-up" : "Ask about this document"}
+                </>
+              )}
+            </Button>
+          </form>
         )}
       </CardContent>
     </Card>

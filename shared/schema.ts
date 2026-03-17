@@ -131,6 +131,17 @@ export const countyProcedureSchema = z.object({
 
 export type CountyProcedureRecord = z.infer<typeof countyProcedureSchema>;
 
+/**
+ * A single prior turn in a conversation thread.
+ * Sent by the client with each new message so the AI can maintain context.
+ */
+export const conversationHistoryItemSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().max(4000),
+});
+
+export type ConversationHistoryItem = z.infer<typeof conversationHistoryItemSchema>;
+
 export const askAIRequestSchema = z.object({
   jurisdiction: z.object({
     state: z.string().min(1, "State is required"),
@@ -140,6 +151,8 @@ export const askAIRequestSchema = z.object({
   }),
   legalContext: z.record(z.unknown()).optional(),
   userQuestion: z.string().min(5, "Question must be at least 5 characters").max(2000),
+  /** Prior conversation turns (last ≤8), oldest first. Client-managed. */
+  history: z.array(conversationHistoryItemSchema).max(16).optional(),
 });
 
 export type AskAIRequest = z.infer<typeof askAIRequestSchema>;
@@ -192,6 +205,8 @@ export const documentQARequestSchema = z.object({
     country: z.string().optional().default("United States"),
   }).optional(),
   userQuestion: z.string().min(3, "Question must be at least 3 characters").max(2000),
+  /** Prior conversation turns (last ≤8), oldest first. Client-managed. */
+  history: z.array(conversationHistoryItemSchema).max(16).optional(),
 });
 
 export type DocumentQARequest = z.infer<typeof documentQARequestSchema>;

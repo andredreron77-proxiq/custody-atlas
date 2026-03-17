@@ -295,7 +295,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const { jurisdiction, legalContext, userQuestion } = parsed.data;
+      const { jurisdiction, legalContext, userQuestion, history } = parsed.data;
 
       if (!jurisdiction.state || !jurisdiction.county) {
         return res.status(400).json({ error: "Jurisdiction must include both state and county." });
@@ -327,10 +327,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const openai = getOpenAIClient();
 
+      // Build multi-turn message array: system → history turns → current question.
+      // Prior turns are capped server-side at 8 pairs (max 16 items) to bound cost.
+      const historyTurns = (history ?? [])
+        .slice(-16)
+        .map((h) => ({ role: h.role as "user" | "assistant", content: h.content }));
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           { role: "system", content: buildSystemPrompt(jurisdiction.state) },
+          ...historyTurns,
           {
             role: "user",
             content: buildUserPrompt({
@@ -647,7 +654,7 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
         return res.status(503).json({ error: "AI service not configured." });
       }
 
-      const { documentAnalysis, extractedText, jurisdiction, userQuestion } = parsed.data;
+      const { documentAnalysis, extractedText, jurisdiction, userQuestion, history } = parsed.data;
 
       const jurisdictionLine = jurisdiction?.state
         ? `The user is located in ${jurisdiction.state}${jurisdiction.county ? `, ${jurisdiction.county} County` : ""}${jurisdiction.country ? `, ${jurisdiction.country}` : ""}.`
@@ -695,11 +702,17 @@ ${analysisContext}${rawTextContext}
 USER QUESTION:
 ${userQuestion}`;
 
+      // Inject prior Q&A turns so the AI can follow the conversation thread.
+      const docHistoryTurns = (history ?? [])
+        .slice(-16)
+        .map((h) => ({ role: h.role as "user" | "assistant", content: h.content }));
+
       const openai = getOpenAIClient();
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
+          ...docHistoryTurns,
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
