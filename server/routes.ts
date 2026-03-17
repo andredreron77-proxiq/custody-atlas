@@ -20,6 +20,13 @@ import {
 import { saveQuestion } from "./services/questions";
 import { saveDocument } from "./services/documents";
 import {
+  maybePublishQuestion,
+  getPublicQuestionsByState,
+  getPublicQuestionBySlug,
+  getRelatedQuestions,
+  TOPIC_LABELS,
+} from "./services/publicQuestions";
+import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
   askAIRequestSchema,
@@ -382,6 +389,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           responseJson: validated.data as Record<string, unknown>,
         }).catch(() => {});
       }
+
+      // Auto-publish safe questions to the public SEO repository (fire-and-forget).
+      maybePublishQuestion({
+        state: jurisdiction.state,
+        county: jurisdiction.county,
+        questionText: userQuestion,
+        responseJson: validated.data as Record<string, unknown>,
+      }).catch((err) => console.error("[publicQuestions] maybePublishQuestion error:", err));
+
       return res.json(validated.data);
     } catch (err: any) {
       console.error("Ask AI error:", err);
@@ -742,6 +758,43 @@ ${userQuestion}`;
     } catch (err: any) {
       console.error("Document Q&A error:", err);
       return res.status(500).json({ error: err.message || "Failed to get answer. Please try again." });
+    }
+  });
+
+  /* ── Public Q&A SEO routes (no auth required) ─────────────────────────── */
+
+  /**
+   * GET /api/public-questions/:stateSlug
+   * Returns up to 20 public questions for a given state.
+   * Optional query param: ?topic=child-support
+   */
+  app.get("/api/public-questions/:stateSlug", async (req, res) => {
+    try {
+      const { stateSlug } = req.params;
+      const topic = typeof req.query.topic === "string" ? req.query.topic : undefined;
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const questions = await getPublicQuestionsByState(stateSlug, topic, limit);
+      return res.json({ questions, topicLabels: TOPIC_LABELS });
+    } catch (err) {
+      console.error("[public-questions] list error:", err);
+      return res.status(500).json({ error: "Failed to fetch public questions." });
+    }
+  });
+
+  /**
+   * GET /api/public-questions/:stateSlug/:topic/:slug
+   * Returns a single public Q&A page and related questions from same state/topic.
+   */
+  app.get("/api/public-questions/:stateSlug/:topic/:slug", async (req, res) => {
+    try {
+      const { stateSlug, topic, slug } = req.params;
+      const question = await getPublicQuestionBySlug(stateSlug, topic, slug);
+      if (!question) return res.status(404).json({ error: "Question not found." });
+      const related = await getRelatedQuestions(stateSlug, topic, slug, 4);
+      return res.json({ question, related, topicLabels: TOPIC_LABELS });
+    } catch (err) {
+      console.error("[public-questions] detail error:", err);
+      return res.status(500).json({ error: "Failed to fetch question." });
     }
   });
 

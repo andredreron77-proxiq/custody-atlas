@@ -18,6 +18,7 @@ import PrivacyPage from "@/pages/PrivacyPage";
 import TermsPage from "@/pages/TermsPage";
 import CustodyLawsStatePage from "@/pages/CustodyLawsStatePage";
 import CustodyQuestionsPage from "@/pages/CustodyQuestionsPage";
+import PublicQAPage from "@/pages/PublicQAPage";
 import NotFound from "@/pages/not-found";
 import type { ComponentType } from "react";
 
@@ -67,6 +68,7 @@ function Router() {
       <Route path="/custody-map" component={CustodyMapPage} />
       <Route path="/custody-laws/:stateSlug" component={CustodyLawsStatePage} />
       <Route path="/custody-questions/:slug" component={CustodyQuestionsPage} />
+      <Route path="/q/:stateSlug/:topic/:slug" component={PublicQAPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
 

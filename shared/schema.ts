@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { pgTable, serial, text, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
 
 export const jurisdictionSchema = z.object({
   state: z.string(),
@@ -221,3 +223,38 @@ export const documentQAResponseSchema = z.object({
 });
 
 export type DocumentQAResponse = z.infer<typeof documentQAResponseSchema>;
+
+/* ── Public Questions (Drizzle / Replit PostgreSQL) ───────────────────────── */
+
+/**
+ * public_questions — SEO-indexable Q&A pages generated from safe user questions.
+ *
+ * Populated automatically when a user asks a question via /api/ask-ai and the
+ * question passes the personal-identifier safety check (isSafeToPublish).
+ *
+ * is_public controls whether the page is visible at /q/:stateSlug/:topic/:slug.
+ * All auto-published questions start with is_public = true; it can be set false
+ * by an admin to delist a question without deleting it.
+ */
+export const publicQuestionsTable = pgTable("public_questions", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(),
+  stateSlug: text("state_slug").notNull(),
+  county: text("county").notNull().default(""),
+  topic: text("topic").notNull().default("custody-basics"),
+  slug: text("slug").notNull().unique(),
+  questionText: text("question_text").notNull(),
+  responseJson: jsonb("response_json").$type<Record<string, unknown>>().notNull(),
+  seoTitle: text("seo_title").notNull(),
+  seoDescription: text("seo_description").notNull(),
+  isPublic: boolean("is_public").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPublicQuestionSchema = createInsertSchema(publicQuestionsTable).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PublicQuestion = typeof publicQuestionsTable.$inferSelect;
+export type InsertPublicQuestion = typeof insertPublicQuestionSchema._type;

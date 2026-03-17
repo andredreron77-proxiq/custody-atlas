@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Scale, Users, Gavel, MapPin, MessageSquare, ArrowRight,
   Loader2, Map, HelpCircle, ChevronRight, BookOpen, RefreshCw,
-  AlertCircle, Baby,
+  AlertCircle, Baby, Users2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { LawSectionCard } from "@/components/app/LawSectionCard";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { Breadcrumb } from "@/components/app/Header";
-import type { CustodyLawRecord } from "@shared/schema";
+import type { CustodyLawRecord, PublicQuestion } from "@shared/schema";
 
 /* ── Slug helpers ──────────────────────────────────────────────────────────── */
 
@@ -157,6 +157,18 @@ export default function CustodyLawsStatePage() {
     },
     enabled: !!stateName,
   });
+
+  const { data: publicQuestionsData } = useQuery<{ questions: PublicQuestion[] }>({
+    queryKey: ["/api/public-questions", stateSlug],
+    queryFn: async () => {
+      const res = await fetch(`/api/public-questions/${stateSlug}?limit=5`);
+      if (!res.ok) return { questions: [] };
+      return res.json();
+    },
+    enabled: !!stateSlug,
+    staleTime: 1000 * 60 * 5,
+  });
+  const publicQuestions = publicQuestionsData?.questions ?? [];
 
   const isUnsupported =
     error instanceof Error && error.message === "unsupported_state";
@@ -402,6 +414,49 @@ export default function CustodyLawsStatePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Community Q&A — public questions from real users */}
+          {publicQuestions.length > 0 && (
+            <Card data-testid="section-community-qa">
+              <CardHeader className="pb-2 pt-4 px-5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Users2 className="w-4 h-4 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm font-semibold">
+                        Frequently Asked About {stateName} Custody
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Real questions with AI-generated answers
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-4 pt-0">
+                <div className="divide-y divide-border/60">
+                  {publicQuestions.map((q) => (
+                    <Link
+                      key={q.id}
+                      href={`/q/${q.stateSlug}/${q.topic}/${q.slug}`}
+                      className="flex items-center justify-between gap-3 py-3 hover:text-primary transition-colors group"
+                      data-testid={`link-public-question-${q.id}`}
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary mt-0.5 flex-shrink-0 transition-colors" />
+                        <span className="text-sm font-medium leading-snug line-clamp-2">
+                          {q.questionText}
+                        </span>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 group-hover:text-primary transition-colors" />
+                    </Link>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Child support impact card */}
           <ChildSupportImpactCard
