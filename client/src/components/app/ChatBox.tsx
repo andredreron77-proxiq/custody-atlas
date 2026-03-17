@@ -14,6 +14,7 @@ import { apiRequestRaw } from "@/lib/queryClient";
 import { UpgradePromptCard } from "./UpgradePromptCard";
 import { useQueryClient } from "@tanstack/react-query";
 import { registerChatBoxHandler, unregisterChatBoxHandler } from "@/lib/aiEntry";
+import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 
 interface ChatBoxProps {
   jurisdiction: Jurisdiction;
@@ -184,18 +185,28 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
     if (!justSubmitted.current || messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
 
-    // Use rAF to let React flush the DOM before measuring positions.
+    // Double rAF: first frame lets React paint, second frame waits for the
+    // layout to stabilise (structured cards can shift after the initial paint).
     requestAnimationFrame(() => {
-      if (lastMsg.role === "assistant") {
-        // Scroll so the top of the new AI response card is near the top of the chat area.
-        if (chatContainerRef.current && lastAssistantRef.current) {
-          scrollContainerToTop(chatContainerRef.current, lastAssistantRef.current);
+      requestAnimationFrame(() => {
+        if (lastMsg.role === "assistant") {
+          // Scroll so the top of the new AI response card sits near the top of
+          // the chat container — never scroll the page body.
+          if (chatContainerRef.current && lastAssistantRef.current) {
+            scrollContainerToTop(chatContainerRef.current, lastAssistantRef.current);
+          }
+          justSubmitted.current = false;
+        } else {
+          // User message just added — scroll the container to its bottom so
+          // the loading spinner is visible.
+          if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTo({
+              top: chatContainerRef.current.scrollHeight,
+              behavior: "smooth",
+            });
+          }
         }
-        justSubmitted.current = false;
-      } else {
-        // User message just added — scroll to the bottom to reveal the loading indicator.
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
+      });
     });
   }, [messages]);
 
@@ -271,7 +282,9 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      // preventScroll: true — do not let the browser jump the viewport to the
+      // textarea when re-focusing after a response renders.
+      setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 100);
     }
   };
 
@@ -315,7 +328,7 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
   const clearConversation = () => {
     setMessages([]);
     setLimitReached(false);
-    setTimeout(() => inputRef.current?.focus(), 100);
+    setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 100);
   };
 
   return (
@@ -420,7 +433,7 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs font-normal gap-1">
                           <Scale className="w-3 h-3" />
-                          {jurisdiction.state} · {jurisdiction.county} County
+                          {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
                         </Badge>
                       </div>
                     </CardHeader>

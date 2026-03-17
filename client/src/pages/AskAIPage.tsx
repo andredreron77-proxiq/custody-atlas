@@ -11,6 +11,7 @@ import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextH
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import type { Jurisdiction } from "@shared/schema";
+import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 
 export default function AskAIPage() {
   const [location] = useLocation();
@@ -23,12 +24,14 @@ export default function AskAIPage() {
   // Pre-filled question from the AI Entry Funnel (e.g. child support button on another page).
   const initialQuestion = urlParams.get("q") ?? undefined;
 
-  // Build a jurisdiction from URL params if present — these take priority over stored session
+  // Build a jurisdiction from URL params if present — these take priority over stored session.
+  // "General"/"general" is the sentinel for state-only context; it's kept as-is in the session
+  // because it passes ChatBox validation (truthy string) and the display layer now strips it.
   const urlJurisdiction: Jurisdiction | null =
-    stateParam && countyParam
+    stateParam
       ? {
           state: stateParam,
-          county: countyParam,
+          county: countyParam ?? "",
           country: urlParams.get("country") || "United States",
           formattedAddress: urlParams.get("address") || undefined,
           latitude: urlParams.get("lat") ? Number(urlParams.get("lat")) : undefined,
@@ -88,7 +91,7 @@ export default function AskAIPage() {
       <Breadcrumb
         items={[
           { label: "Home", href: "/" },
-          { label: `${jurisdiction.county} County, ${jurisdiction.state}`, href: lawPagePath },
+          { label: formatJurisdictionLabel(jurisdiction.state, jurisdiction.county), href: lawPagePath },
           { label: "Ask AI" },
         ]}
       />

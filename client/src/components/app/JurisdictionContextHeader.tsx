@@ -12,6 +12,7 @@
 
 import { MapPin, Lock, ArrowRight, GitCompare, FileText, Scale } from "lucide-react";
 import { Link } from "wouter";
+import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 
@@ -131,10 +132,9 @@ export function JurisdictionContextHeader(props: JurisdictionContextHeaderProps)
 
   if (props.mode === "document") {
     const { state, county, documentName, onChangeLocation, changeLocationHref } = props;
-    const hasLocation = !!(state || county);
-    const locationText = county && state
-      ? `${county} County, ${state}`
-      : state ?? county ?? null;
+    // Treat the "General"/"general" county sentinel as state-only.
+    const locationText = formatJurisdictionLabel(state, county) || null;
+    const hasLocation = !!locationText;
 
     return (
       <div

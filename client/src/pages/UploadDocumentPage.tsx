@@ -353,22 +353,26 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
     if (!docJustSubmitted.current || qaMessages.length === 0) return;
     const lastMsg = qaMessages[qaMessages.length - 1];
 
+    // Double rAF: first frame lets React paint, second frame waits for layout
+    // to fully stabilise before measuring scroll positions.
     requestAnimationFrame(() => {
-      if (lastMsg.role === "assistant") {
-        // Scroll so the new response card's top is near the top of the thread area.
-        if (docContainerRef.current && lastAssistantDocRef.current) {
-          scrollDocContainerToTop(docContainerRef.current, lastAssistantDocRef.current);
+      requestAnimationFrame(() => {
+        if (lastMsg.role === "assistant") {
+          // Scroll so the new response card's top is near the top of the thread area.
+          if (docContainerRef.current && lastAssistantDocRef.current) {
+            scrollDocContainerToTop(docContainerRef.current, lastAssistantDocRef.current);
+          }
+          docJustSubmitted.current = false;
+        } else {
+          // User message just added — scroll to the bottom to show the loading spinner.
+          if (docContainerRef.current) {
+            docContainerRef.current.scrollTo({
+              top: docContainerRef.current.scrollHeight,
+              behavior: "smooth",
+            });
+          }
         }
-        docJustSubmitted.current = false;
-      } else {
-        // User message just added — scroll to the bottom to show the loading spinner.
-        if (docContainerRef.current) {
-          docContainerRef.current.scrollTo({
-            top: docContainerRef.current.scrollHeight,
-            behavior: "smooth",
-          });
-        }
-      }
+      });
     });
   }, [qaMessages]);
 

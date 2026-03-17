@@ -1,0 +1,71 @@
+Fix two UX bugs in the Custody Atlas Ask AI experience.
+
+Goal:
+1. Remove broken jurisdiction placeholder text like "County, {State}" and display jurisdiction correctly.
+2. Fix the scrolling behavior so the screen stays aligned to the beginning of the newly returned AI response instead of jumping below the chat area.
+
+Requirements:
+
+Part 1 — Fix jurisdiction display
+
+1. Audit the Ask AI screen and any jurisdiction context header used in chat views.
+
+2. Fix the logic so jurisdiction text is rendered like this:
+- if county and state both exist: "Fulton County, Georgia"
+- if only state exists: "Georgia"
+- if only county exists: "Fulton County"
+- if neither exists: show no broken placeholder text
+
+3. Remove any fallback strings like:
+- "County, {State}"
+- "General County, {State}"
+- any literal template placeholders being rendered to the UI
+
+4. Ensure AI entry buttons and state-page CTAs pass the correct structured values:
+- jurisdiction_state
+- jurisdiction_county only if available
+
+Part 2 — Fix chat response scrolling
+
+5. Audit the Ask AI screen and document follow-up Q&A screen for scroll behavior after a response renders.
+
+6. Ensure the viewport scrolls to the TOP of the newest assistant response card, not to the bottom of the page and not below the chat box.
+
+7. Use the correct scroll container:
+- if chat is inside its own scrollable container, scroll that container
+- do not scroll the wrong parent/page element
+
+8. Prevent focus from jumping to elements below the chat area after render.
+- do not auto-focus footer links
+- do not keep the textarea focused if that causes the browser to reposition the viewport unexpectedly on mobile
+
+9. Ensure scrolling happens only after the final response card is rendered and layout is stable.
+- avoid firing scroll too early
+- avoid scroll jitter during response rendering
+
+10. Add a small top anchor/ref to the newest assistant response card and scroll that exact element into view with smooth behavior.
+
+11. Apply this fix to:
+- general Ask AI conversations
+- state CTA initiated AI conversations
+- document follow-up Q&A conversations
+
+Part 3 — Verification and cleanup
+
+12. Verify these scenarios:
+- Ask about child support in Georgia
+- Ask about relocation in a selected state
+- Ask follow-up questions in the same thread
+- Long AI response with structured cards
+
+13. Keep current functionality intact:
+- thread memory
+- structured responses
+- usage limits
+- Supabase logging
+
+14. After implementation, summarize:
+- files changed
+- what caused the jurisdiction placeholder bug
+- what caused the scroll bug
+- how the correct scroll target is now determined
