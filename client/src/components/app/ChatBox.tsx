@@ -13,9 +13,15 @@ import type { ChatMessage, AILegalResponse, Jurisdiction, ConversationHistoryIte
 import { apiRequestRaw } from "@/lib/queryClient";
 import { UpgradePromptCard } from "./UpgradePromptCard";
 import { useQueryClient } from "@tanstack/react-query";
+import { registerChatBoxHandler, unregisterChatBoxHandler } from "@/lib/aiEntry";
 
 interface ChatBoxProps {
   jurisdiction: Jurisdiction;
+  /**
+   * If provided, the ChatBox will auto-submit this question once on mount.
+   * Used by the AI Entry Funnel when navigating from a CTA button on another page.
+   */
+  initialQuestion?: string;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -148,16 +154,20 @@ function FollowUpChips({
   );
 }
 
-export function ChatBox({ jurisdiction }: ChatBoxProps) {
+export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const lastAssistantRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const justSubmitted = useRef(false);
+  // Stable ref to the latest sendMessage — lets us call it from effects/handlers
+  // registered once on mount without stale closures.
+  const _sendRef = useRef<(q: string) => void>(() => {});
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -277,6 +287,28 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
     }
   };
 
+  // Keep the stable ref in sync with the latest sendMessage closure on every render.
+  // This must appear after sendMessage is defined above.
+  _sendRef.current = sendMessage;
+
+  // Register this ChatBox as the active AI-entry handler on mount; unregister on unmount.
+  // Uses the ref so the handler always calls the current version of sendMessage without
+  // needing to re-register on every render.
+  useEffect(() => {
+    registerChatBoxHandler(
+      (q) => _sendRef.current(q),
+      () => wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+    );
+    return () => unregisterChatBoxHandler();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentional one-shot
+
+  // Auto-submit initialQuestion once on mount (used when navigating from a CTA button).
+  useEffect(() => {
+    if (!initialQuestion) return;
+    const timer = setTimeout(() => _sendRef.current(initialQuestion), 300);
+    return () => clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentional one-shot
+
   const isLastMessageAssistant =
     messages.length > 0 && messages[messages.length - 1].role === "assistant";
 
@@ -287,7 +319,7 @@ export function ChatBox({ jurisdiction }: ChatBoxProps) {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 gap-4">
+    <div ref={wrapperRef} className="flex flex-col h-full min-h-0 gap-4">
       {/* Thread label — only visible once a conversation has started */}
       {messages.length > 0 && (
         <div className="flex items-center justify-between gap-2 px-0.5 flex-shrink-0">

@@ -1,9 +1,10 @@
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import {
   DollarSign, MessageSquare, ChevronRight, Scale, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { triggerAIEntry, buildAskURL, type AIEntryParams } from "@/lib/aiEntry";
 
 /**
  * Child support calculation models for each of the 22 supported states.
@@ -46,12 +47,24 @@ export function ChildSupportImpactCard({
   county,
   country = "United States",
 }: ChildSupportImpactCardProps) {
+  const [, navigate] = useLocation();
   const supportModel = state ? SUPPORT_MODELS[state] : undefined;
 
-  const askAIHref =
-    state && county
-      ? `/ask?state=${encodeURIComponent(state)}&county=${encodeURIComponent(county)}&country=${encodeURIComponent(country)}`
-      : "/ask";
+  const handleAskAI = () => {
+    const params: AIEntryParams = {
+      topic: "child_support",
+      state,
+      county,
+      autoSubmit: true,
+    };
+
+    // If a ChatBox is active on this page, submit directly and scroll to it.
+    // Otherwise navigate to /ask with the question pre-filled.
+    const handled = triggerAIEntry(params);
+    if (!handled) {
+      navigate(buildAskURL({ ...params, country }));
+    }
+  };
 
   return (
     <Card
@@ -114,16 +127,15 @@ export function ChildSupportImpactCard({
           </div>
         )}
 
-        <Link href={askAIHref}>
-          <Button
-            className="w-full gap-2 mt-1"
-            variant="outline"
-            data-testid="button-ask-child-support"
-          >
-            <MessageSquare className="w-4 h-4" />
-            Ask about child support{state ? ` in ${state}` : ""}
-          </Button>
-        </Link>
+        <Button
+          onClick={handleAskAI}
+          className="w-full gap-2 mt-1"
+          variant="outline"
+          data-testid="button-ask-child-support"
+        >
+          <MessageSquare className="w-4 h-4" />
+          Ask about child support{state ? ` in ${state}` : ""}
+        </Button>
 
         <div className="flex items-start gap-1.5 pt-1 border-t border-border/60">
           <Info className="w-3 h-3 text-muted-foreground/70 flex-shrink-0 mt-0.5" />

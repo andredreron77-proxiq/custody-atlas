@@ -1,0 +1,98 @@
+Transform the "Ask about child support in {State}" button into a reusable AI Entry Funnel system across Custody Atlas.
+
+Goal:
+Turn static CTA buttons into intelligent entry points that:
+- inject contextual legal questions
+- open the AI interface
+- trigger responses
+- drive engagement and eventual conversion
+
+Part 1 — Create a reusable AI entry handler
+
+1. Build a centralized function:
+handleAIEntry({
+  questionTemplate,
+  state,
+  county,
+  topic,
+  autoSubmit: true
+})
+
+2. The handler should:
+- construct a full natural-language question using the template
+- attach structured metadata:
+  - jurisdiction_state
+  - jurisdiction_county (if available)
+  - topic (e.g. "child_support")
+- open or focus the Ask AI interface
+- create or reuse a conversation thread
+- optionally auto-submit the question
+
+Part 2 — Fix and upgrade the child support button
+
+3. Update "Ask about child support in {State}" button:
+- use handleAIEntry
+- template:
+  "How does child support work in {State}, and how is it affected by custody arrangements?"
+
+4. Behavior:
+- auto-submit immediately
+- scroll to the top of the AI response
+- ensure thread is labeled "General Custody Conversation"
+
+Part 3 — Add extensibility (important)
+
+5. Make the system reusable so other buttons can be added easily:
+Examples:
+- "Ask about relocation in {State}"
+- "Ask about joint custody in {State}"
+- "Ask about modifying custody in {State}"
+
+Each should only require:
+- a template string
+- a topic label
+
+Part 4 — Thread and context behavior
+
+6. If a user already has an active thread for the same state:
+- reuse the thread
+
+Otherwise:
+- create a new thread
+
+7. Ensure conversation memory works:
+- include recent messages
+- preserve jurisdiction context
+
+Part 5 — UX improvements
+
+8. When user clicks:
+- transition smoothly to chat view
+- auto-scroll to the start of the new AI response
+
+9. If user is not logged in:
+- allow 1–2 free interactions
+- then show login/signup prompt
+
+Part 6 — Analytics-ready (lightweight)
+
+10. Log each entry action:
+- topic (child_support, relocation, etc.)
+- state
+- timestamp
+
+Part 7 — Do not break existing functionality
+
+- AI structured responses
+- document analysis flow
+- existing Ask AI input
+- usage limits
+- Supabase logging
+
+Part 8 — Summary
+
+After implementation, summarize:
+- new reusable handler location
+- components updated
+- how new buttons can be added
+- how threads are created/reused

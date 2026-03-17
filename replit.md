@@ -102,6 +102,32 @@ These modules are not wired into the main app routes by default but can be regis
 
 ---
 
+## AI Entry Funnel
+
+**Location**: `client/src/lib/aiEntry.ts`
+
+A module-level system for triggering contextual AI questions from any CTA button across the app without React context or prop drilling.
+
+### How it works
+
+1. **ChatBox registers** itself on mount via `registerChatBoxHandler(submitFn, scrollFn)` and unregisters on unmount.
+2. **Any button** calls `triggerAIEntry({ topic, state, county, autoSubmit })`.
+   - If a ChatBox is mounted: scrolls to it, then auto-submits the question (150ms delay for smooth animation). Returns `true`.
+   - If no ChatBox is mounted: returns `false` — caller navigates to `/ask?state=...&county=...&q=...&topic=...`.
+3. **AskAIPage** reads the `q` URL param and passes it as `initialQuestion` to ChatBox, which auto-submits 300ms after mount.
+
+### Adding a new AI entry point
+
+1. Add a topic to `AI_ENTRY_TOPICS` in `aiEntry.ts` with a question template using `{state}` placeholder.
+2. Call `triggerAIEntry({ topic: "your_topic", state, county })` in any button `onClick`.
+3. If on a page without ChatBox, fall back to `navigate(buildAskURL({ topic, state, county }))`.
+
+### Analytics
+
+Every `triggerAIEntry` call logs `{ topic, state, timestamp }` to the browser console and appends to `localStorage["_ai_entry_log"]` (capped at 100 entries).
+
+---
+
 ## External Dependencies
 
 ### APIs & Services

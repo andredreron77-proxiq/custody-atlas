@@ -20,6 +20,8 @@ export default function AskAIPage() {
 
   const stateParam = urlParams.get("state");
   const countyParam = urlParams.get("county");
+  // Pre-filled question from the AI Entry Funnel (e.g. child support button on another page).
+  const initialQuestion = urlParams.get("q") ?? undefined;
 
   // Build a jurisdiction from URL params if present — these take priority over stored session
   const urlJurisdiction: Jurisdiction | null =
@@ -144,7 +146,7 @@ export default function AskAIPage() {
 
       <Card className="flex-1 min-h-0 flex flex-col">
         <CardContent className="flex-1 min-h-0 flex flex-col p-4">
-          <ChatBox jurisdiction={jurisdiction} />
+          <ChatBox jurisdiction={jurisdiction} initialQuestion={initialQuestion} />
         </CardContent>
       </Card>
     </div>
