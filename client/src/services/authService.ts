@@ -73,6 +73,31 @@ export async function signInWithGoogle(): Promise<{ error: string | null }> {
 }
 
 /**
+ * Send a password reset email.
+ * Supabase will email the user a link pointing to /reset-password.
+ */
+export async function requestPasswordReset(
+  email: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  return { error: error?.message ?? null };
+}
+
+/**
+ * Set a new password for the currently authenticated user.
+ * Call this on the /reset-password page after Supabase has established
+ * the recovery session from the link in the email.
+ */
+export async function updatePassword(
+  newPassword: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  return { error: error?.message ?? null };
+}
+
+/**
  * Sign the current user out.
  */
 export async function signOut(): Promise<void> {

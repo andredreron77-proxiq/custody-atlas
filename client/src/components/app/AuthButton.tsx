@@ -9,7 +9,7 @@
  */
 
 import { useState } from "react";
-import { LogIn, LogOut, User, Mail, Loader2 } from "lucide-react";
+import { LogIn, LogOut, User, Mail, Loader2, ArrowLeft, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,13 +29,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut } from "@/services/authService";
+import {
+  signInWithEmail,
+  signUpWithEmail,
+  signInWithGoogle,
+  signOut,
+  requestPasswordReset,
+} from "@/services/authService";
 import { useQueryClient } from "@tanstack/react-query";
+
+type DialogView = "signin" | "signup" | "forgot";
 
 export function AuthButton() {
   const { user, isLoading } = useCurrentUser();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"signin" | "signup">("signin");
+  const [view, setView] = useState<DialogView>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -50,13 +58,19 @@ export function AuthButton() {
     setMessage(null);
   }
 
+  function openDialog() {
+    resetForm();
+    setView("signin");
+    setOpen(true);
+  }
+
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     setMessage(null);
 
-    if (tab === "signin") {
+    if (view === "signin") {
       const { error } = await signInWithEmail(email, password);
       if (error) {
         setError(error);
@@ -74,6 +88,24 @@ export function AuthButton() {
       }
     }
     setSubmitting(false);
+  }
+
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    setMessage(null);
+
+    const { error } = await requestPasswordReset(email);
+    setSubmitting(false);
+
+    if (error) {
+      setError(error);
+    } else {
+      setMessage(
+        "If that email is registered, you'll receive a reset link shortly. Check your inbox and spam folder."
+      );
+    }
   }
 
   async function handleGoogle() {
@@ -151,7 +183,7 @@ export function AuthButton() {
         variant="outline"
         size="sm"
         className="gap-1.5 text-slate-100 border-slate-600 bg-transparent hover:bg-white/10 hover:text-white"
-        onClick={() => { resetForm(); setOpen(true); }}
+        onClick={openDialog}
         data-testid="button-login"
       >
         <LogIn className="w-3.5 h-3.5" />
@@ -160,83 +192,169 @@ export function AuthButton() {
 
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Welcome to Custody Atlas</DialogTitle>
-            <DialogDescription>
-              Sign in to access AI questions, document analysis, and your workspace.
-            </DialogDescription>
-          </DialogHeader>
 
-          <Tabs value={tab} onValueChange={(v) => { setTab(v as any); setError(null); setMessage(null); }}>
-            <TabsList className="w-full">
-              <TabsTrigger value="signin" className="flex-1">Sign In</TabsTrigger>
-              <TabsTrigger value="signup" className="flex-1">Sign Up</TabsTrigger>
-            </TabsList>
+          {/* ── Forgot password view ── */}
+          {view === "forgot" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Reset your password</DialogTitle>
+                <DialogDescription>
+                  Enter your email and we'll send you a link to set a new password.
+                </DialogDescription>
+              </DialogHeader>
 
-            <TabsContent value={tab} className="mt-4">
-              <form onSubmit={handleEmailAuth} className="space-y-3">
+              <form onSubmit={handleForgotPassword} className="mt-2 space-y-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="auth-email">Email</Label>
+                  <Label htmlFor="forgot-email">Email address</Label>
                   <Input
-                    id="auth-email"
+                    id="forgot-email"
                     type="email"
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     autoComplete="email"
-                    data-testid="input-email"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="auth-password">Password</Label>
-                  <Input
-                    id="auth-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    autoComplete={tab === "signin" ? "current-password" : "new-password"}
-                    data-testid="input-password"
+                    autoFocus
+                    data-testid="input-forgot-email"
                   />
                 </div>
 
                 {error && (
-                  <p className="text-sm text-destructive" data-testid="text-auth-error">{error}</p>
+                  <p className="text-sm text-destructive" data-testid="text-forgot-error">
+                    {error}
+                  </p>
                 )}
                 {message && (
-                  <p className="text-sm text-emerald-600 dark:text-emerald-400">{message}</p>
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400" data-testid="text-forgot-success">
+                    {message}
+                  </p>
                 )}
 
-                <Button type="submit" className="w-full gap-2" disabled={submitting} data-testid="button-submit-auth">
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                  {tab === "signin" ? "Sign In" : "Create Account"}
+                <Button
+                  type="submit"
+                  className="w-full gap-2"
+                  disabled={submitting || !!message}
+                  data-testid="button-send-reset"
+                >
+                  {submitting
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Send className="w-4 h-4" />}
+                  {submitting ? "Sending…" : "Send reset link"}
                 </Button>
               </form>
 
-              <div className="mt-3 relative flex items-center gap-3">
-                <div className="flex-1 h-px bg-border" />
-                <span className="text-xs text-muted-foreground">or</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-
-              <Button
-                variant="outline"
-                className="w-full mt-3 gap-2"
-                onClick={handleGoogle}
+              <button
                 type="button"
-                data-testid="button-google-auth"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mt-1"
+                onClick={() => { resetForm(); setView("signin"); }}
+                data-testid="button-back-to-signin"
               >
-                <User className="w-4 h-4" />
-                Continue with Google
-              </Button>
-            </TabsContent>
-          </Tabs>
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Back to sign in
+              </button>
+            </>
+          ) : (
+            /* ── Sign in / Sign up view ── */
+            <>
+              <DialogHeader>
+                <DialogTitle>Welcome to Custody Atlas</DialogTitle>
+                <DialogDescription>
+                  Sign in to access AI questions, document analysis, and your workspace.
+                </DialogDescription>
+              </DialogHeader>
 
-          <p className="text-[11px] text-muted-foreground text-center mt-2">
-            Free account. No credit card required.
-          </p>
+              <Tabs
+                value={view}
+                onValueChange={(v) => { setView(v as DialogView); setError(null); setMessage(null); }}
+              >
+                <TabsList className="w-full">
+                  <TabsTrigger value="signin" className="flex-1">Sign In</TabsTrigger>
+                  <TabsTrigger value="signup" className="flex-1">Sign Up</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value={view} className="mt-4">
+                  <form onSubmit={handleEmailAuth} className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="auth-email">Email</Label>
+                      <Input
+                        id="auth-email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        autoComplete="email"
+                        data-testid="input-email"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="auth-password">Password</Label>
+                        {view === "signin" && (
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={() => { resetForm(); setView("forgot"); }}
+                            data-testid="button-forgot-password"
+                          >
+                            Forgot password?
+                          </button>
+                        )}
+                      </div>
+                      <Input
+                        id="auth-password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        autoComplete={view === "signin" ? "current-password" : "new-password"}
+                        data-testid="input-password"
+                      />
+                    </div>
+
+                    {error && (
+                      <p className="text-sm text-destructive" data-testid="text-auth-error">{error}</p>
+                    )}
+                    {message && (
+                      <p className="text-sm text-emerald-600 dark:text-emerald-400">{message}</p>
+                    )}
+
+                    <Button
+                      type="submit"
+                      className="w-full gap-2"
+                      disabled={submitting}
+                      data-testid="button-submit-auth"
+                    >
+                      {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                      {view === "signin" ? "Sign In" : "Create Account"}
+                    </Button>
+                  </form>
+
+                  <div className="mt-3 relative flex items-center gap-3">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-xs text-muted-foreground">or</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    className="w-full mt-3 gap-2"
+                    onClick={handleGoogle}
+                    type="button"
+                    data-testid="button-google-auth"
+                  >
+                    <User className="w-4 h-4" />
+                    Continue with Google
+                  </Button>
+                </TabsContent>
+              </Tabs>
+
+              <p className="text-[11px] text-muted-foreground text-center mt-2">
+                Free account. No credit card required.
+              </p>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>

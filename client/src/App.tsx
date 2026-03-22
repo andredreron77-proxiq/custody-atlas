@@ -19,6 +19,7 @@ import TermsPage from "@/pages/TermsPage";
 import CustodyLawsStatePage from "@/pages/CustodyLawsStatePage";
 import CustodyQuestionsPage from "@/pages/CustodyQuestionsPage";
 import PublicQAPage from "@/pages/PublicQAPage";
+import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import NotFound from "@/pages/not-found";
 import type { ComponentType } from "react";
 
@@ -71,6 +72,7 @@ function Router() {
       <Route path="/q/:stateSlug/:topic/:slug" component={PublicQAPage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
 
       {/* Gated routes — require authentication */}
       <Route path="/ask">
