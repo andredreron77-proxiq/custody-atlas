@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { mkdirSync, unlinkSync, readFileSync } from "fs";
+import { mkdirSync, unlinkSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 import multer from "multer";
 import OpenAI from "openai";
 import { extractTextFromDocument } from "./documentai";
@@ -162,6 +163,20 @@ const upload = multer({
     }
   },
 });
+
+// Memory storage for audio uploads (Whisper transcription)
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB — OpenAI Whisper max
+});
+
+// Map UI voice names → real OpenAI TTS voice identifiers
+const TTS_VOICE_MAP: Record<string, string> = {
+  marin: "nova",
+  cedar: "onyx",
+  alloy: "alloy",
+};
+const ALLOWED_TTS_VOICES = new Set(Object.keys(TTS_VOICE_MAP));
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
@@ -758,6 +773,105 @@ ${userQuestion}`;
     } catch (err: any) {
       console.error("Document Q&A error:", err);
       return res.status(500).json({ error: err.message || "Failed to get answer. Please try again." });
+    }
+  });
+
+  /* ── Speech-to-Text: Whisper transcription ────────────────────────────── */
+
+  /**
+   * POST /api/transcribe
+   * Accepts a multipart audio file, transcribes it with OpenAI Whisper,
+   * and returns { text: string }.
+   * Requires authentication (Bearer token).
+   */
+  app.post("/api/transcribe", requireAuth, audioUpload.single("audio"), async (req, res) => {
+    let tmpPath: string | null = null;
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file received." });
+      }
+
+      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!hasAI) {
+        return res.status(503).json({ error: "AI service not configured." });
+      }
+
+      // Write buffer to a temp file so OpenAI SDK can read it as a stream
+      const ext = req.file.originalname?.split(".").pop() || "webm";
+      tmpPath = join(tmpdir(), `audio-${Date.now()}.${ext}`);
+      writeFileSync(tmpPath, req.file.buffer);
+
+      const openai = getOpenAIClient();
+      const { createReadStream } = await import("fs");
+      const audioStream = createReadStream(tmpPath) as any;
+      // Attach filename so OpenAI can infer the format
+      audioStream.path = tmpPath;
+
+      const transcription = await openai.audio.transcriptions.create({
+        file: audioStream,
+        model: "whisper-1",
+        response_format: "json",
+      });
+
+      return res.json({ text: transcription.text });
+    } catch (err: any) {
+      console.error("[transcribe] error:", err);
+      return res.status(500).json({ error: err.message || "Transcription failed. Please try again." });
+    } finally {
+      if (tmpPath) {
+        try { unlinkSync(tmpPath); } catch {}
+      }
+    }
+  });
+
+  /* ── Text-to-Speech ────────────────────────────────────────────────────── */
+
+  /**
+   * POST /api/tts
+   * Accepts { text: string, voice?: "marin" | "cedar" | "alloy" }.
+   * Calls OpenAI TTS and streams back audio/mpeg.
+   * Voice names are mapped server-side to real OpenAI voice identifiers.
+   * Requires authentication.
+   */
+  app.post("/api/tts", requireAuth, async (req, res) => {
+    try {
+      const { text, voice: rawVoice = "marin" } = req.body;
+
+      if (!text || typeof text !== "string" || text.trim().length === 0) {
+        return res.status(400).json({ error: "text is required." });
+      }
+      if (text.length > 4096) {
+        return res.status(400).json({ error: "Text is too long for TTS (max 4096 characters)." });
+      }
+
+      const voiceKey = typeof rawVoice === "string" ? rawVoice.toLowerCase() : "marin";
+      if (!ALLOWED_TTS_VOICES.has(voiceKey)) {
+        return res.status(400).json({ error: `Invalid voice. Choose: ${Array.from(ALLOWED_TTS_VOICES).join(", ")}.` });
+      }
+
+      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!hasAI) {
+        return res.status(503).json({ error: "AI service not configured." });
+      }
+
+      const openaiVoice = TTS_VOICE_MAP[voiceKey];
+      const openai = getOpenAIClient();
+
+      const speechResponse = await openai.audio.speech.create({
+        model: "tts-1",
+        voice: openaiVoice as any,
+        input: text.trim(),
+        response_format: "mp3",
+      });
+
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "no-store");
+
+      const audioBuffer = Buffer.from(await speechResponse.arrayBuffer());
+      return res.send(audioBuffer);
+    } catch (err: any) {
+      console.error("[tts] error:", err);
+      return res.status(500).json({ error: err.message || "Text-to-speech failed. Please try again." });
     }
   });
 

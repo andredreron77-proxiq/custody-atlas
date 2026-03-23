@@ -15,6 +15,9 @@ import { UpgradePromptCard } from "./UpgradePromptCard";
 import { useQueryClient } from "@tanstack/react-query";
 import { registerChatBoxHandler, unregisterChatBoxHandler } from "@/lib/aiEntry";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
+import { MicButton } from "./MicButton";
+import { TTSControls } from "./TTSControls";
+import { useSpeechRecording } from "@/hooks/useSpeechRecording";
 
 interface ChatBoxProps {
   jurisdiction: Jurisdiction;
@@ -171,6 +174,18 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
   const _sendRef = useRef<(q: string) => void>(() => {});
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Voice recording (speech-to-text)
+  const { state: micState, error: micError, startRecording, stopRecording, cancelRecording } =
+    useSpeechRecording({
+      onTranscribed: (text) => {
+        setInput((prev) => (prev.trim() ? prev + " " + text : text));
+        setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
+      },
+      onError: (msg) => {
+        toast({ title: "Microphone error", description: msg, variant: "destructive" });
+      },
+    });
 
   // Scroll the container so the target element's top sits near the top of the
   // visible area (with a small breathing-room offset).
@@ -448,11 +463,16 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
                 <div className="max-w-[88%] space-y-2 flex-1 min-w-0">
                   <Card className="border-border shadow-sm" data-testid={`card-response-${i}`}>
                     <CardHeader className="pb-2 pt-3.5 px-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         <Badge variant="outline" className="text-xs font-normal gap-1">
                           <Scale className="w-3 h-3" />
                           {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
                         </Badge>
+                        {/* TTS: read this response aloud */}
+                        <TTSControls
+                          text={msg.structured.summary}
+                          defaultVoice="marin"
+                        />
                       </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
@@ -519,6 +539,16 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
             </span>
           )}
         </div>
+
+        {/* Mic button — speech-to-text */}
+        <MicButton
+          state={micState}
+          onStart={startRecording}
+          onStop={stopRecording}
+          onCancel={cancelRecording}
+          disabled={isLoading || limitReached}
+        />
+
         <Button
           type="submit"
           size="icon"
