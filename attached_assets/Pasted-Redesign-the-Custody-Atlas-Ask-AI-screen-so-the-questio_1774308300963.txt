@@ -1,0 +1,66 @@
+Redesign the Custody Atlas Ask AI screen so the question input area is immediately visible near the top of the screen instead of being buried at the bottom.
+
+Problem:
+The current Ask AI text input / speech-to-text field is located at the bottom of the screen, forcing users to scroll down to find where to ask a question. This is poor UX, especially when entering Ask AI from a CTA button.
+
+Goal:
+Make the Ask AI input the primary visible interaction area, positioned near the top or center of the screen on initial load, so users can immediately type or speak a question.
+
+Requirements:
+
+1. Rework the Ask AI layout.
+
+For new or mostly empty conversations:
+- place the input box near the top of the screen, directly below the conversation/jurisdiction header
+- keep it visible without any scrolling
+- show suggested questions directly below the input
+
+2. For existing conversations:
+- keep the input area highly visible
+- do not force the user to scroll to the bottom to find it
+- prefer a sticky or anchored input area near the top of the chat workspace if that fits the layout cleanly
+
+3. Entry behavior:
+When the user navigates into Ask AI from:
+- Home
+- state page CTA
+- child support CTA
+- workspace
+the screen should:
+- land with the input area already in view
+- focus the text box if appropriate
+- avoid positioning the viewport below the main interaction area
+
+4. Preserve conversation UX:
+- prior messages should still be visible below the input
+- new AI responses should render below the input area
+- the start of the latest AI response should still scroll into view correctly
+
+5. Mobile-first design:
+- ensure the input box is near the top on mobile devices
+- keep large tap targets
+- keep speech-to-text button accessible next to the input
+
+6. Suggested layout structure:
+- Conversation header
+- Jurisdiction / context block
+- Ask AI input card
+- Suggested questions
+- Conversation thread / AI responses below
+
+7. Do not break:
+- thread memory
+- structured AI responses
+- usage limits
+- speech-to-text
+- CTA-initiated question flows
+
+8. Styling:
+- make the input box prominent and professional
+- use a clean card with strong visual hierarchy
+- maintain the legal-tech aesthetic
+
+9. After implementation, summarize:
+- files changed
+- layout changes made
+- how the new Ask AI entry view behaves on mobile and desktop

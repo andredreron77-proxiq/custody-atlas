@@ -2,14 +2,11 @@ import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { MessageSquare, MapPin, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { ChatBox } from "@/components/app/ChatBox";
-import { JurisdictionCard } from "@/components/app/JurisdictionCard";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
-import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import type { Jurisdiction } from "@shared/schema";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 
@@ -21,12 +18,8 @@ export default function AskAIPage() {
 
   const stateParam = urlParams.get("state");
   const countyParam = urlParams.get("county");
-  // Pre-filled question from the AI Entry Funnel (e.g. child support button on another page).
   const initialQuestion = urlParams.get("q") ?? undefined;
 
-  // Build a jurisdiction from URL params if present — these take priority over stored session.
-  // "General"/"general" is the sentinel for state-only context; it's kept as-is in the session
-  // because it passes ChatBox validation (truthy string) and the display layer now strips it.
   const urlJurisdiction: Jurisdiction | null =
     stateParam
       ? {
@@ -39,10 +32,7 @@ export default function AskAIPage() {
         }
       : null;
 
-  // useJurisdiction: URL params take priority; falls back to sessionStorage automatically
   const { jurisdiction, setJurisdiction, clearJurisdiction } = useJurisdiction(urlJurisdiction);
-
-  // "Change Location" shows the picker overlay without clearing — cleared only on confirm
   const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   const handleJurisdictionFound = (j: Jurisdiction) => {
@@ -55,6 +45,7 @@ export default function AskAIPage() {
     setShowLocationPicker(true);
   };
 
+  /* ── Location picker (no jurisdiction yet) ───────────────────────────── */
   if (!jurisdiction || showLocationPicker) {
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
@@ -86,8 +77,11 @@ export default function AskAIPage() {
     (jurisdiction.latitude !== undefined ? `&lat=${jurisdiction.latitude}` : "") +
     (jurisdiction.longitude !== undefined ? `&lng=${jurisdiction.longitude}` : "");
 
+  /* ── Main Ask AI layout ───────────────────────────────────────────────── */
   return (
-    <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col flex-1 min-h-0 gap-4">
+    <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4">
+
+      {/* Breadcrumb */}
       <Breadcrumb
         items={[
           { label: "Home", href: "/" },
@@ -96,26 +90,18 @@ export default function AskAIPage() {
         ]}
       />
 
-      <JurisdictionContextHeader
-        mode="jurisdiction"
-        state={jurisdiction.state}
-        county={jurisdiction.county}
-        onChangeLocation={handleChangeLocation}
-      />
+      {/* Jurisdiction context bar + action buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <JurisdictionContextHeader
+          mode="jurisdiction"
+          state={jurisdiction.state}
+          county={jurisdiction.county}
+          onChangeLocation={handleChangeLocation}
+        />
 
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold" data-testid="heading-ask-ai-active">
-            Ask About {jurisdiction.state} Custody Law
-          </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Get plain-English answers to your custody questions
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
           <Link href={lawPagePath}>
-            <Button variant="outline" size="sm" className="gap-1.5" data-testid="button-view-laws">
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs" data-testid="button-view-laws">
               <ArrowRight className="w-3.5 h-3.5" />
               View Law Summary
             </Button>
@@ -124,7 +110,7 @@ export default function AskAIPage() {
             variant="ghost"
             size="sm"
             onClick={handleChangeLocation}
-            className="gap-1.5"
+            className="gap-1.5 text-xs"
             data-testid="button-change-location"
           >
             <MapPin className="w-3.5 h-3.5" />
@@ -133,25 +119,9 @@ export default function AskAIPage() {
         </div>
       </div>
 
-      <JurisdictionCard jurisdiction={jurisdiction} />
+      {/* ChatBox — input at top, conversation thread grows below */}
+      <ChatBox jurisdiction={jurisdiction} initialQuestion={initialQuestion} />
 
-      {/* Educational notice */}
-      <p className="text-xs text-muted-foreground border rounded-md px-3 py-2 bg-muted/40 leading-relaxed" data-testid="text-ai-notice">
-        This assistant provides educational information about custody law based on your jurisdiction. It is not a substitute for a licensed attorney.
-      </p>
-
-      {/* Child support educational card */}
-      <ChildSupportImpactCard
-        state={jurisdiction.state}
-        county={jurisdiction.county}
-        country={jurisdiction.country ?? "United States"}
-      />
-
-      <Card className="flex-1 min-h-0 flex flex-col">
-        <CardContent className="flex-1 min-h-0 flex flex-col p-4">
-          <ChatBox jurisdiction={jurisdiction} initialQuestion={initialQuestion} />
-        </CardContent>
-      </Card>
     </div>
   );
 }

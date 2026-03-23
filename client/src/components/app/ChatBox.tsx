@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Send, Loader2, Bot, User, AlertTriangle, Sparkles,
+  Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
-  MessageSquare, RotateCcw, MapPin,
+  MessageSquare, RotateCcw, MapPin, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,7 +46,6 @@ const FOLLOW_UP_QUESTIONS = [
 
 function CautionsList({ cautions }: { cautions: string[] }) {
   if (!cautions || cautions.length === 0) return null;
-
   return (
     <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
       <div className="flex items-center gap-1.5">
@@ -74,9 +73,7 @@ function CautionsList({ cautions }: { cautions: string[] }) {
 function StructuredResponse({ data }: { data: AILegalResponse }) {
   return (
     <div className="space-y-4">
-      <div className="text-sm leading-relaxed text-foreground">
-        {data.summary}
-      </div>
+      <div className="text-sm leading-relaxed text-foreground">{data.summary}</div>
 
       {data.key_points.length > 0 && (
         <div className="space-y-2">
@@ -164,19 +161,14 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
   const lastAssistantRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const justSubmitted = useRef(false);
-  // Stable ref to the latest sendMessage — lets us call it from effects/handlers
-  // registered once on mount without stale closures.
   const _sendRef = useRef<(q: string) => void>(() => {});
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Voice recording (speech-to-text)
-  const { state: micState, error: micError, startRecording, stopRecording, cancelRecording } =
+  const { state: micState, startRecording, stopRecording, cancelRecording } =
     useSpeechRecording({
       onTranscribed: (text) => {
         setInput((prev) => (prev.trim() ? prev + " " + text : text));
@@ -187,40 +179,15 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
       },
     });
 
-  // Scroll the container so the target element's top sits near the top of the
-  // visible area (with a small breathing-room offset).
-  const scrollContainerToTop = (container: HTMLElement, el: HTMLElement, topPad = 12) => {
-    const containerRect = container.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const newScrollTop = container.scrollTop + (elRect.top - containerRect.top) - topPad;
-    container.scrollTo({ top: newScrollTop, behavior: "smooth" });
-  };
-
+  // After a new assistant message renders, scroll it into view via the page.
   useEffect(() => {
-    if (!justSubmitted.current || messages.length === 0) return;
-    const lastMsg = messages[messages.length - 1];
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.role !== "assistant") return;
 
-    // Double rAF: first frame lets React paint, second frame waits for the
-    // layout to stabilise (structured cards can shift after the initial paint).
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (lastMsg.role === "assistant") {
-          // Scroll so the top of the new AI response card sits near the top of
-          // the chat container — never scroll the page body.
-          if (chatContainerRef.current && lastAssistantRef.current) {
-            scrollContainerToTop(chatContainerRef.current, lastAssistantRef.current);
-          }
-          justSubmitted.current = false;
-        } else {
-          // User message just added — scroll the container to its bottom so
-          // the loading spinner is visible.
-          if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTo({
-              top: chatContainerRef.current.scrollHeight,
-              behavior: "smooth",
-            });
-          }
-        }
+        lastAssistantRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     });
   }, [messages]);
@@ -247,15 +214,11 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
       return;
     }
 
-    justSubmitted.current = true;
     const userMessage: ChatMessage = { role: "user", content: trimmed };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
-    // Build history from the current messages state (before the new user message
-    // is reflected in the render — React batches setState, so `messages` here
-    // is still the previous value). Cap to last 8 pairs = 16 turns.
     const historySnapshot: ConversationHistoryItem[] = messages
       .slice(-16)
       .map((m) => ({ role: m.role, content: m.content }));
@@ -283,7 +246,6 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
       }
 
       const data: AILegalResponse = await res.json();
-
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: data.summary,
@@ -297,8 +259,6 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
-      // preventScroll: true — do not let the browser jump the viewport to the
-      // textarea when re-focusing after a response renders.
       setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 100);
     }
   };
@@ -315,59 +275,56 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
     }
   };
 
-  // Keep the stable ref in sync with the latest sendMessage closure on every render.
-  // This must appear after sendMessage is defined above.
   _sendRef.current = sendMessage;
 
-  // Register this ChatBox as the active AI-entry handler on mount; unregister on unmount.
-  // Uses the ref so the handler always calls the current version of sendMessage without
-  // needing to re-register on every render.
   useEffect(() => {
     registerChatBoxHandler(
       (q) => _sendRef.current(q),
-      () => wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+      () => wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
     );
     return () => unregisterChatBoxHandler();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentional one-shot
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-submit initialQuestion once on mount (used when navigating from a CTA button).
   useEffect(() => {
     if (!initialQuestion) return;
     const timer = setTimeout(() => _sendRef.current(initialQuestion), 300);
     return () => clearTimeout(timer);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentional one-shot
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isLastMessageAssistant =
-    messages.length > 0 && messages[messages.length - 1].role === "assistant";
+  // Auto-focus input on mount so users can type immediately
+  useEffect(() => {
+    if (!initialQuestion) {
+      setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 150);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clearConversation = () => {
     setMessages([]);
     setLimitReached(false);
-    setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 100);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 350);
   };
 
   const jurisdictionLabel = formatJurisdictionLabel(jurisdiction.state, jurisdiction.county);
+  const hasMessages = messages.length > 0;
 
   return (
-    <div ref={wrapperRef} className="flex flex-col h-full min-h-0 gap-4">
-      {/* Conversation context bar — two labeled rows, visible once a conversation has started */}
-      {messages.length > 0 && (
-        <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3 flex-shrink-0">
+    <div ref={wrapperRef} className="flex flex-col gap-4">
+
+      {/* ── Conversation context bar ───────────────────────────────────────── */}
+      {hasMessages && (
+        <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3">
           <div className="space-y-1 min-w-0 flex-1">
-            {/* Row 1: Conversation */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Conversation</span>
               <div className="flex items-center gap-1.5 min-w-0">
                 <MessageSquare className="w-3 h-3 text-primary/70 flex-shrink-0" />
-                <span className="text-xs font-medium text-foreground">
-                  General Custody Conversation
-                </span>
+                <span className="text-xs font-medium text-foreground">General Custody Conversation</span>
                 <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal flex-shrink-0">
                   {Math.ceil(messages.length / 2)} Q&amp;A
                 </Badge>
               </div>
             </div>
-            {/* Row 2: Jurisdiction — only rendered when we have a usable label */}
             {jurisdictionLabel && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Jurisdiction</span>
@@ -390,109 +347,171 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
         </div>
       )}
 
-      {messages.length === 0 ? (
-        /* Scrollable-centering pattern:
-           outer = flex-1 overflow-y-auto (allows scroll when content is too tall)
-           inner = min-h-full flex flex-col items-center justify-center (centers when content fits) */
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="min-h-full flex flex-col items-center justify-center text-center px-4 py-6 gap-5">
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-7 h-7 text-primary" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-base mb-1">Ask About {jurisdiction.state} Custody Law</h3>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                Get plain-English explanations tailored to your questions.
-              </p>
-            </div>
-
-            <div className="w-full max-w-lg space-y-2">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                Common Questions
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {SUGGESTED_QUESTIONS.map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => sendMessage(q)}
-                    className="text-left text-sm px-3.5 py-2 rounded-md border bg-background hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
-                    data-testid={`button-suggested-${i}`}
-                  >
-                    {q}
-                  </button>
-                ))}
+      {/* ── Input card — always at the top, the primary interaction ───────── */}
+      <Card className="border-2 border-primary/15 shadow-md bg-card">
+        <CardContent className="p-4 space-y-3">
+          {/* Heading row — only on empty state */}
+          {!hasMessages && (
+            <div className="flex items-center gap-2.5 pb-1">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Ask about {jurisdiction.state} custody law
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Get plain-English answers tailored to your jurisdiction
+                </p>
               </div>
             </div>
+          )}
 
-            <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-md px-3 py-2 w-full max-w-lg">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-              <span className="text-xs text-amber-700 dark:text-amber-300">
-                AI responses are for general information only — not legal advice.
-              </span>
+          {/* Upgrade prompt if limit hit */}
+          {limitReached && <UpgradePromptCard type="question" />}
+
+          {/* Textarea + controls */}
+          <form onSubmit={handleSubmit} className="space-y-2">
+            <div className="relative">
+              <Textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  hasMessages
+                    ? "Ask a follow-up question..."
+                    : `Ask about ${jurisdiction.state} custody law... (e.g. "Can my ex move out of state?")`
+                }
+                disabled={isLoading || limitReached}
+                className="resize-none min-h-[72px] max-h-40 pr-3 text-sm"
+                rows={hasMessages ? 2 : 3}
+                data-testid="input-question"
+              />
+              {input.length > 0 && (
+                <span className="absolute bottom-2 right-3 text-xs text-muted-foreground/60 select-none">
+                  {input.length}/2000
+                </span>
+              )}
             </div>
+
+            <div className="flex items-center justify-between gap-2">
+              {/* Disclaimer */}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <AlertTriangle className="w-3 h-3 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+                <span className="text-[11px] text-muted-foreground leading-tight">
+                  General information only — not legal advice
+                </span>
+              </div>
+
+              {/* Mic + Send */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <MicButton
+                  state={micState}
+                  onStart={startRecording}
+                  onStop={stopRecording}
+                  onCancel={cancelRecording}
+                  disabled={isLoading || limitReached}
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached}
+                  data-testid="button-send"
+                  title="Send message"
+                  className="h-10 w-10"
+                >
+                  {isLoading
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Send className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* ── Suggested questions — visible only on empty state ─────────────── */}
+      {!hasMessages && (
+        <div className="space-y-2" data-testid="suggested-questions">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide px-0.5">
+            Common questions
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {SUGGESTED_QUESTIONS.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => sendMessage(q)}
+                disabled={isLoading}
+                className="text-left text-sm px-4 py-2.5 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 group"
+                data-testid={`button-suggested-${i}`}
+              >
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
+                {q}
+              </button>
+            ))}
           </div>
         </div>
-      ) : (
-        <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+      )}
+
+      {/* ── Conversation thread — grows downward below the input ───────────── */}
+      {hasMessages && (
+        <div className="space-y-4 pb-8">
           {messages.map((msg, i) => {
             const isLastAssistant = msg.role === "assistant" && i === messages.length - 1;
             return (
-            <div
-              key={i}
-              ref={isLastAssistant ? lastAssistantRef : null}
-              className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
-              data-testid={`message-${msg.role}-${i}`}
-            >
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}
+                key={i}
+                ref={isLastAssistant ? lastAssistantRef : null}
+                className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+                data-testid={`message-${msg.role}-${i}`}
               >
-                {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-              </div>
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                </div>
 
-              {msg.role === "user" ? (
-                <Card className="max-w-[80%] bg-primary text-primary-foreground border-primary/20">
-                  <CardContent className="p-3.5">
-                    <p className="text-sm leading-relaxed text-primary-foreground">{msg.content}</p>
-                  </CardContent>
-                </Card>
-              ) : msg.structured ? (
-                <div className="max-w-[88%] space-y-2 flex-1 min-w-0">
-                  <Card className="border-border shadow-sm" data-testid={`card-response-${i}`}>
-                    <CardHeader className="pb-2 pt-3.5 px-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <Badge variant="outline" className="text-xs font-normal gap-1">
-                          <Scale className="w-3 h-3" />
-                          {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
-                        </Badge>
-                        {/* TTS: read this response aloud */}
-                        <TTSControls
-                          text={msg.structured.summary}
-                          defaultVoice="marin"
-                        />
-                      </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4">
-                      <StructuredResponse data={msg.structured} />
+                {msg.role === "user" ? (
+                  <Card className="max-w-[80%] bg-primary text-primary-foreground border-primary/20">
+                    <CardContent className="p-3.5">
+                      <p className="text-sm leading-relaxed text-primary-foreground">{msg.content}</p>
                     </CardContent>
                   </Card>
+                ) : msg.structured ? (
+                  <div className="max-w-[88%] space-y-2 flex-1 min-w-0">
+                    <Card className="border-border shadow-sm" data-testid={`card-response-${i}`}>
+                      <CardHeader className="pb-2 pt-3.5 px-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge variant="outline" className="text-xs font-normal gap-1">
+                            <Scale className="w-3 h-3" />
+                            {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
+                          </Badge>
+                          <TTSControls text={msg.structured.summary} defaultVoice="marin" />
+                        </div>
+                      </CardHeader>
+                      <CardContent className="px-4 pb-4">
+                        <StructuredResponse data={msg.structured} />
+                      </CardContent>
+                    </Card>
 
-                  {i === messages.length - 1 && !isLoading && (
-                    <FollowUpChips onSelect={sendMessage} disabled={isLoading} />
-                  )}
-                </div>
-              ) : (
-                <Card className="max-w-[85%]">
-                  <CardContent className="p-3.5">
-                    <p className="text-sm leading-relaxed">{msg.content}</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          );
+                    {i === messages.length - 1 && !isLoading && (
+                      <FollowUpChips onSelect={sendMessage} disabled={isLoading} />
+                    )}
+                  </div>
+                ) : (
+                  <Card className="max-w-[85%]">
+                    <CardContent className="p-3.5">
+                      <p className="text-sm leading-relaxed">{msg.content}</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            );
           })}
 
           {isLoading && (
@@ -512,53 +531,8 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
               </Card>
             </div>
           )}
-          <div ref={messagesEndRef} />
         </div>
       )}
-
-      {limitReached && (
-        <UpgradePromptCard type="question" className="mb-2" />
-      )}
-
-      <form onSubmit={handleSubmit} className="flex items-end gap-2">
-        <div className="flex-1 relative">
-          <Textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={`Ask about ${jurisdiction.state} custody law... (Enter to send, Shift+Enter for new line)`}
-            disabled={isLoading || limitReached}
-            className="resize-none min-h-[60px] max-h-32 pr-3"
-            rows={2}
-            data-testid="input-question"
-          />
-          {input.length > 0 && (
-            <span className="absolute bottom-2 right-3 text-xs text-muted-foreground/60">
-              {input.length}/2000
-            </span>
-          )}
-        </div>
-
-        {/* Mic button — speech-to-text */}
-        <MicButton
-          state={micState}
-          onStart={startRecording}
-          onStop={stopRecording}
-          onCancel={cancelRecording}
-          disabled={isLoading || limitReached}
-        />
-
-        <Button
-          type="submit"
-          size="icon"
-          disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached}
-          data-testid="button-send"
-          title="Send message"
-        >
-          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-        </Button>
-      </form>
     </div>
   );
 }
