@@ -288,7 +288,7 @@ function StateInfoPanel({
             <Link href={askAIPath}>
               <Button className="w-full gap-2 justify-center" data-testid="button-ask-ai-no-data">
                 <MessageSquare className="w-4 h-4" />
-                Ask AI About {selectedState}
+                Ask Atlas About {selectedState}
               </Button>
             </Link>
           </div>
@@ -401,7 +401,7 @@ function StateInfoPanel({
                   data-testid="button-ask-ai-state"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
-                  Ask AI About This State
+                  Ask Atlas About This State
                 </Button>
               </Link>
               <Button
@@ -461,7 +461,7 @@ function ComparisonAISection({ stateA, stateB }: ComparisonAISectionProps) {
     <div className="border-t pt-4 mt-2 space-y-3" data-testid="comparison-ai-section">
       <div>
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          Ask AI about this comparison
+          Ask Atlas about this comparison
         </p>
         <div className="flex flex-wrap gap-1.5 mb-3">
           {COMPARISON_CHIPS.map((chip) => (

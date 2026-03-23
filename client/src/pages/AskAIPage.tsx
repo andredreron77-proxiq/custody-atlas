@@ -54,7 +54,7 @@ export default function AskAIPage() {
             <MessageSquare className="w-7 h-7 text-primary" />
           </div>
           <h1 className="text-2xl md:text-3xl font-bold mb-2" data-testid="heading-ask-ai">
-            Ask About Custody Law
+            Ask Atlas
           </h1>
           <p className="text-muted-foreground text-sm max-w-sm mx-auto">
             Share your location so we can provide information specific to your state's custody laws.
@@ -86,7 +86,7 @@ export default function AskAIPage() {
         items={[
           { label: "Home", href: "/" },
           { label: formatJurisdictionLabel(jurisdiction.state, jurisdiction.county), href: lawPagePath },
-          { label: "Ask AI" },
+          { label: "Ask Atlas" },
         ]}
       />
 

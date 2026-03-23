@@ -57,7 +57,7 @@ export function UnsupportedStateNotice({ state, askAIPath }: UnsupportedStateNot
           <Link href={askAIPath}>
             <Button size="sm" className="gap-1.5" data-testid="button-ask-ai-anyway">
               <MessageSquare className="w-3.5 h-3.5" />
-              Ask AI About {state} Laws
+              Ask Atlas About {state} Laws
             </Button>
           </Link>
 

@@ -272,7 +272,7 @@ export default function CustodyLawsStatePage() {
                 <Link href={askAIPath}>
                   <Button size="sm" className="gap-1.5" data-testid="button-ask-ai-unsupported">
                     <MessageSquare className="w-3.5 h-3.5" />
-                    Ask AI About {stateName}
+                    Ask Atlas About {stateName}
                   </Button>
                 </Link>
                 <Link href="/custody-map">

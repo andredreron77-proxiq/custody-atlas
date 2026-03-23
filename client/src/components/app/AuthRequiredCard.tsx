@@ -18,7 +18,7 @@ type GatedFeature = "ask-ai" | "analyze-document" | "workspace";
 
 const FEATURE_COPY: Record<GatedFeature, { title: string; description: string; icon: string }> = {
   "ask-ai": {
-    title: "Ask AI requires sign-in",
+    title: "Ask Atlas requires sign-in",
     description:
       "Get plain-English answers to your custody questions, tailored to your specific state and county. Create a free account to get started.",
     icon: "💬",

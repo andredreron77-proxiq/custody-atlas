@@ -524,7 +524,7 @@ export default function WorkspacePage() {
               <EmptyState
                 icon={MessageSquare}
                 message="Ask your first custody question"
-                ctaLabel="Ask AI"
+                ctaLabel="Ask Atlas"
                 ctaHref={askAIPath}
                 testId="empty-recent-questions"
               />

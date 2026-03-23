@@ -358,10 +358,10 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  Ask about {jurisdiction.state} custody law
+                  Ask Atlas
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Get plain-English answers tailored to your jurisdiction
+                  Plain-English custody law answers for {jurisdiction.state}
                 </p>
               </div>
             </div>

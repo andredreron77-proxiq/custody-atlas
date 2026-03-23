@@ -76,7 +76,7 @@ export function Footer() {
               {[
                 { label: "Home", href: "/" },
                 { label: "Custody Map", href: "/custody-map" },
-                { label: "Ask AI", href: "/ask" },
+                { label: "Ask Atlas", href: "/ask" },
                 { label: "Analyze Document", href: "/upload-document" },
               ].map(({ label, href }) => (
                 <li key={label}>

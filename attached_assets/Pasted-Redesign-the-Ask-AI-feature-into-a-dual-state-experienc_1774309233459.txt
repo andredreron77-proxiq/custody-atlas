@@ -1,0 +1,137 @@
+Redesign the Ask AI feature into a dual-state experience and rename it to "Ask Atlas" across the application.
+
+Goal:
+Create a clean, intuitive experience with two distinct states:
+1. Ready-to-Ask (new or empty conversation)
+2. Active Conversation (ongoing chat)
+
+Also fully rebrand "Ask AI" → "Ask Atlas".
+
+---------------------------------------
+PART 1 — Rename Feature
+---------------------------------------
+
+1. Replace all user-facing references:
+- "Ask AI" → "Ask Atlas"
+
+Apply to:
+- navigation/menu
+- buttons
+- headers
+- CTAs
+- state pages
+- SEO pages
+- tooltips
+
+2. Update header titles:
+- "Ask Atlas"
+- not "AI Chat" or "Ask AI"
+
+---------------------------------------
+PART 2 — Ready-to-Ask State (NEW UX)
+---------------------------------------
+
+Trigger this state when:
+- no messages exist
+- new session
+- entering from CTA
+
+Layout:
+
+- Conversation Header
+- Jurisdiction (if available)
+
+- Center/top-focused input card:
+  - large text box
+  - speech-to-text button
+  - placeholder:
+    "Ask a question about custody in {State}..."
+
+- Suggested questions below input:
+  - 3–5 relevant prompts
+
+- Clean, minimal layout (no empty chat thread)
+
+Behavior:
+- input is immediately visible
+- auto-focus cursor
+- no scrolling required
+
+---------------------------------------
+PART 3 — Active Conversation State
+---------------------------------------
+
+Trigger when:
+- at least one question/response exists
+
+Layout:
+
+- Header (Ask Atlas)
+- Jurisdiction
+
+- Compact input bar (STILL VISIBLE):
+  - positioned near top OR sticky
+  - not buried at bottom
+
+- Conversation thread below input
+
+Behavior:
+- new responses render below
+- scroll keeps latest response visible
+- user always sees where to type next
+
+---------------------------------------
+PART 4 — Navigation Behavior
+---------------------------------------
+
+When entering Ask Atlas from:
+- Home
+- state page CTA
+- child support CTA
+- workspace
+
+System should:
+- land in Ready-to-Ask state
+- show input immediately
+- focus cursor
+- not scroll past input
+
+---------------------------------------
+PART 5 — Mobile Optimization
+---------------------------------------
+
+- input near top of screen
+- large tap area
+- speech button visible
+- no scroll required to start typing
+
+---------------------------------------
+PART 6 — Design Direction
+---------------------------------------
+
+- clean card UI for input
+- subtle border/shadow
+- professional legal-tech feel
+- strong visual hierarchy:
+  header → jurisdiction → input → suggestions → results
+
+---------------------------------------
+PART 7 — Do Not Break
+---------------------------------------
+
+- Supabase auth
+- usage limits
+- thread memory
+- document analysis follow-up
+- jurisdiction logic
+- speech-to-text
+
+---------------------------------------
+PART 8 — Summary
+---------------------------------------
+
+After implementation:
+- list files changed
+- confirm rename coverage
+- confirm dual-state logic
+- confirm mobile behavior

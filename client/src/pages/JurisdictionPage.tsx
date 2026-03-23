@@ -445,7 +445,7 @@ export default function JurisdictionPage() {
                   </div>
                   <div>
                     <CardTitle className="text-sm font-semibold">
-                      Ask AI About {state} Custody Law
+                      Ask Atlas About {state} Custody Law
                     </CardTitle>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Plain-English answers to your specific questions
@@ -479,7 +479,7 @@ export default function JurisdictionPage() {
               <CardContent className="p-0">
                 <div className="h-px bg-border" />
                 <div
-                  className="p-4 h-[520px] flex flex-col"
+                  className="p-4 h-[520px] flex flex-col overflow-y-auto"
                   data-testid="panel-ask-ai-content"
                 >
                   <ChatBox jurisdiction={jurisdiction} />
