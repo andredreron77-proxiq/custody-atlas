@@ -39,11 +39,23 @@ import {
   type Jurisdiction,
 } from "@shared/schema";
 
+/** Chat/text model client — routes through the AI Integration proxy when available. */
 function getOpenAIClient(): OpenAI {
   return new OpenAI({
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
     baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
   });
+}
+
+/**
+ * Audio-only client — always uses the real OpenAI API endpoint.
+ * The Replit AI Integration proxy does not support the audio API
+ * (Whisper transcription, TTS), so these calls must go direct.
+ */
+function getOpenAIDirectClient(): OpenAI {
+  const key = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY is not configured.");
+  return new OpenAI({ apiKey: key });
 }
 
 async function geocodeWithGoogle(
@@ -801,7 +813,7 @@ ${userQuestion}`;
       tmpPath = join(tmpdir(), `audio-${Date.now()}.${ext}`);
       writeFileSync(tmpPath, req.file.buffer);
 
-      const openai = getOpenAIClient();
+      const openai = getOpenAIDirectClient();
       const { createReadStream } = await import("fs");
       const audioStream = createReadStream(tmpPath) as any;
       // Attach filename so OpenAI can infer the format
@@ -855,7 +867,7 @@ ${userQuestion}`;
       }
 
       const openaiVoice = TTS_VOICE_MAP[voiceKey];
-      const openai = getOpenAIClient();
+      const openai = getOpenAIDirectClient();
 
       const speechResponse = await openai.audio.speech.create({
         model: "tts-1",
