@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
-  MessageSquare, RotateCcw, MapPin, Sparkles,
+  MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,13 +28,16 @@ interface ChatBoxProps {
   initialQuestion?: string;
 }
 
-const SUGGESTED_QUESTIONS = [
-  "Can my ex move out of state with our child?",
-  "What happens if visitation is denied?",
-  "How do custody modifications usually work?",
-  "What does 'best interests of the child' mean in my state?",
-  "How do I get joint custody?",
-];
+function getSuggestedQuestions(state: string): string[] {
+  const s = state || "my state";
+  return [
+    `How is custody decided in ${s}?`,
+    "Can my ex move out of state with my child?",
+    `How does child support work in ${s}?`,
+    `What rights do fathers have in ${s}?`,
+    `How do I modify a custody order in ${s}?`,
+  ];
+}
 
 const FOLLOW_UP_QUESTIONS = [
   "Can I modify this custody order later?",
@@ -135,8 +138,10 @@ function FollowUpChips({
   disabled: boolean;
 }) {
   return (
-    <div className="pt-2 space-y-1.5" data-testid="follow-up-chips">
-      <p className="text-xs text-muted-foreground font-medium">Follow-up questions:</p>
+    <div className="pt-3 space-y-2.5" data-testid="follow-up-chips">
+      <p className="text-xs text-muted-foreground italic">
+        Want to go deeper? Ask a follow-up about your situation.
+      </p>
       <div className="flex flex-wrap gap-2">
         {FOLLOW_UP_QUESTIONS.map((q, i) => (
           <button
@@ -380,8 +385,10 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
                 onKeyDown={handleKeyDown}
                 placeholder={
                   hasMessages
-                    ? "Ask a follow-up question..."
-                    : `Ask about ${jurisdiction.state} custody law... (e.g. "Can my ex move out of state?")`
+                    ? "Ask a follow-up question about your situation..."
+                    : jurisdiction.state
+                    ? `Ask a question about custody in ${jurisdiction.state}...`
+                    : "Ask a question about child custody laws..."
                 }
                 disabled={isLoading || limitReached}
                 className="resize-none min-h-[72px] max-h-40 pr-3 text-sm"
@@ -438,7 +445,7 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
             Common questions
           </p>
           <div className="flex flex-col gap-1.5">
-            {SUGGESTED_QUESTIONS.map((q, i) => (
+            {getSuggestedQuestions(jurisdiction.state).map((q, i) => (
               <button
                 key={i}
                 onClick={() => sendMessage(q)}
@@ -500,7 +507,18 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
                     </Card>
 
                     {i === messages.length - 1 && !isLoading && (
-                      <FollowUpChips onSelect={sendMessage} disabled={isLoading} />
+                      <>
+                        <FollowUpChips onSelect={sendMessage} disabled={isLoading} />
+                        {/* Attorney bridge — shown after 2+ questions */}
+                        {Math.ceil(messages.length / 2) >= 2 && (
+                          <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3.5 py-3" data-testid="attorney-bridge">
+                            <UserCheck className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                              Need help applying this to your situation? You can speak with a custody attorney for guidance specific to your case.
+                            </p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : (
@@ -524,7 +542,7 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      Analyzing {jurisdiction.state} custody law...
+                      Looking into {jurisdiction.state} custody law for you...
                     </span>
                   </div>
                 </CardContent>

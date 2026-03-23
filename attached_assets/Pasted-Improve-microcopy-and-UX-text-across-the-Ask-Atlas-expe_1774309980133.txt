@@ -1,0 +1,79 @@
+Improve microcopy and UX text across the "Ask Atlas" experience to make it more natural, engaging, and conversion-focused.
+
+Goal:
+Encourage users to ask better questions, continue conversations, and feel confident using the product.
+
+---------------------------------------
+PART 1 — Input Placeholder
+---------------------------------------
+
+Dynamic placeholder examples:
+
+If state exists:
+"Ask a question about custody in {State}..."
+
+If no state:
+"Ask a question about child custody laws..."
+
+---------------------------------------
+PART 2 — Suggested Questions
+---------------------------------------
+
+Update to high-intent prompts:
+
+- "How is custody decided in {State}?"
+- "Can my ex move out of state with my child?"
+- "How does child support work in {State}?"
+- "What rights do fathers have in {State}?"
+- "How do I modify a custody order in {State}?"
+
+---------------------------------------
+PART 3 — Follow-Up Prompt (after response)
+---------------------------------------
+
+Add below every AI response:
+
+"Want to go deeper? Ask a follow-up about your situation."
+
+---------------------------------------
+PART 4 — Soft Attorney Bridge (future-ready)
+---------------------------------------
+
+After 2+ questions:
+
+"Need help applying this to your situation? You can speak with a custody attorney."
+
+(do not implement full marketplace yet — just placeholder messaging)
+
+---------------------------------------
+PART 5 — Limit Messaging
+---------------------------------------
+
+Replace generic limit text with:
+
+"You’ve used your 5 free questions for today. Upgrade to continue your custody conversation."
+
+---------------------------------------
+PART 6 — Tone
+---------------------------------------
+
+- calm
+- professional
+- supportive
+- not robotic
+- not overly legal
+
+---------------------------------------
+PART 7 — Do Not Break
+---------------------------------------
+
+- existing logic
+- API calls
+- UI layout
+
+---------------------------------------
+PART 8 — Summary
+---------------------------------------
+
+- list updated text areas
+- confirm dynamic placeholders working

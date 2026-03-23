@@ -2,7 +2,7 @@
  * UpgradePromptCard — shown inline when a user hits their daily usage limit.
  */
 
-import { Zap, RefreshCw } from "lucide-react";
+import { Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -15,14 +15,14 @@ interface UpgradePromptCardProps {
 
 const COPY: Record<LimitType, { title: string; description: string }> = {
   question: {
-    title: "Daily question limit reached",
+    title: "You've reached your free question limit",
     description:
-      "You've used all 5 free AI questions for today. Limits reset at midnight, or upgrade to Pro for 25 questions per day.",
+      "You've used your 5 free questions for today. Upgrade to continue your custody conversation, or come back tomorrow when your limit resets.",
   },
   document: {
-    title: "Daily document limit reached",
+    title: "You've reached your free analysis limit",
     description:
-      "You've used your free document analysis for today. Limits reset at midnight, or upgrade to Pro for 10 analyses per day.",
+      "You've used your free document analysis for today. Upgrade to Pro for 10 analyses per day, or come back tomorrow.",
   },
 };
 
@@ -38,10 +38,6 @@ export function UpgradePromptCard({ type, className }: UpgradePromptCardProps) {
         <div className="space-y-1 min-w-0">
           <p className="text-sm font-medium text-amber-900 dark:text-amber-200">{copy.title}</p>
           <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">{copy.description}</p>
-          <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-1">
-            <RefreshCw className="w-3 h-3" />
-            <span>Resets daily at midnight</span>
-          </div>
         </div>
       </CardContent>
     </Card>
