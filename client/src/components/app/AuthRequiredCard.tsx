@@ -45,8 +45,8 @@ export function AuthRequiredCard({ feature }: AuthRequiredCardProps) {
   const copy = FEATURE_COPY[feature];
 
   function handleSignIn() {
-    // Supabase slot: import { signIn } from "@/services/authService"; signIn();
-    // For now, no-op — replace when Supabase is connected.
+    // Signal the AuthButton in the header to open its dialog.
+    window.dispatchEvent(new CustomEvent("custody-atlas:open-auth"));
   }
 
   return (

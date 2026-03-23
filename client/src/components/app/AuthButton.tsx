@@ -8,7 +8,7 @@
  * with a dropdown for signing out.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LogIn, LogOut, User, Mail, Loader2, ArrowLeft, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +63,15 @@ export function AuthButton() {
     setView("signin");
     setOpen(true);
   }
+
+  // Listen for the event fired by AuthRequiredCard's "Sign in to continue" button.
+  useEffect(() => {
+    function handleOpenAuth() {
+      if (!user) openDialog();
+    }
+    window.addEventListener("custody-atlas:open-auth", handleOpenAuth);
+    return () => window.removeEventListener("custody-atlas:open-auth", handleOpenAuth);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault();
