@@ -3,7 +3,8 @@ import { Link } from "wouter";
 import {
   LayoutDashboard, MapPin, MessageSquare, FileSearch, Map,
   GitCompare, ShieldCheck, Lock, FileText, ArrowRight,
-  ChevronRight, BookOpen, Scale, ExternalLink, Lightbulb, X,
+  ChevronRight, BookOpen, Scale, Lightbulb, X,
+  Clock, Play, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,47 +12,55 @@ import { Badge } from "@/components/ui/badge";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequestRaw } from "@/lib/queryClient";
+import { useCurrentUser } from "@/hooks/use-auth";
 
-/* ── Placeholder types for recent activity ────────────────────────────────── */
+/* ── Workspace API types ──────────────────────────────────────────────────── */
 
-interface RecentDocument {
+interface WorkspaceThread {
   id: string;
-  name: string;
-  status: "analyzed" | "processing" | "error";
-  analysisPath?: string;
+  title: string | null;
+  threadType: string;
+  jurisdictionState: string | null;
+  jurisdictionCounty: string | null;
+  documentId: string | null;
+  createdAt: string;
 }
 
-interface RecentQuestion {
+interface WorkspaceDocument {
   id: string;
-  question: string;
-  state?: string;
+  fileName: string;
+  mimeType: string;
+  analysisJson: Record<string, unknown>;
+  createdAt: string;
 }
 
-/* ── Placeholder data — replace with real storage when available ─────────── */
-const RECENT_DOCUMENTS: RecentDocument[] = [];
-const RECENT_QUESTIONS: RecentQuestion[] = [];
+interface WorkspaceData {
+  threads: WorkspaceThread[];
+  documents: WorkspaceDocument[];
+}
 
 /* ── Status badge ─────────────────────────────────────────────────────────── */
-function StatusBadge({ status }: { status: RecentDocument["status"] }) {
-  if (status === "analyzed") {
-    return (
-      <Badge className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50">
-        Analyzed
-      </Badge>
-    );
-  }
-  if (status === "processing") {
-    return (
-      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-        Processing
-      </Badge>
-    );
-  }
+function AnalyzedBadge() {
   return (
-    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-      Error
+    <Badge className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50">
+      Analyzed
     </Badge>
   );
+}
+
+/* ── Relative time helper ─────────────────────────────────────────────────── */
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 /* ── Next Best Step types & config ───────────────────────────────────────── */
@@ -249,10 +258,27 @@ function EmptyState({
 
 export default function WorkspacePage() {
   const { jurisdiction, clearJurisdiction } = useJurisdiction();
+  const { user } = useCurrentUser();
 
-  // ── Decision engine (modular — swap for real analytics later) ────────────
-  const hasQuestions = RECENT_QUESTIONS.length > 0;
-  const hasDocuments = RECENT_DOCUMENTS.length > 0;
+  // ── Workspace data — real threads and documents from the server ───────────
+  const { data: workspaceData, isLoading: isLoadingWorkspace } = useQuery<WorkspaceData | null>({
+    queryKey: ["/api/workspace"],
+    enabled: !!user,
+    staleTime: 0,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/workspace");
+      if (!res.ok) return { threads: [], documents: [] };
+      return res.json();
+    },
+  });
+
+  const threads: WorkspaceThread[] = workspaceData?.threads ?? [];
+  const documents: WorkspaceDocument[] = workspaceData?.documents ?? [];
+
+  // ── Decision engine ───────────────────────────────────────────────────────
+  const hasQuestions = threads.length > 0;
+  const hasDocuments = documents.length > 0;
   // "doc follow-up" = has a document AND has asked an AI question since upload
   const hasDocFollowup = hasDocuments && hasQuestions;
 
@@ -294,7 +320,7 @@ export default function WorkspacePage() {
           </h1>
         </div>
         <p className="text-muted-foreground text-sm ml-10">
-          Your central place to understand custody law, analyze documents, and track your progress.
+          Return to previous conversations, documents, and analyses anytime.
         </p>
       </div>
 
@@ -455,27 +481,34 @@ export default function WorkspacePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {RECENT_DOCUMENTS.length > 0 ? (
+            {isLoadingWorkspace && user ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : documents.length > 0 ? (
               <ul className="space-y-2" data-testid="list-recent-documents">
-                {RECENT_DOCUMENTS.map((doc) => (
+                {documents.map((doc) => (
                   <li
                     key={doc.id}
                     className="flex items-center justify-between gap-3 rounded-lg border p-3"
                     data-testid={`doc-item-${doc.id}`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-sm font-medium truncate">{doc.name}</span>
-                      <StatusBadge status={doc.status} />
+                      <span className="text-sm font-medium truncate">{doc.fileName}</span>
+                      {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
                     </div>
-                    {doc.analysisPath && (
-                      <Link href={doc.analysisPath}>
-                        <Button variant="ghost" size="sm" className="flex-shrink-0 text-xs gap-1" data-testid={`button-view-doc-${doc.id}`}>
-                          View analysis
-                          <ExternalLink className="w-3 h-3" />
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="text-[11px] text-muted-foreground hidden sm:block">
+                        {relativeTime(doc.createdAt)}
+                      </span>
+                      <Link href="/upload-document">
+                        <Button variant="ghost" size="sm" className="text-xs gap-1 h-7 px-2" data-testid={`button-view-doc-${doc.id}`}>
+                          New analysis
+                          <ArrowRight className="w-3 h-3" />
                         </Button>
                       </Link>
-                    )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -491,42 +524,88 @@ export default function WorkspacePage() {
           </CardContent>
         </Card>
 
-        {/* ── D: Recent Questions Card ───────────────────────────── */}
-        <Card className="shadow-sm border" data-testid="card-recent-questions">
+        {/* ── D: Recent Conversations Card ──────────────────────── */}
+        <Card className="shadow-sm border" data-testid="card-recent-conversations">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-              <MessageSquare className="w-3.5 h-3.5 text-primary" />
-              Recent Questions
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-primary" />
+                Recent Conversations
+              </CardTitle>
+              {user && (
+                <span className="text-[10px] text-muted-foreground leading-none">
+                  auto-saved
+                </span>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            {RECENT_QUESTIONS.length > 0 ? (
-              <ul className="space-y-2" data-testid="list-recent-questions">
-                {RECENT_QUESTIONS.map((q) => (
-                  <li
-                    key={q.id}
-                    className="flex items-start justify-between gap-3 rounded-lg border p-3"
-                    data-testid={`question-item-${q.id}`}
-                  >
-                    <p className="text-sm text-foreground leading-snug flex-1 min-w-0 line-clamp-2">
-                      {q.question}
-                    </p>
-                    <Link href={askAIPath}>
-                      <Button variant="ghost" size="sm" className="flex-shrink-0 text-xs gap-1" data-testid={`button-ask-follow-${q.id}`}>
-                        Follow up
-                        <ChevronRight className="w-3 h-3" />
-                      </Button>
-                    </Link>
-                  </li>
-                ))}
+            {!user ? (
+              <EmptyState
+                icon={MessageSquare}
+                message="Sign in to save and resume conversations"
+                ctaLabel="Ask Atlas"
+                ctaHref={askAIPath}
+                testId="empty-conversations-unauth"
+              />
+            ) : isLoadingWorkspace ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : threads.length > 0 ? (
+              <ul className="space-y-2" data-testid="list-recent-conversations">
+                {threads.map((thread) => {
+                  const resumeParams = new URLSearchParams();
+                  resumeParams.set("thread", thread.id);
+                  if (thread.jurisdictionState) resumeParams.set("state", thread.jurisdictionState);
+                  if (thread.jurisdictionCounty) resumeParams.set("county", thread.jurisdictionCounty);
+                  const resumeHref = `/ask?${resumeParams.toString()}`;
+
+                  return (
+                    <li
+                      key={thread.id}
+                      className="flex items-start justify-between gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors"
+                      data-testid={`conversation-item-${thread.id}`}
+                    >
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
+                          {thread.title ?? "Custody Conversation"}
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {thread.jurisdictionState && (
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              <MapPin className="w-2.5 h-2.5" />
+                              {thread.jurisdictionState}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5" />
+                            {relativeTime(thread.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+                      <Link href={resumeHref}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-shrink-0 text-xs gap-1 h-7 px-2.5"
+                          data-testid={`button-resume-${thread.id}`}
+                        >
+                          <Play className="w-2.5 h-2.5" />
+                          Resume
+                        </Button>
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <EmptyState
                 icon={MessageSquare}
-                message="Ask your first custody question"
+                message="Your conversations will appear here after you ask your first question"
                 ctaLabel="Ask Atlas"
                 ctaHref={askAIPath}
-                testId="empty-recent-questions"
+                testId="empty-recent-conversations"
               />
             )}
           </CardContent>

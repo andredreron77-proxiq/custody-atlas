@@ -1,0 +1,94 @@
+Enhance Custody Atlas so Ask Atlas conversations and document-related interactions are automatically saved into the user's Case Workspace.
+
+Goal:
+Turn Custody Atlas from a standalone chat tool into a persistent case-oriented workspace where users can return to prior conversations and continue their progress.
+
+Part 1 — Core Behavior
+
+1. Automatically save user activity into the Case Workspace when a logged-in user:
+- asks a question in Ask Atlas
+- receives an AI response
+- uploads a document
+- completes document analysis
+- asks a follow-up question about a document
+
+2. Treat these saved items as part of the user’s ongoing custody workspace.
+
+Part 2 — Workspace Data Model
+
+3. Create or extend the data model so the workspace can store:
+- recent conversations
+- conversation threads
+- recent documents
+- document analysis entries
+- timestamps
+- jurisdiction context
+- optional document linkage for document-specific threads
+
+4. If there is already a thread/message structure, reuse it rather than duplicating it.
+
+Part 3 — Workspace UI
+
+5. Update the Case Workspace page to display:
+- Recent Conversations
+- Recent Documents
+- Last Updated timestamp
+- Resume Conversation button for each saved thread
+- View Analysis button for each saved document
+
+6. For Recent Conversations, show:
+- conversation title or first question
+- conversation type (general, document, comparison if applicable)
+- jurisdiction
+- last activity time
+
+7. For Recent Documents, show:
+- file name
+- analysis status
+- created_at / last updated
+- action buttons
+
+Part 4 — Ask Atlas integration
+
+8. When a user reopens a saved conversation from the workspace:
+- load that thread
+- restore recent message history
+- restore jurisdiction context
+- restore document context if applicable
+
+9. When a user starts a new Ask Atlas conversation:
+- create a new saved thread automatically
+- show it later in the workspace
+
+Part 5 — UX Improvements
+
+10. Add a small message in Ask Atlas such as:
+"Your conversations are automatically saved to your Case Workspace."
+
+11. Add a small message in the Case Workspace such as:
+"Return to previous conversations, documents, and analyses anytime."
+
+Part 6 — Scope / Simplicity
+
+12. For MVP, assume one main custody workspace per user.
+Do not add complex multi-case management unless necessary.
+
+13. Keep the design clean, professional, and mobile-friendly.
+
+Part 7 — Do Not Break
+
+14. Preserve:
+- Supabase auth
+- usage limits
+- Ask Atlas thread memory
+- document analysis
+- document follow-up Q&A
+- jurisdiction-aware prompts
+
+Part 8 — Summary
+
+15. After implementation, summarize:
+- files changed
+- data structures reused or added
+- how conversations are auto-saved
+- how workspace resume flow works

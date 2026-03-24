@@ -6,27 +6,33 @@
  *
  * Required Supabase tables (run in Supabase SQL editor to enable persistence):
  *
- *   CREATE TABLE threads (
- *     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
- *     user_id          uuid NOT NULL,
- *     thread_type      text NOT NULL DEFAULT 'general',  -- 'general' | 'document' | 'comparison'
+ *   CREATE TABLE IF NOT EXISTS threads (
+ *     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ *     user_id             uuid NOT NULL,
+ *     title               text,
+ *     thread_type         text NOT NULL DEFAULT 'general',
  *     jurisdiction_state  text,
  *     jurisdiction_county text,
- *     document_id      uuid,
- *     created_at       timestamptz NOT NULL DEFAULT now()
+ *     document_id         uuid,
+ *     created_at          timestamptz NOT NULL DEFAULT now()
  *   );
  *
- *   CREATE TABLE thread_messages (
- *     id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
- *     thread_id             uuid NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
- *     role                  text NOT NULL,        -- 'user' | 'assistant'
- *     message_text          text NOT NULL,
+ *   -- Add title column if you already have a threads table without it:
+ *   ALTER TABLE threads ADD COLUMN IF NOT EXISTS title text;
+ *
+ *   CREATE TABLE IF NOT EXISTS thread_messages (
+ *     id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ *     thread_id                uuid NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+ *     role                     text NOT NULL,
+ *     message_text             text NOT NULL,
  *     structured_response_json jsonb,
- *     created_at            timestamptz NOT NULL DEFAULT now()
+ *     created_at               timestamptz NOT NULL DEFAULT now()
  *   );
  *
- *   CREATE INDEX idx_thread_messages_thread_id ON thread_messages (thread_id, created_at);
- *   CREATE INDEX idx_threads_user_id ON threads (user_id, created_at DESC);
+ *   CREATE INDEX IF NOT EXISTS idx_thread_messages_thread_id
+ *     ON thread_messages (thread_id, created_at);
+ *   CREATE INDEX IF NOT EXISTS idx_threads_user_id
+ *     ON threads (user_id, created_at DESC);
  */
 
 import { supabaseAdmin } from "../lib/supabaseAdmin";
@@ -36,6 +42,7 @@ export type ThreadType = "general" | "document" | "comparison";
 export interface Thread {
   id: string;
   userId: string;
+  title: string | null;
   threadType: ThreadType;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
@@ -59,6 +66,7 @@ function mapThread(r: any): Thread {
   return {
     id: r.id,
     userId: r.user_id,
+    title: r.title ?? null,
     threadType: r.thread_type as ThreadType,
     jurisdictionState: r.jurisdiction_state ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
@@ -80,6 +88,8 @@ function mapMessage(r: any): ThreadMessage {
 
 /**
  * Create a new conversation thread for the given user.
+ * Title is stored in a best-effort second UPDATE call so the thread
+ * is always created even when the title column doesn't exist yet.
  */
 export async function createThread(
   userId: string,
@@ -88,6 +98,7 @@ export async function createThread(
     jurisdictionState?: string;
     jurisdictionCounty?: string;
     documentId?: string;
+    title?: string;
   },
 ): Promise<Thread | null> {
   if (!supabaseAdmin) return null;
@@ -104,7 +115,17 @@ export async function createThread(
       .select()
       .single();
     if (error || !data) return null;
-    return mapThread(data);
+
+    // Best-effort: set title (ignored if column does not exist)
+    if (opts.title) {
+      await supabaseAdmin
+        .from("threads")
+        .update({ title: opts.title.slice(0, 200) })
+        .eq("id", data.id)
+        .catch(() => {});
+    }
+
+    return mapThread({ ...data, title: opts.title ?? null });
   } catch {
     return null;
   }
@@ -126,6 +147,26 @@ export async function listThreads(userId: string, limit = 20): Promise<Thread[]>
     return data.map(mapThread);
   } catch {
     return [];
+  }
+}
+
+/**
+ * Retrieve a single thread owned by the given user.
+ * Returns null when not found or the thread belongs to another user.
+ */
+export async function getThread(threadId: string, userId: string): Promise<Thread | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("threads")
+      .select("*")
+      .eq("id", threadId)
+      .eq("user_id", userId)
+      .single();
+    if (error || !data) return null;
+    return mapThread(data);
+  } catch {
+    return null;
   }
 }
 

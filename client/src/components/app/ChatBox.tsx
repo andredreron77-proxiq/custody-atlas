@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
-  MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck,
+  MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck, BookmarkCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,7 @@ import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { MicButton } from "./MicButton";
 import { TTSControls } from "./TTSControls";
 import { useSpeechRecording } from "@/hooks/useSpeechRecording";
+import { useCurrentUser } from "@/hooks/use-auth";
 
 interface ChatBoxProps {
   jurisdiction: Jurisdiction;
@@ -26,6 +27,10 @@ interface ChatBoxProps {
    * Used by the AI Entry Funnel when navigating from a CTA button on another page.
    */
   initialQuestion?: string;
+  /** Pre-populated messages when resuming a saved conversation thread. */
+  initialMessages?: ChatMessage[];
+  /** The thread ID to continue saving into when resuming a thread. */
+  initialThreadId?: string;
 }
 
 function getSuggestedQuestions(state: string): string[] {
@@ -160,17 +165,20 @@ function FollowUpChips({
   );
 }
 
-export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId }: ChatBoxProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [savedToWorkspace, setSavedToWorkspace] = useState(!!initialThreadId);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lastAssistantRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const _sendRef = useRef<(q: string) => void>(() => {});
+  const threadIdRef = useRef<string | undefined>(initialThreadId);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
 
   // Voice recording (speech-to-text)
   const { state: micState, startRecording, stopRecording, cancelRecording } =
@@ -196,6 +204,57 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
       });
     });
   }, [messages]);
+
+  /**
+   * Fire-and-forget: create thread if needed, then append both messages.
+   * All errors are silently swallowed — saves never block the UI.
+   */
+  const ensureAndSave = async (
+    userText: string,
+    assistantText: string,
+    structured?: Record<string, unknown>,
+  ) => {
+    if (!user) return;
+
+    // Create thread on first message of a new conversation
+    if (!threadIdRef.current) {
+      try {
+        const res = await apiRequestRaw("POST", "/api/threads", {
+          threadType: "general",
+          jurisdictionState: jurisdiction.state || undefined,
+          jurisdictionCounty: jurisdiction.county || undefined,
+          title: userText.slice(0, 120),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          threadIdRef.current = data.threadId;
+          setSavedToWorkspace(true);
+          queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
+        }
+      } catch {
+        return; // thread creation failed — skip saving messages
+      }
+    }
+
+    if (!threadIdRef.current) return;
+
+    // Append user message then assistant message (order matters)
+    try {
+      await apiRequestRaw("POST", `/api/threads/${threadIdRef.current}/messages`, {
+        role: "user",
+        messageText: userText,
+      });
+      await apiRequestRaw("POST", `/api/threads/${threadIdRef.current}/messages`, {
+        role: "assistant",
+        messageText: assistantText,
+        structuredResponseJson: structured,
+      });
+      // Refresh workspace cache so it reflects the new thread
+      queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
+    } catch {
+      // silently ignore save errors
+    }
+  };
 
   const sendMessage = async (question: string) => {
     const trimmed = question.trim();
@@ -258,6 +317,9 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
       };
       setMessages((prev) => [...prev, assistantMessage]);
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+
+      // Non-blocking: persist exchange to Case Workspace
+      ensureAndSave(trimmed, data.summary, data as unknown as Record<string, unknown>);
     } catch (err: any) {
       const errorMessage = err?.message || "Failed to get an answer. Please try again.";
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
@@ -306,6 +368,8 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
   const clearConversation = () => {
     setMessages([]);
     setLimitReached(false);
+    setSavedToWorkspace(false);
+    threadIdRef.current = undefined;
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 350);
   };
@@ -340,15 +404,27 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
               </div>
             )}
           </div>
-          <button
-            onClick={clearConversation}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 pt-0.5"
-            data-testid="button-new-conversation"
-            title="Start a new conversation"
-          >
-            <RotateCcw className="w-3 h-3" />
-            New
-          </button>
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            {savedToWorkspace && (
+              <span
+                className="hidden sm:flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400"
+                data-testid="badge-saved-to-workspace"
+                title="This conversation is saved to your Case Workspace"
+              >
+                <BookmarkCheck className="w-3 h-3" />
+                Saved
+              </span>
+            )}
+            <button
+              onClick={clearConversation}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-new-conversation"
+              title="Start a new conversation"
+            >
+              <RotateCcw className="w-3 h-3" />
+              New
+            </button>
+          </div>
         </div>
       )}
 
@@ -357,18 +433,30 @@ export function ChatBox({ jurisdiction, initialQuestion }: ChatBoxProps) {
         <CardContent className="p-4 space-y-3">
           {/* Heading row — only on empty state */}
           {!hasMessages && (
-            <div className="flex items-center gap-2.5 pb-1">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-4 h-4 text-primary" />
+            <div className="flex items-start justify-between gap-2 pb-1">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Ask Atlas
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Plain-English custody law answers for {jurisdiction.state}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Ask Atlas
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Plain-English custody law answers for {jurisdiction.state}
-                </p>
-              </div>
+              {user && (
+                <span
+                  className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5"
+                  data-testid="badge-workspace-autosave"
+                  title="Conversations are automatically saved to your Case Workspace"
+                >
+                  <BookmarkCheck className="w-3 h-3" />
+                  Auto-saved
+                </span>
+              )}
             </div>
           )}
 

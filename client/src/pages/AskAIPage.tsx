@@ -1,14 +1,34 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { MessageSquare, MapPin, ArrowRight } from "lucide-react";
+import { MessageSquare, MapPin, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatBox } from "@/components/app/ChatBox";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
-import type { Jurisdiction } from "@shared/schema";
+import type { ChatMessage, Jurisdiction } from "@shared/schema";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
+import { apiRequestRaw } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
+
+interface ThreadWithMessages {
+  thread: {
+    id: string;
+    title: string | null;
+    jurisdictionState: string | null;
+    jurisdictionCounty: string | null;
+    threadType: string;
+    createdAt: string;
+  };
+  messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    messageText: string;
+    structuredResponseJson: Record<string, unknown> | null;
+    createdAt: string;
+  }>;
+}
 
 export default function AskAIPage() {
   const [location] = useLocation();
@@ -19,6 +39,7 @@ export default function AskAIPage() {
   const stateParam = urlParams.get("state");
   const countyParam = urlParams.get("county");
   const initialQuestion = urlParams.get("q") ?? undefined;
+  const threadIdParam = urlParams.get("thread") ?? undefined;
 
   const urlJurisdiction: Jurisdiction | null =
     stateParam
@@ -35,6 +56,20 @@ export default function AskAIPage() {
   const { jurisdiction, setJurisdiction, clearJurisdiction } = useJurisdiction(urlJurisdiction);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
 
+  // Thread resume: fetch saved messages when ?thread= is in URL
+  const { data: threadData, isLoading: isLoadingThread } = useQuery<ThreadWithMessages | null>({
+    queryKey: ["/api/threads", threadIdParam],
+    enabled: !!threadIdParam,
+    staleTime: 0,
+    retry: false,
+    queryFn: async () => {
+      if (!threadIdParam) return null;
+      const res = await apiRequestRaw("GET", `/api/threads/${threadIdParam}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
   const handleJurisdictionFound = (j: Jurisdiction) => {
     setJurisdiction(j);
     setShowLocationPicker(false);
@@ -44,6 +79,23 @@ export default function AskAIPage() {
     clearJurisdiction();
     setShowLocationPicker(true);
   };
+
+  // While loading a resumed thread, show a centered spinner
+  if (threadIdParam && isLoadingThread) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
+        <p className="text-sm text-muted-foreground">Loading your conversation...</p>
+      </div>
+    );
+  }
+
+  // Convert thread messages to ChatMessage[] for ChatBox
+  const initialMessages: ChatMessage[] | undefined = threadData?.messages?.map((m) => ({
+    role: m.role,
+    content: m.messageText,
+    structured: (m.structuredResponseJson as any) ?? undefined,
+  }));
 
   /* ── Location picker (no jurisdiction yet) ───────────────────────────── */
   if (!jurisdiction || showLocationPicker) {
@@ -86,7 +138,7 @@ export default function AskAIPage() {
         items={[
           { label: "Home", href: "/" },
           { label: formatJurisdictionLabel(jurisdiction.state, jurisdiction.county), href: lawPagePath },
-          { label: "Ask Atlas" },
+          { label: threadData?.thread?.title ?? "Ask Atlas" },
         ]}
       />
 
@@ -120,7 +172,12 @@ export default function AskAIPage() {
       </div>
 
       {/* ChatBox — input at top, conversation thread grows below */}
-      <ChatBox jurisdiction={jurisdiction} initialQuestion={initialQuestion} />
+      <ChatBox
+        jurisdiction={jurisdiction}
+        initialQuestion={initialQuestion}
+        initialMessages={initialMessages}
+        initialThreadId={threadIdParam}
+      />
 
     </div>
   );

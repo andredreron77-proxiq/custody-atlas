@@ -19,7 +19,14 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument } from "./services/documents";
+import { saveDocument, getDocuments } from "./services/documents";
+import {
+  createThread,
+  appendMessage,
+  getThread,
+  listThreads,
+  getRecentMessages,
+} from "./services/threads";
 import {
   maybePublishQuestion,
   getPublicQuestionsByState,
@@ -921,6 +928,109 @@ ${userQuestion}`;
     } catch (err) {
       console.error("[public-questions] detail error:", err);
       return res.status(500).json({ error: "Failed to fetch question." });
+    }
+  });
+
+  /* ── Case Workspace ─────────────────────────────────────────────────────── */
+
+  /**
+   * GET /api/workspace
+   * Returns the authenticated user's recent threads and documents.
+   */
+  app.get("/api/workspace", requireAuth, async (req, res) => {
+    const user = res.locals.user;
+    try {
+      const [threads, documents] = await Promise.all([
+        listThreads(user.id, 10),
+        getDocuments(user.id),
+      ]);
+      return res.json({ threads, documents });
+    } catch (err) {
+      console.error("[workspace] GET error:", err);
+      return res.status(500).json({ error: "Failed to load workspace." });
+    }
+  });
+
+  /**
+   * POST /api/threads
+   * Create a new conversation thread. Returns { threadId }.
+   */
+  app.post("/api/threads", requireAuth, async (req, res) => {
+    const user = res.locals.user;
+    const schema = z.object({
+      threadType: z.enum(["general", "document", "comparison"]).default("general"),
+      jurisdictionState: z.string().optional(),
+      jurisdictionCounty: z.string().optional(),
+      documentId: z.string().uuid().optional(),
+      title: z.string().max(200).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid thread payload." });
+    }
+    try {
+      const thread = await createThread(user.id, parsed.data);
+      if (!thread) return res.status(503).json({ error: "Thread storage unavailable." });
+      return res.status(201).json({ threadId: thread.id, thread });
+    } catch (err) {
+      console.error("[threads] POST error:", err);
+      return res.status(500).json({ error: "Failed to create thread." });
+    }
+  });
+
+  /**
+   * POST /api/threads/:threadId/messages
+   * Append a message (user or assistant) to an existing thread.
+   */
+  app.post("/api/threads/:threadId/messages", requireAuth, async (req, res) => {
+    const user = res.locals.user;
+    const { threadId } = req.params;
+
+    // Verify thread ownership before appending
+    const thread = await getThread(threadId, user.id);
+    if (!thread) return res.status(404).json({ error: "Thread not found." });
+
+    const schema = z.object({
+      role: z.enum(["user", "assistant"]),
+      messageText: z.string().min(1).max(10000),
+      structuredResponseJson: z.record(z.unknown()).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid message payload." });
+    }
+    try {
+      const message = await appendMessage(
+        threadId,
+        parsed.data.role,
+        parsed.data.messageText,
+        parsed.data.structuredResponseJson,
+      );
+      if (!message) return res.status(503).json({ error: "Message storage unavailable." });
+      return res.status(201).json({ message });
+    } catch (err) {
+      console.error("[threads] POST message error:", err);
+      return res.status(500).json({ error: "Failed to save message." });
+    }
+  });
+
+  /**
+   * GET /api/threads/:threadId
+   * Load a thread and its messages for conversation resume.
+   */
+  app.get("/api/threads/:threadId", requireAuth, async (req, res) => {
+    const user = res.locals.user;
+    const { threadId } = req.params;
+    try {
+      const [thread, messages] = await Promise.all([
+        getThread(threadId, user.id),
+        getRecentMessages(threadId, 50),
+      ]);
+      if (!thread) return res.status(404).json({ error: "Thread not found." });
+      return res.json({ thread, messages });
+    } catch (err) {
+      console.error("[threads] GET error:", err);
+      return res.status(500).json({ error: "Failed to load thread." });
     }
   });
 
