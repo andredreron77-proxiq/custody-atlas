@@ -24,6 +24,8 @@ import { supabaseAdmin } from "../lib/supabaseAdmin";
 
 const STORAGE_BUCKET = "custody-documents";
 
+export type DocumentType = "custody_order" | "communication" | "financial" | "other";
+
 export interface SavedDocument {
   id: string;
   userId: string;
@@ -31,6 +33,7 @@ export interface SavedDocument {
   storagePath: string | null;
   mimeType: string;
   pageCount: number;
+  docType: DocumentType;
   analysisJson: Record<string, unknown>;
   extractedText: string;
   createdAt: string;
@@ -53,6 +56,7 @@ export async function getDocuments(userId: string): Promise<SavedDocument[]> {
       storagePath: r.storage_path ?? null,
       mimeType: r.mime_type ?? "application/octet-stream",
       pageCount: r.page_count ?? 1,
+      docType: (r.doc_type ?? "other") as DocumentType,
       analysisJson: r.analysis_json ?? {},
       extractedText: r.extracted_text ?? "",
       createdAt: r.created_at,
@@ -107,6 +111,7 @@ export async function saveDocument(
         storage_path: fields.storagePath,
         mime_type: fields.mimeType,
         page_count: fields.pageCount,
+        doc_type: fields.docType ?? "other",
         analysis_json: fields.analysisJson,
         extracted_text: fields.extractedText,
       })
@@ -120,12 +125,31 @@ export async function saveDocument(
       storagePath: data.storage_path ?? null,
       mimeType: data.mime_type,
       pageCount: data.page_count,
+      docType: (data.doc_type ?? "other") as DocumentType,
       analysisJson: data.analysis_json ?? {},
       extractedText: data.extracted_text ?? "",
       createdAt: data.created_at,
     };
   } catch {
     return null;
+  }
+}
+
+export async function updateDocumentType(
+  documentId: string,
+  userId: string,
+  docType: DocumentType,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+  try {
+    const { error } = await supabaseAdmin
+      .from("documents")
+      .update({ doc_type: docType })
+      .eq("id", documentId)
+      .eq("user_id", userId);
+    return !error;
+  } catch {
+    return false;
   }
 }
 

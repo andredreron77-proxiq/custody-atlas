@@ -19,7 +19,12 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments } from "./services/documents";
+import { saveDocument, getDocuments, updateDocumentType, type DocumentType } from "./services/documents";
+import {
+  listTimelineEvents,
+  createTimelineEvent,
+  deleteTimelineEvent,
+} from "./services/timeline";
 import {
   createThread,
   appendMessage,
@@ -938,13 +943,14 @@ ${userQuestion}`;
    * Returns the authenticated user's recent threads and documents.
    */
   app.get("/api/workspace", requireAuth, async (req, res) => {
-    const user = res.locals.user;
+    const user = (req as any).user;
     try {
-      const [threads, documents] = await Promise.all([
+      const [threads, documents, timelineEvents] = await Promise.all([
         listThreads(user.id, 10),
         getDocuments(user.id),
+        listTimelineEvents(user.id),
       ]);
-      return res.json({ threads, documents });
+      return res.json({ threads, documents, timelineEvents });
     } catch (err) {
       console.error("[workspace] GET error:", err);
       return res.status(500).json({ error: "Failed to load workspace." });
@@ -956,7 +962,7 @@ ${userQuestion}`;
    * Create a new conversation thread. Returns { threadId }.
    */
   app.post("/api/threads", requireAuth, async (req, res) => {
-    const user = res.locals.user;
+    const user = (req as any).user;
     const schema = z.object({
       threadType: z.enum(["general", "document", "comparison"]).default("general"),
       jurisdictionState: z.string().optional(),
@@ -983,7 +989,7 @@ ${userQuestion}`;
    * Append a message (user or assistant) to an existing thread.
    */
   app.post("/api/threads/:threadId/messages", requireAuth, async (req, res) => {
-    const user = res.locals.user;
+    const user = (req as any).user;
     const { threadId } = req.params;
 
     // Verify thread ownership before appending
@@ -1019,7 +1025,7 @@ ${userQuestion}`;
    * Load a thread and its messages for conversation resume.
    */
   app.get("/api/threads/:threadId", requireAuth, async (req, res) => {
-    const user = res.locals.user;
+    const user = (req as any).user;
     const { threadId } = req.params;
     try {
       const [thread, messages] = await Promise.all([
@@ -1031,6 +1037,195 @@ ${userQuestion}`;
     } catch (err) {
       console.error("[threads] GET error:", err);
       return res.status(500).json({ error: "Failed to load thread." });
+    }
+  });
+
+  /* ── Case Timeline ───────────────────────────────────────────────────────── */
+
+  /**
+   * GET /api/timeline
+   * Returns the authenticated user's timeline events ordered by event date.
+   */
+  app.get("/api/timeline", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    try {
+      const events = await listTimelineEvents(user.id);
+      return res.json({ events });
+    } catch (err) {
+      console.error("[timeline] GET error:", err);
+      return res.status(500).json({ error: "Failed to load timeline." });
+    }
+  });
+
+  /**
+   * POST /api/timeline
+   * Create a new timeline event. Body: { eventDate, description }.
+   */
+  app.post("/api/timeline", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const schema = z.object({
+      eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "eventDate must be YYYY-MM-DD"),
+      description: z.string().min(1).max(500),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid timeline event payload.", details: parsed.error.flatten() });
+    }
+    try {
+      const event = await createTimelineEvent(user.id, parsed.data);
+      if (!event) return res.status(503).json({ error: "Timeline storage unavailable." });
+      return res.status(201).json({ event });
+    } catch (err) {
+      console.error("[timeline] POST error:", err);
+      return res.status(500).json({ error: "Failed to create timeline event." });
+    }
+  });
+
+  /**
+   * DELETE /api/timeline/:eventId
+   * Delete a timeline event owned by the current user.
+   */
+  app.delete("/api/timeline/:eventId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { eventId } = req.params;
+    try {
+      await deleteTimelineEvent(eventId, user.id);
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[timeline] DELETE error:", err);
+      return res.status(500).json({ error: "Failed to delete timeline event." });
+    }
+  });
+
+  /* ── Document type labeling ──────────────────────────────────────────────── */
+
+  /**
+   * PATCH /api/documents/:documentId/type
+   * Update the document type label. Body: { docType }.
+   */
+  app.patch("/api/documents/:documentId/type", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { documentId } = req.params;
+    const schema = z.object({
+      docType: z.enum(["custody_order", "communication", "financial", "other"]),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid docType." });
+    }
+    try {
+      const ok = await updateDocumentType(documentId, user.id, parsed.data.docType as DocumentType);
+      if (!ok) return res.status(404).json({ error: "Document not found or update failed." });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[documents] PATCH type error:", err);
+      return res.status(500).json({ error: "Failed to update document type." });
+    }
+  });
+
+  /* ── AI Case Summary ─────────────────────────────────────────────────────── */
+
+  /**
+   * POST /api/workspace/summarize
+   * Generate an informational AI summary of the user's custody situation
+   * based on their conversation history and uploaded documents.
+   * Returns { themes, custodyFactors, insights, disclaimer }.
+   */
+  app.post("/api/workspace/summarize", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    try {
+      // Gather context — recent threads and documents
+      const [threads, documents] = await Promise.all([
+        listThreads(user.id, 8),
+        getDocuments(user.id),
+      ]);
+
+      if (threads.length === 0 && documents.length === 0) {
+        return res.status(400).json({
+          error: "Not enough context yet. Ask some custody questions or upload a document first.",
+        });
+      }
+
+      // Pull recent messages from up to 5 threads
+      const messageChunks = await Promise.all(
+        threads.slice(0, 5).map((t) => getRecentMessages(t.id, 6)),
+      );
+      const allMessages = messageChunks.flat();
+
+      // Build conversation context
+      const conversationText = allMessages
+        .map((m) => `[${m.role === "user" ? "User" : "Atlas"}]: ${m.messageText}`)
+        .join("\n");
+
+      // Build document context (title + analysis summary)
+      const documentText = documents
+        .map((d) => {
+          const analysis = d.analysisJson as any;
+          const summary = analysis?.summary ?? analysis?.extractedInfo ?? analysis?.keyPoints ?? "";
+          const summaryStr = typeof summary === "string"
+            ? summary
+            : Array.isArray(summary)
+              ? summary.join("; ")
+              : "";
+          return `Document: "${d.fileName}"\n${summaryStr ? `Summary: ${summaryStr}` : "(analysis available)"}`;
+        })
+        .join("\n\n");
+
+      const systemPrompt = `You are a neutral, informational legal research assistant helping someone understand their custody situation. 
+Your role is strictly educational — you summarize themes and general legal context, never advise on strategy or predict outcomes.
+
+CRITICAL TONE RULES:
+- Use language like "courts typically consider...", "in many jurisdictions...", "one factor courts look at..."
+- NEVER say "you should...", "you must...", "you will win/lose...", "your best option is..."
+- NEVER make predictions about outcomes
+- NEVER give strategic advice
+- Frame everything as general information about how custody law works
+
+Return a JSON object with exactly these fields:
+{
+  "themes": ["3-5 short phrases describing the main topics the user has been exploring"],
+  "custodyFactors": ["4-6 general factors courts typically consider that appear relevant to the conversations"],
+  "insights": ["3-4 informational observations about what the user has been learning"],
+  "disclaimer": "One sentence reminding the user this is general information, not legal advice."
+}`;
+
+      const userPrompt = `Below is the custody-related conversation history and document context for this user. 
+Generate an informational summary based on this content.
+
+${conversationText ? `=== Conversation History ===\n${conversationText}\n` : ""}
+${documentText ? `\n=== Uploaded Documents ===\n${documentText}\n` : ""}
+
+Respond only with the JSON object. No markdown, no extra text.`;
+
+      const openai = getOpenAIClient();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 800,
+        response_format: { type: "json_object" },
+      });
+
+      const rawJson = completion.choices[0]?.message?.content ?? "{}";
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        return res.status(500).json({ error: "Failed to parse AI response." });
+      }
+
+      return res.json({
+        themes: Array.isArray(parsed.themes) ? parsed.themes.slice(0, 5) : [],
+        custodyFactors: Array.isArray(parsed.custodyFactors) ? parsed.custodyFactors.slice(0, 6) : [],
+        insights: Array.isArray(parsed.insights) ? parsed.insights.slice(0, 4) : [],
+        disclaimer: typeof parsed.disclaimer === "string" ? parsed.disclaimer : "This summary is general information only, not legal advice.",
+      });
+    } catch (err) {
+      console.error("[workspace] summarize error:", err);
+      return res.status(500).json({ error: "Failed to generate summary." });
     }
   });
 
