@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { MessageSquare, MapPin, ArrowRight, Loader2, Lock, Zap, Shield } from "lucide-react";
+import { MessageSquare, MapPin, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChatBox } from "@/components/app/ChatBox";
@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/hooks/use-auth";
 
 interface ThreadWithMessages {
   thread: {
@@ -34,6 +35,14 @@ interface ThreadWithMessages {
   }>;
 }
 
+interface CaseRecord {
+  id: string;
+  title: string;
+  status: string;
+  jurisdictionState: string | null;
+  jurisdictionCounty: string | null;
+}
+
 export default function AskAIPage() {
   const [location] = useLocation();
   const urlParams = new URLSearchParams(
@@ -44,6 +53,8 @@ export default function AskAIPage() {
   const countyParam = urlParams.get("county");
   const initialQuestion = urlParams.get("q") ?? undefined;
   const threadIdParam = urlParams.get("thread") ?? undefined;
+  // ?case= URL param lets other pages deep-link into a specific case context
+  const caseIdParam = urlParams.get("case") ?? undefined;
 
   const urlJurisdiction: Jurisdiction | null =
     stateParam
@@ -59,6 +70,9 @@ export default function AskAIPage() {
 
   const { jurisdiction, setJurisdiction, clearJurisdiction } = useJurisdiction(urlJurisdiction);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [activeCaseId, setActiveCaseId] = useState<string | undefined>(caseIdParam);
+  const [showCasePicker, setShowCasePicker] = useState(false);
+  const { user } = useCurrentUser();
 
   // Thread resume: fetch saved messages when ?thread= is in URL
   const { data: threadData, isLoading: isLoadingThread } = useQuery<ThreadWithMessages | null>({
@@ -84,6 +98,16 @@ export default function AskAIPage() {
   const isFreeUser = usage?.isAuthenticated && usage.tier === "free";
   const isProUser = usage?.isAuthenticated && usage.tier === "pro";
   const nearLimit = isFreeUser && usage.questionsLimit !== null && usage.questionsUsed >= Math.ceil(usage.questionsLimit * 0.6);
+
+  // Cases list — only fetched when the user is authenticated
+  const { data: casesData } = useQuery<{ cases: CaseRecord[] }>({
+    queryKey: ["/api/cases"],
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  const cases = casesData?.cases ?? [];
+  const activeCase = cases.find((c) => c.id === activeCaseId) ?? null;
 
   const handleJurisdictionFound = (j: Jurisdiction) => {
     setJurisdiction(j);
@@ -208,12 +232,69 @@ export default function AskAIPage() {
         </div>
       </div>
 
+      {/* Case context picker — only shown for authenticated users with cases */}
+      {user && (
+        <div className="rounded-lg border bg-muted/20 px-3 py-2 flex items-center justify-between gap-3 text-sm" data-testid="case-context-bar">
+          <div className="flex items-center gap-2 min-w-0">
+            <FolderOpen className="w-3.5 h-3.5 text-primary/70 flex-shrink-0" />
+            {activeCase ? (
+              <span className="font-medium text-foreground truncate">{activeCase.title}</span>
+            ) : (
+              <span className="text-muted-foreground">No case linked — responses save to General Workspace</span>
+            )}
+          </div>
+          <div className="relative flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-xs h-7 px-2"
+              onClick={() => setShowCasePicker((v) => !v)}
+              data-testid="button-pick-case"
+            >
+              {activeCase ? "Change" : "Link Case"}
+              <ChevronDown className="w-3 h-3" />
+            </Button>
+            {showCasePicker && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-64 rounded-lg border bg-popover shadow-lg py-1 text-sm">
+                <button
+                  className="w-full text-left px-3 py-2 hover:bg-muted/60 text-muted-foreground text-xs"
+                  onClick={() => { setActiveCaseId(undefined); setShowCasePicker(false); }}
+                  data-testid="option-no-case"
+                >
+                  No case (General Workspace)
+                </button>
+                {cases.length === 0 && (
+                  <p className="px-3 py-2 text-xs text-muted-foreground italic">No cases yet — create one in the Workspace.</p>
+                )}
+                {cases.map((c) => (
+                  <button
+                    key={c.id}
+                    className={cn(
+                      "w-full text-left px-3 py-2 hover:bg-muted/60",
+                      c.id === activeCaseId && "bg-primary/8 font-medium text-primary"
+                    )}
+                    onClick={() => { setActiveCaseId(c.id); setShowCasePicker(false); }}
+                    data-testid={`option-case-${c.id}`}
+                  >
+                    <span className="block truncate">{c.title}</span>
+                    {c.jurisdictionState && (
+                      <span className="text-xs text-muted-foreground">{c.jurisdictionState}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ChatBox — input sticky when active, conversation grows below */}
       <ChatBox
         jurisdiction={jurisdiction}
         initialQuestion={initialQuestion}
         initialMessages={initialMessages}
         initialThreadId={threadIdParam}
+        caseId={activeCaseId}
       />
 
       {/* Trust signal footer */}

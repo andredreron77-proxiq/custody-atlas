@@ -42,6 +42,9 @@ import {
   listConversations,
   getConversationById,
   listMessages,
+  getRecentConversationMessages,
+  appendConversationMessage,
+  listCaseMemory,
 } from "./services/cases";
 import {
   createThread,
@@ -351,7 +354,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/ask", requireAuth, checkQuestionLimit, async (req, res) => {
     try {
-      const parsed = askAIRequestSchema.safeParse(req.body);
+      // Extend the base schema with optional case context fields
+      const extendedAskSchema = askAIRequestSchema.extend({
+        caseId: z.string().uuid().optional(),
+        conversationId: z.string().uuid().optional(),
+      });
+
+      const parsed = extendedAskSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({
           error: "Invalid request",
@@ -359,7 +368,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const { jurisdiction, legalContext, userQuestion, history } = parsed.data;
+      const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId } = parsed.data;
+      const userId = (req as any).user?.id as string | undefined;
 
       if (!jurisdiction.state || !jurisdiction.county) {
         return res.status(400).json({ error: "Jurisdiction must include both state and county." });
@@ -372,7 +382,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      // Load state law from the store (server always controls this — client legalContext is supplemental)
+      // ── Case-aware path ──────────────────────────────────────────────────────
+      // When a caseId is provided, we: verify ownership, resolve or create the
+      // conversation, load server-side message history, inject case_memory into
+      // the system prompt, and persist the exchange after the AI responds.
+      // This path is ADDITIVE — the legacy thread path below is fully preserved.
+      let activeConversationId: string | undefined;
+
+      if (caseId && userId) {
+        // 1. Ownership check — server enforces this, never trust client claims
+        const caseRecord = await getCaseById(caseId, userId);
+        if (!caseRecord) {
+          console.warn(`[ask] Case not found or unauthorized. caseId=${caseId} userId=${userId}`);
+          return res.status(403).json({ error: "Case not found or access denied." });
+        }
+
+        // 2. Resolve conversation: use the one sent by the client, or create a new one
+        if (incomingConvId) {
+          const convRecord = await getConversationById(incomingConvId, userId);
+          if (!convRecord || convRecord.caseId !== caseId) {
+            console.warn(`[ask] Conversation mismatch. convId=${incomingConvId} caseId=${caseId}`);
+            return res.status(403).json({ error: "Conversation not found or does not belong to this case." });
+          }
+          activeConversationId = incomingConvId;
+        } else {
+          const newConv = await createConversation(userId, caseId, {
+            title: userQuestion.slice(0, 120),
+            threadType: "general",
+            jurisdictionState: jurisdiction.state,
+            jurisdictionCounty: jurisdiction.county,
+          });
+          if (!newConv) {
+            console.warn(`[ask] Failed to create conversation for caseId=${caseId}`);
+            // Non-fatal: fall back to legacy path rather than failing the whole request
+          } else {
+            activeConversationId = newConv.id;
+          }
+        }
+      }
+
+      // ── Load state law ───────────────────────────────────────────────────────
       const stateLaw = getCustodyLaw(jurisdiction.state);
       const isUnsupportedState = !stateLaw;
 
@@ -391,16 +440,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const openai = getOpenAIClient();
 
-      // Build multi-turn message array: system → history turns → current question.
-      // Prior turns are capped server-side at 8 pairs (max 16 items) to bound cost.
-      const historyTurns = (history ?? [])
-        .slice(-16)
-        .map((h) => ({ role: h.role as "user" | "assistant", content: h.content }));
+      // ── Build history: prefer server-loaded messages over client-provided history
+      let historyTurns: Array<{ role: "user" | "assistant"; content: string }> = [];
+
+      if (activeConversationId) {
+        // Case conversation — load from messages table, ignore client history
+        const savedMessages = await getRecentConversationMessages(activeConversationId, 16);
+        historyTurns = savedMessages.map((m) => ({
+          role: m.role,
+          content: m.messageText,
+        }));
+      } else {
+        // Legacy path — use client-provided history, capped at 16 turns
+        historyTurns = (history ?? [])
+          .slice(-16)
+          .map((h) => ({ role: h.role as "user" | "assistant", content: h.content }));
+      }
+
+      // ── Case memory injection ────────────────────────────────────────────────
+      // When a case is active, load any saved memory entries and prepend them to
+      // the system prompt so Atlas is aware of prior context for this specific case.
+      let caseMemoryText = "";
+      if (caseId && userId) {
+        const memories = await listCaseMemory(caseId, userId);
+        if (memories.length > 0) {
+          caseMemoryText = "\n\n---\nCASE MEMORY (facts saved from prior sessions):\n" +
+            memories.map((m) => `[${m.memoryType}] ${m.content}`).join("\n");
+        }
+      }
+
+      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: buildSystemPrompt(jurisdiction.state) },
+          { role: "system", content: systemPrompt },
           ...historyTurns,
           {
             role: "user",
@@ -436,8 +510,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
+      // ── Persist messages when using a case conversation ──────────────────────
+      if (activeConversationId) {
+        // Fire-and-forget — do not let persistence failures block the response
+        Promise.all([
+          appendConversationMessage(activeConversationId, "user", userQuestion),
+          appendConversationMessage(
+            activeConversationId,
+            "assistant",
+            validated.data.summary,
+            validated.data as unknown as Record<string, unknown>,
+          ),
+        ]).catch((err) => console.error("[ask] Failed to persist case messages:", err));
+      }
+
       await trackQuestion(req);
-      const userId = (req as any).user?.id as string | undefined;
       if (userId) {
         saveQuestion(userId, {
           jurisdictionState: jurisdiction.state,
@@ -455,7 +542,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         responseJson: validated.data as Record<string, unknown>,
       }).catch((err) => console.error("[publicQuestions] maybePublishQuestion error:", err));
 
-      return res.json(validated.data);
+      // Return the AI response, plus conversationId when a case is active so the
+      // client can thread subsequent messages into the same conversation.
+      return res.json({
+        ...validated.data,
+        ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+      });
     } catch (err: any) {
       console.error("Ask AI error:", err);
       return res.status(500).json({ error: "Failed to get AI response. Please try again." });

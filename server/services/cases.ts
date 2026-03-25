@@ -361,10 +361,79 @@ export async function listMessages(
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
       .limit(limit);
-    if (error || !data) return [];
+    if (error) {
+      console.warn("[cases] listMessages Supabase error — table may be missing:", error.message, error.code);
+      return [];
+    }
+    if (!data) return [];
     return data.map(mapMessage);
-  } catch {
+  } catch (err) {
+    console.error("[cases] listMessages exception:", err);
     return [];
+  }
+}
+
+/**
+ * Load the most recent messages for a conversation, returned oldest-first
+ * so they can be fed directly into the AI history window.
+ * Does NOT require a separate userId ownership check — caller must have
+ * already verified the conversation belongs to the user.
+ */
+export async function getRecentConversationMessages(
+  conversationId: string,
+  limit = 16,
+): Promise<ConversationMessage[]> {
+  if (!supabaseAdmin) return [];
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) {
+      console.warn("[cases] getRecentConversationMessages Supabase error:", error.message, error.code);
+      return [];
+    }
+    if (!data) return [];
+    return data.reverse().map(mapMessage);
+  } catch (err) {
+    console.error("[cases] getRecentConversationMessages exception:", err);
+    return [];
+  }
+}
+
+/**
+ * Append a single message to a conversation's messages table.
+ * Returns null (and logs) on failure — callers should treat this as non-fatal.
+ */
+export async function appendConversationMessage(
+  conversationId: string,
+  role: "user" | "assistant",
+  messageText: string,
+  structuredResponseJson?: Record<string, unknown>,
+): Promise<ConversationMessage | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        role,
+        message_text: messageText,
+        structured_response_json: structuredResponseJson ?? null,
+      })
+      .select()
+      .single();
+    if (error) {
+      console.warn("[cases] appendConversationMessage Supabase error:", error.message, error.code);
+      return null;
+    }
+    if (!data) return null;
+    return mapMessage(data);
+  } catch (err) {
+    console.error("[cases] appendConversationMessage exception:", err);
+    return null;
   }
 }
 

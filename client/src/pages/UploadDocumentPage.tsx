@@ -17,6 +17,7 @@ import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
+import { TTSControls } from "@/components/app/TTSControls";
 import { getAccessToken } from "@/lib/tokenStore";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -136,6 +137,13 @@ async function combineImagePages(files: File[]): Promise<File> {
 /* ── Small sub-components (unchanged from original) ──────────────────────── */
 
 function AnalysisResultCard({ result }: { result: DocumentAnalysisResult }) {
+  const ttsText = [
+    result.summary,
+    ...(result.possible_implications.length > 0
+      ? ["Possible implications: " + result.possible_implications.join(". ")]
+      : []),
+  ].join(" ");
+
   return (
     <div className="space-y-5" data-testid="card-analysis-result">
       <div className="flex items-center gap-3">
@@ -153,6 +161,7 @@ function AnalysisResultCard({ result }: { result: DocumentAnalysisResult }) {
         <p className="text-sm leading-relaxed text-muted-foreground" data-testid="text-summary">
           {result.summary}
         </p>
+        <TTSControls text={ttsText} className="mt-3" />
       </div>
 
       {result.important_terms.length > 0 && (

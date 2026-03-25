@@ -31,6 +31,12 @@ interface ChatBoxProps {
   initialMessages?: ChatMessage[];
   /** The thread ID to continue saving into when resuming a thread. */
   initialThreadId?: string;
+  /**
+   * When provided, messages are saved to the case's conversations/messages
+   * tables instead of (and NOT also into) the legacy threads/thread_messages.
+   * The server enforces ownership — this value is only used to route the request.
+   */
+  caseId?: string;
 }
 
 function getSuggestedQuestions(state: string): string[] {
@@ -165,17 +171,19 @@ function FollowUpChips({
   );
 }
 
-export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId }: ChatBoxProps) {
+export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, caseId }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
-  const [savedToWorkspace, setSavedToWorkspace] = useState(!!initialThreadId);
+  const [savedToWorkspace, setSavedToWorkspace] = useState(!!initialThreadId || !!caseId);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lastAssistantRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const _sendRef = useRef<(q: string) => void>(() => {});
   const threadIdRef = useRef<string | undefined>(initialThreadId);
+  // Tracks the active conversation ID when using the case-based path
+  const conversationIdRef = useRef<string | undefined>(undefined);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
@@ -294,7 +302,11 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
           county: jurisdiction.county,
         },
         userQuestion: trimmed,
-        history: historySnapshot.length > 0 ? historySnapshot : undefined,
+        // When using a case, the server loads history from the messages table.
+        // We still send client history on the legacy path (no caseId).
+        history: caseId ? undefined : historySnapshot.length > 0 ? historySnapshot : undefined,
+        // Case context — when present, the server handles persistence
+        ...(caseId ? { caseId, conversationId: conversationIdRef.current } : {}),
       });
 
       if (res.status === 429) {
@@ -309,7 +321,15 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
         throw new Error(errData.error || `Server error (${res.status})`);
       }
 
-      const data: AILegalResponse = await res.json();
+      const data: AILegalResponse & { conversationId?: string } = await res.json();
+
+      // Track conversation ID returned by the server for subsequent messages
+      if (caseId && data.conversationId && !conversationIdRef.current) {
+        conversationIdRef.current = data.conversationId;
+        setSavedToWorkspace(true);
+        queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      }
+
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: data.summary,
@@ -318,8 +338,11 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
       setMessages((prev) => [...prev, assistantMessage]);
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
 
-      // Non-blocking: persist exchange to Case Workspace
-      ensureAndSave(trimmed, data.summary, data as unknown as Record<string, unknown>);
+      // When using a case, the server has already persisted the messages.
+      // Only call ensureAndSave on the legacy (no-case) path.
+      if (!caseId) {
+        ensureAndSave(trimmed, data.summary, data as unknown as Record<string, unknown>);
+      }
     } catch (err: any) {
       const errorMessage = err?.message || "Failed to get an answer. Please try again.";
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
@@ -368,8 +391,9 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
   const clearConversation = () => {
     setMessages([]);
     setLimitReached(false);
-    setSavedToWorkspace(false);
+    setSavedToWorkspace(!!caseId); // keep "Saved" indicator when a case is still active
     threadIdRef.current = undefined;
+    conversationIdRef.current = undefined;
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 350);
   };
