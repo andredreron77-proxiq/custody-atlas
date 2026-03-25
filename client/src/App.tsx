@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/components/app/Header";
 import { Footer } from "@/components/app/Footer";
 import { AuthRequiredCard } from "@/components/app/AuthRequiredCard";
+import { OnboardingModal } from "@/components/app/OnboardingModal";
 import { useCurrentUser } from "@/hooks/use-auth";
 
 import LandingPage from "@/pages/LandingPage";
@@ -118,6 +119,7 @@ function App() {
           </main>
           <Footer />
         </div>
+        <OnboardingModal />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

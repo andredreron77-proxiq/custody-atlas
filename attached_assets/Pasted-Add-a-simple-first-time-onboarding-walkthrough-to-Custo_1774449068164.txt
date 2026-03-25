@@ -1,0 +1,112 @@
+Add a simple first-time onboarding walkthrough to Custody Atlas for new users.
+
+Goal:
+Help first-time users immediately understand what Custody Atlas does, what they can do next, and how to get value quickly.
+
+Requirements:
+
+========================================
+PART 1 — First-Time Welcome Experience
+========================================
+
+1. Detect first-time users.
+Use a simple MVP approach such as:
+- localStorage flag
+- or a lightweight user profile field if already available
+
+2. On first visit after login, show a welcome onboarding modal or guided card overlay.
+
+Title:
+“Welcome to Custody Atlas”
+
+Subtitle:
+“Understand custody law where you live, organize your case, and ask better questions.”
+
+========================================
+PART 2 — Explain the 3 Core Actions
+========================================
+
+3. Show three quick onboarding steps:
+
+Step 1:
+“Ask Atlas”
+Description:
+“Ask custody questions based on your location and continue the conversation.”
+
+Step 2:
+“Analyze a Document”
+Description:
+“Upload a custody order or legal document and get a plain-English explanation.”
+
+Step 3:
+“Use Your Workspace”
+Description:
+“Your questions, documents, and progress are saved so you can return anytime.”
+
+4. Use simple icons or visual cards for each step.
+
+========================================
+PART 3 — Suggested First Actions
+========================================
+
+5. Provide clear CTA buttons in the onboarding flow, such as:
+- “Ask My First Question”
+- “Upload a Document”
+- “Go to Workspace”
+
+6. If jurisdiction is not set yet, prioritize:
+- “Set My Location”
+
+========================================
+PART 4 — Optional Tips
+========================================
+
+7. Include a small note:
+“Custody Atlas provides general legal information, not legal advice.”
+
+8. Include a small trust message:
+“Your documents and conversations are tied to your account and handled privately.”
+
+========================================
+PART 5 — Dismiss / Reopen
+========================================
+
+9. Allow the user to:
+- close onboarding
+- not see it again automatically after completion
+
+10. Add a way to reopen it later, such as:
+- a “Help” or “Getting Started” link in the navigation or profile menu
+
+========================================
+PART 6 — UX / Design
+========================================
+
+11. Keep the onboarding lightweight:
+- no more than 1–2 screens
+- clean, modern, mobile-friendly
+- aligned with the Custody Atlas visual style
+
+12. Do not interrupt users repeatedly after first completion.
+
+========================================
+PART 7 — Do Not Break
+========================================
+
+13. Preserve:
+- auth flow
+- Ask Atlas
+- workspace
+- document analysis
+- usage limits
+- admin features
+
+========================================
+PART 8 — Summary
+========================================
+
+14. After implementation, summarize:
+- files changed
+- how first-time users are detected
+- how the onboarding is dismissed and remembered
+- where users can reopen it later

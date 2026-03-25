@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock, ShieldCheck } from "lucide-react";
+import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock, ShieldCheck, HelpCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AuthButton } from "./AuthButton";
 import { UsageIndicator } from "./UsageIndicator";
@@ -135,8 +135,17 @@ export function Header() {
             )}
           </nav>
 
-          {/* Desktop: usage indicator + auth button */}
+          {/* Desktop: getting started + usage indicator + auth button */}
           <div className="hidden md:flex items-center gap-3 ml-auto">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent("custody-atlas:open-onboarding"))}
+              className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-xs px-2 py-1.5 rounded-md hover:bg-white/8"
+              data-testid="button-getting-started"
+              title="Getting Started"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Getting Started</span>
+            </button>
             <UsageIndicator />
             <AuthButton />
           </div>
@@ -229,6 +238,23 @@ export function Header() {
                   </Link>
                 </li>
               )}
+
+              {/* Getting Started — reopens onboarding modal */}
+              <li>
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    window.dispatchEvent(new CustomEvent("custody-atlas:open-onboarding"));
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium text-slate-300 hover:text-white hover:bg-white/8 border border-transparent transition-colors"
+                  data-testid="mobile-nav-getting-started"
+                >
+                  <span className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center flex-shrink-0">
+                    <HelpCircle className="w-4 h-4" />
+                  </span>
+                  <span className="flex-1">Getting Started</span>
+                </button>
+              </li>
             </ul>
 
             {/* Mobile auth + usage footer */}
