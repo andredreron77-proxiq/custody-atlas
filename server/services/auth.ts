@@ -63,6 +63,37 @@ export async function requireAuth(
 }
 
 /**
+ * Express middleware that restricts access to the designated admin email.
+ * Must be used AFTER requireAuth — assumes (req as any).user is already set.
+ * Reads ADMIN_EMAIL from environment variables.
+ */
+export async function requireAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const user = await getCurrentUser(req);
+  if (!user) {
+    res.status(401).json({ error: "Authentication required.", code: "UNAUTHENTICATED" });
+    return;
+  }
+
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+  if (!adminEmail) {
+    res.status(403).json({ error: "Admin access not configured.", code: "FORBIDDEN" });
+    return;
+  }
+
+  if ((user.email ?? "").toLowerCase() !== adminEmail) {
+    res.status(403).json({ error: "Access denied.", code: "FORBIDDEN" });
+    return;
+  }
+
+  (req as any).user = user;
+  next();
+}
+
+/**
  * Retrieve the tier for an authenticated user from user_profiles.
  * Falls back to "free" if the record is missing.
  *

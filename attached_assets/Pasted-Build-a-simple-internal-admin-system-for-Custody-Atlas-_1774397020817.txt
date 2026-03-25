@@ -1,0 +1,119 @@
+Build a simple internal admin system for Custody Atlas that includes:
+1. user management
+2. direct tier changes
+3. invited user creation
+4. invite code / access token management
+
+Goal:
+Allow the admin to manage free/pro access from a single admin area, while supporting both manual upgrades and code-based upgrades.
+
+Part 1 — Admin Route and Access Control
+
+1. Create a protected admin route:
+- /admin/users
+
+2. Restrict access using a simple MVP approach:
+- allow only a specific admin email from environment variables
+- support:
+  ADMIN_EMAIL=your-email@example.com
+
+3. Non-admin users should be blocked or redirected.
+
+Part 2 — User Management
+
+4. Display a table of users with:
+- email
+- tier
+- created_at
+- usage summary if available
+  - questions used today
+  - documents used today
+
+5. Add controls to change a user’s tier:
+- free
+- pro
+
+6. Persist tier changes to public.user_profiles.tier in Supabase.
+
+Part 3 — Admin Invite Flow
+
+7. Add an Invite User section with:
+- email input
+- tier dropdown (free / pro)
+- button: "Send Invite"
+
+8. Backend behavior:
+- if possible, create/send invite using Supabase admin APIs
+- ensure invited users can be preassigned a tier
+- if the user already exists, update their tier instead of creating duplicate records
+
+9. Preserve assigned tier during first login/signup.
+Do not overwrite an existing preassigned tier with the default free tier.
+
+Part 4 — Invite Code / Access Token System
+
+10. Create a new table for invite codes, for example:
+- id
+- code
+- tier
+- max_uses
+- uses_count
+- expires_at
+- is_active
+- created_at
+
+11. Add an Admin Invite Codes section where admin can:
+- generate a new code
+- assign a tier (default pro)
+- optionally set:
+  - expiration date
+  - max uses
+- deactivate a code
+
+12. Add a user-facing code redemption flow:
+- allow a logged-in user to enter an invite code
+- if valid:
+  - upgrade tier to the code’s assigned tier
+  - increment uses_count
+- if invalid/expired/inactive:
+  - show a clear error
+
+13. Optionally support code entry during signup or first login if it fits the existing auth flow cleanly.
+If not, implement it as a post-login redemption step first.
+
+Part 5 — UX / Design
+
+14. Keep the admin panel simple, professional, and easy to use.
+15. Include search/filter by email in the user table.
+16. Show success/error states for:
+- tier updated
+- invite sent
+- code generated
+- code redeemed
+
+Part 6 — Security
+
+17. Use server-side Supabase service role access where required.
+18. Do not expose the service role key to the client.
+19. Ensure only admin can create invites or codes.
+
+Part 7 — Do Not Break
+
+20. Preserve:
+- existing auth flow
+- Ask Atlas
+- usage limits
+- workspace
+- document analysis
+- Supabase integration
+
+Part 8 — Summary
+
+21. After implementation, summarize:
+- files created/changed
+- tables added
+- how admin access is enforced
+- how tier changes work
+- how invite flow works
+- how invite code redemption works
+- any remaining limitations

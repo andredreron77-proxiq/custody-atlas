@@ -10,7 +10,16 @@ import { extractTextFromDocument } from "./documentai";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
-import { requireAuth } from "./services/auth";
+import { requireAuth, requireAdmin } from "./services/auth";
+import {
+  listAdminUsers,
+  setUserTier,
+  inviteUser,
+  listInviteCodes,
+  createInviteCode,
+  deactivateInviteCode,
+  redeemInviteCode,
+} from "./services/adminService";
 import {
   getUsageState,
   checkQuestionLimit,
@@ -1227,6 +1236,93 @@ Respond only with the JSON object. No markdown, no extra text.`;
       console.error("[workspace] summarize error:", err);
       return res.status(500).json({ error: "Failed to generate summary." });
     }
+  });
+
+  /* ════════════════════════════════════════════════════════════════════════
+   *  ADMIN ROUTES  —  server-side enforced by requireAdmin middleware
+   *  Frontend at /admin — only renders meaningful content for ADMIN_EMAIL
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  // GET /api/admin/status — let the client know if the current user is admin
+  app.get("/api/admin/status", requireAdmin, async (_req, res) => {
+    return res.json({ isAdmin: true });
+  });
+
+  // GET /api/admin/users — list all users with tier info
+  app.get("/api/admin/users", requireAdmin, async (_req, res) => {
+    const users = await listAdminUsers();
+    return res.json({ users });
+  });
+
+  // PATCH /api/admin/users/:userId/tier — change a user's tier
+  app.patch("/api/admin/users/:userId/tier", requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    const { tier } = req.body;
+    if (!tier || !["free", "pro"].includes(tier)) {
+      return res.status(400).json({ error: "tier must be 'free' or 'pro'." });
+    }
+    const ok = await setUserTier(userId, tier);
+    if (!ok) return res.status(500).json({ error: "Failed to update tier." });
+    return res.json({ ok: true });
+  });
+
+  // POST /api/admin/invite — invite a new user or update existing user's tier
+  app.post("/api/admin/invite", requireAdmin, async (req, res) => {
+    const { email, tier } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "email is required." });
+    }
+    if (!tier || !["free", "pro"].includes(tier)) {
+      return res.status(400).json({ error: "tier must be 'free' or 'pro'." });
+    }
+    const result = await inviteUser(email.trim().toLowerCase(), tier);
+    if (!result.ok) return res.status(400).json({ error: result.message });
+    return res.json({ ok: true, message: result.message });
+  });
+
+  // GET /api/admin/invite-codes — list all invite codes
+  app.get("/api/admin/invite-codes", requireAdmin, async (_req, res) => {
+    const codes = await listInviteCodes();
+    return res.json({ codes });
+  });
+
+  // POST /api/admin/invite-codes — create a new invite code
+  app.post("/api/admin/invite-codes", requireAdmin, async (req, res) => {
+    const { tier, maxUses, expiresAt } = req.body;
+    if (!tier || !["free", "pro"].includes(tier)) {
+      return res.status(400).json({ error: "tier must be 'free' or 'pro'." });
+    }
+    const code = await createInviteCode({
+      tier,
+      maxUses: maxUses ?? null,
+      expiresAt: expiresAt ?? null,
+    });
+    if (!code) return res.status(500).json({ error: "Failed to create code." });
+    return res.json({ ok: true, code });
+  });
+
+  // PATCH /api/admin/invite-codes/:codeId/deactivate — deactivate a code
+  app.patch("/api/admin/invite-codes/:codeId/deactivate", requireAdmin, async (req, res) => {
+    const { codeId } = req.params;
+    const ok = await deactivateInviteCode(codeId);
+    if (!ok) return res.status(500).json({ error: "Failed to deactivate code." });
+    return res.json({ ok: true });
+  });
+
+  /* ════════════════════════════════════════════════════════════════════════
+   *  USER-FACING: Code redemption  —  requires auth, not admin
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  // POST /api/redeem-code — redeem an invite code to upgrade tier
+  app.post("/api/redeem-code", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { code } = req.body;
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({ error: "code is required." });
+    }
+    const result = await redeemInviteCode(code.trim(), user.id);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    return res.json({ ok: true, tier: result.tier });
   });
 
   return httpServer;

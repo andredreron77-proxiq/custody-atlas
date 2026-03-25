@@ -22,6 +22,8 @@ import CustodyLawsStatePage from "@/pages/CustodyLawsStatePage";
 import CustodyQuestionsPage from "@/pages/CustodyQuestionsPage";
 import PublicQAPage from "@/pages/PublicQAPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
+import RedeemCodePage from "@/pages/RedeemCodePage";
+import AdminPage from "@/pages/admin/AdminPage";
 import NotFound from "@/pages/not-found";
 import type { ComponentType } from "react";
 
@@ -84,6 +86,9 @@ function Router() {
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
+      <Route path="/redeem" component={RedeemCodePage} />
+      <Route path="/admin" component={AdminPage} />
+      <Route path="/admin/users" component={AdminPage} />
 
       {/* Gated routes — require authentication */}
       <Route path="/ask">
