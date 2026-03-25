@@ -13,6 +13,7 @@
  */
 
 import { useState } from "react";
+import { Link } from "wouter";
 import {
   Users,
   UserPlus,
@@ -26,6 +27,7 @@ import {
   RefreshCw,
   Copy,
   Check,
+  ArrowLeft,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -672,14 +674,22 @@ export default function AdminPage() {
   return (
     <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-10 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 pb-2">
-        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
-          <Shield className="w-4.5 h-4.5 text-white" />
+      <div className="flex items-center justify-between gap-3 pb-2">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <Shield className="w-4.5 h-4.5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-foreground tracking-tight">Admin Panel</h1>
+            <p className="text-xs text-muted-foreground">Custody Atlas — internal access only</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Admin Panel</h1>
-          <p className="text-xs text-muted-foreground">Custody Atlas — internal access only</p>
-        </div>
+        <Link href="/workspace">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-sm text-muted-foreground hover:text-foreground" data-testid="link-back-to-workspace">
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Workspace
+          </Button>
+        </Link>
       </div>
 
       {/* Tabs */}

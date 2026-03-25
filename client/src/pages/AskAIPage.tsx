@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { MessageSquare, MapPin, ArrowRight, Loader2 } from "lucide-react";
+import { MessageSquare, MapPin, ArrowRight, Loader2, Lock, Zap, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ChatBox } from "@/components/app/ChatBox";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
@@ -11,6 +12,9 @@ import type { ChatMessage, Jurisdiction } from "@shared/schema";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
+import { fetchUsageState } from "@/services/usageService";
+import type { UsageState } from "@/services/usageService";
+import { cn } from "@/lib/utils";
 
 interface ThreadWithMessages {
   thread: {
@@ -70,6 +74,17 @@ export default function AskAIPage() {
     },
   });
 
+  // Usage/plan info — must be declared before any early returns (Rules of Hooks)
+  const { data: usage } = useQuery<UsageState>({
+    queryKey: ["/api/usage"],
+    queryFn: fetchUsageState,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  const isFreeUser = usage?.isAuthenticated && usage.tier === "free";
+  const isProUser = usage?.isAuthenticated && usage.tier === "pro";
+  const nearLimit = isFreeUser && usage.questionsLimit !== null && usage.questionsUsed >= Math.ceil(usage.questionsLimit * 0.6);
+
   const handleJurisdictionFound = (j: Jurisdiction) => {
     setJurisdiction(j);
     setShowLocationPicker(false);
@@ -115,9 +130,16 @@ export default function AskAIPage() {
 
         <LocationSelector onJurisdictionFound={handleJurisdictionFound} />
 
-        <p className="text-xs text-muted-foreground text-center mt-6">
-          Your location is only used to identify applicable laws and is never stored on our servers.
-        </p>
+        <div className="flex flex-col items-center gap-2 mt-6">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="w-3 h-3" />
+            <span>Your location is only used to identify applicable laws — never stored.</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Shield className="w-3 h-3" />
+            <span>Custody Atlas provides general legal information, not legal advice.</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -152,6 +174,21 @@ export default function AskAIPage() {
         />
 
         <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+          {/* Plan badge */}
+          {isProUser && (
+            <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium" data-testid="badge-plan-pro">
+              <Zap className="w-3 h-3" />
+              Pro
+            </Badge>
+          )}
+          {isFreeUser && (
+            <Badge variant="outline" className={cn("text-xs gap-1 font-medium", nearLimit && "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400")} data-testid="badge-plan-free">
+              {nearLimit ? <Zap className="w-3 h-3" /> : null}
+              {nearLimit
+                ? `${usage!.questionsUsed}/${usage!.questionsLimit} questions used`
+                : "Free plan"}
+            </Badge>
+          )}
           <Link href={lawPagePath}>
             <Button variant="outline" size="sm" className="gap-1.5 text-xs" data-testid="button-view-laws">
               <ArrowRight className="w-3.5 h-3.5" />
@@ -171,13 +208,25 @@ export default function AskAIPage() {
         </div>
       </div>
 
-      {/* ChatBox — input at top, conversation thread grows below */}
+      {/* ChatBox — input sticky when active, conversation grows below */}
       <ChatBox
         jurisdiction={jurisdiction}
         initialQuestion={initialQuestion}
         initialMessages={initialMessages}
         initialThreadId={threadIdParam}
       />
+
+      {/* Trust signal footer */}
+      <div className="flex items-center justify-center gap-4 pt-2 pb-6 flex-wrap" data-testid="trust-signals">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
+          <Lock className="w-3 h-3" />
+          <span>Your data is private and tied to your account</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
+          <Shield className="w-3 h-3" />
+          <span>General legal information — not legal advice</span>
+        </div>
+      </div>
 
     </div>
   );

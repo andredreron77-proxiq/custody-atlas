@@ -1,0 +1,136 @@
+Implement a high-impact UX upgrade pack for Custody Atlas focused on navigation, Ask Atlas usability, context clarity, monetization visibility, and trust.
+
+Goal:
+Make Custody Atlas feel like a polished, trustworthy legal-tech product by improving the core user experience without changing the product’s core functionality.
+
+========================================
+PART 1 — Persistent App Navigation
+========================================
+
+1. Add a consistent top navigation bar across the app.
+
+Include:
+- Home
+- Ask Atlas
+- Workspace
+- Atlas Map
+- Upgrade / Plan
+- Profile (if applicable)
+- Admin (admin only)
+
+2. Add the same navigation options to the mobile menu.
+
+3. Show Admin only when:
+- the user is authenticated
+- the user's email matches ADMIN_EMAIL
+
+4. Add a “Back to App” or “Back to Workspace” action inside the admin panel.
+
+========================================
+PART 2 — Ask Atlas Input Visibility
+========================================
+
+5. Improve the Ask Atlas screen so the input box is always easy to find.
+
+Requirements:
+- for new/empty conversations, keep the Ask Atlas input near the top of the screen
+- for active conversations, keep the input visible in a sticky or anchored position
+- do not force the user to scroll to the bottom to ask the next question
+
+6. Preserve current response behavior and thread rendering.
+
+========================================
+PART 3 — Jurisdiction Context Banner
+========================================
+
+7. Add a clean jurisdiction/context banner near the top of Ask Atlas and other relevant screens.
+
+Display:
+- Jurisdiction: county + state when both exist
+- state only when county is missing
+- hide malformed or placeholder values
+
+8. Include a small action:
+- “Change location” (or similar)
+
+9. If a conversation mode label is shown, keep it separate from jurisdiction text.
+Examples:
+- Conversation: General Custody Conversation
+- Jurisdiction: Georgia
+
+========================================
+PART 4 — Upgrade Awareness / Plan Visibility
+========================================
+
+10. Make plan status and usage more visible in the UI.
+
+Add:
+- a lightweight plan badge (Free / Pro)
+- a visible usage indicator for free users
+  - e.g. “3 of 5 questions used today”
+
+11. Show subtle upgrade awareness in:
+- Ask Atlas
+- Workspace
+- document analysis flow when relevant
+
+12. Keep the upgrade messaging professional and not pushy.
+
+========================================
+PART 5 — Trust and Privacy Signals
+========================================
+
+13. Add visible trust messaging in the most important places:
+- Ask Atlas
+- document upload / analysis
+- workspace or footer
+
+Suggested language:
+- “Your documents are processed securely.”
+- “Custody Atlas provides general legal information, not legal advice.”
+- “Your data is private and tied to your account.”
+
+14. Use compact, professional card or banner styles.
+
+========================================
+PART 6 — Loading and Feedback States
+========================================
+
+15. Improve loading and feedback states for:
+- Ask Atlas response generation
+- document analysis
+- admin updates (tier changes, invite code creation, etc.)
+
+16. Add user-friendly messages such as:
+- “Generating your answer…”
+- “Analyzing your document…”
+- “Saving changes…”
+
+17. Avoid blank states where the user is unsure whether anything is happening.
+
+========================================
+PART 7 — Keep Existing Functionality Intact
+========================================
+
+18. Do not break:
+- Supabase auth
+- usage limits
+- Ask Atlas thread memory
+- document follow-up Q&A
+- admin panel
+- invite code system
+- workspace auto-save
+- state/topic CTA flows
+
+========================================
+PART 8 — Summary
+========================================
+
+19. After implementation, summarize:
+- files changed
+- new components added
+- how admin nav visibility is determined
+- how Ask Atlas input visibility now works
+- how jurisdiction banner is rendered
+- where trust/usage indicators were added
+- any remaining UX limitations

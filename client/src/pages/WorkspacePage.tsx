@@ -5,8 +5,10 @@ import {
   GitCompare, ShieldCheck, Lock, FileText, ArrowRight,
   ChevronRight, BookOpen, Scale, Lightbulb, X,
   Clock, Play, Loader2, CalendarDays, PlusCircle, Trash2,
-  Sparkles, ChevronDown, Tag, TriangleAlert,
+  Sparkles, ChevronDown, Tag, TriangleAlert, Zap,
 } from "lucide-react";
+import { fetchUsageState } from "@/services/usageService";
+import type { UsageState } from "@/services/usageService";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -675,6 +677,16 @@ export default function WorkspacePage() {
   const { jurisdiction } = useJurisdiction();
   const { user } = useCurrentUser();
 
+  const { data: usage } = useQuery<UsageState>({
+    queryKey: ["/api/usage"],
+    queryFn: fetchUsageState,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const isFreeUser = usage?.isAuthenticated && usage.tier === "free";
+  const isProUser = usage?.isAuthenticated && usage.tier === "pro";
+
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useQuery<WorkspaceData | null>({
     queryKey: ["/api/workspace"],
     enabled: !!user,
@@ -733,6 +745,17 @@ export default function WorkspacePage() {
             <LayoutDashboard className="w-4 h-4 text-primary" />
           </div>
           <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-workspace">Case Workspace</h1>
+          {isProUser && (
+            <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium ml-1" data-testid="badge-workspace-plan-pro">
+              <Zap className="w-3 h-3" />
+              Pro
+            </Badge>
+          )}
+          {isFreeUser && (
+            <Badge variant="outline" className="text-xs font-medium ml-1" data-testid="badge-workspace-plan-free">
+              Free plan
+            </Badge>
+          )}
         </div>
         <p className="text-muted-foreground text-sm ml-10">
           Organize your custody activity, track key dates, and understand your situation.

@@ -380,6 +380,9 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
   return (
     <div ref={wrapperRef} className="flex flex-col gap-4">
 
+      {/* ── Sticky zone: context bar + input (pinned below nav when active) ─── */}
+      <div className={hasMessages ? "sticky top-16 z-20 bg-background pb-3 flex flex-col gap-2" : "contents"}>
+
       {/* ── Conversation context bar ───────────────────────────────────────── */}
       {hasMessages && (
         <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3">
@@ -526,6 +529,8 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
         </CardContent>
       </Card>
 
+      </div>{/* end sticky zone */}
+
       {/* ── Suggested questions — visible only on empty state ─────────────── */}
       {!hasMessages && (
         <div className="space-y-2" data-testid="suggested-questions">
@@ -630,7 +635,7 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      Looking into {jurisdiction.state} custody law for you...
+                      Generating your answer…
                     </span>
                   </div>
                 </CardContent>
