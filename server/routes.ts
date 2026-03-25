@@ -193,6 +193,68 @@ async function geocodeWithGoogle(
   };
 }
 
+/* ── Direct-Fact Question Helpers ─────────────────────────────────────────── */
+
+/**
+ * Returns true when the user's question is asking for a specific factual value
+ * (case number, court name, hearing date, etc.) rather than legal guidance.
+ * Used to switch to a grounded-answer mode that prioritises extracted document
+ * facts over generic legal explanation.
+ */
+function isDirectFactQuestion(question: string): boolean {
+  const q = question.toLowerCase().trim();
+  return [
+    /\bcase\s+number\b/,
+    /\bdocket\s+number\b/,
+    /\bcase\s+#\b/,
+    /\bcourt\s+(name|house|address|location)\b/,
+    /\bwhich\s+court(house)?\b/,
+    /\bwhere\s+(do\s+i\s+go|is\s+the\s+court|is\s+my\s+hearing)\b/,
+    /\bjudge'?s?\s+name\b/,
+    /\bwho\s+is\s+the\s+judge\b/,
+    /\bhearing\s+date\b/,
+    /\bhearing\s+time\b/,
+    /\bwhen\s+is\s+(my|the)\s+hearing\b/,
+    /\bcourt\s+address\b/,
+    /\bfiling\s+party\b/,
+    /\bpetitioner'?s?\s+name\b/,
+    /\brespondent'?s?\s+name\b/,
+    /\bopposing\s+party\b/,
+    /\bwhat\s+is\s+the\s+(name\s+of\s+(the\s+)?document|document\s+(name|title))\b/,
+    /\bdocument\s+title\b/,
+    /\bname\s+of\s+this\s+document\b/,
+  ].some((p) => p.test(q));
+}
+
+/**
+ * Compile a human-readable "fact sheet" from a user's saved documents
+ * for injection into the system prompt when a direct fact question is detected.
+ * Only includes documents that have extracted_facts populated.
+ * Returns an empty string when no facts are available.
+ */
+function buildDocumentFactsText(documents: Array<{ fileName: string; docType: string; analysisJson: Record<string, unknown> }>): string {
+  const blocks: string[] = [];
+
+  for (const doc of documents.slice(0, 5)) {
+    const ef = (doc.analysisJson as any)?.extracted_facts;
+    if (!ef) continue;
+
+    const lines: string[] = [`Document: "${doc.fileName}"`];
+    if (ef.document_title)  lines.push(`  Title: ${ef.document_title}`);
+    if (ef.case_number)     lines.push(`  Case Number: ${ef.case_number}`);
+    if (ef.court_name)      lines.push(`  Court: ${ef.court_name}`);
+    if (ef.court_address)   lines.push(`  Court Address: ${ef.court_address}`);
+    if (ef.judge_name)      lines.push(`  Judge: ${ef.judge_name}`);
+    if (ef.hearing_date)    lines.push(`  Hearing Date: ${ef.hearing_date}`);
+    if (ef.filing_party)    lines.push(`  Filing Party: ${ef.filing_party}`);
+    if (ef.opposing_party)  lines.push(`  Opposing Party: ${ef.opposing_party}`);
+
+    if (lines.length > 1) blocks.push(lines.join("\n"));
+  }
+
+  return blocks.join("\n\n");
+}
+
 const UPLOADS_DIR = join(process.cwd(), "uploads");
 mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -469,7 +531,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText;
+      // ── Direct-fact detection ────────────────────────────────────────────────
+      // When the user asks for a specific value (case number, court name, etc.)
+      // load structured facts from their uploaded documents and inject into the
+      // system prompt so Atlas can answer directly instead of giving generic law.
+      let factModeAddendum = "";
+      const factQuestion = isDirectFactQuestion(userQuestion);
+      if (factQuestion && userId) {
+        const userDocs = await getDocuments(userId);
+        const factsText = buildDocumentFactsText(userDocs);
+
+        if (factsText) {
+          console.log(`[ask] Fact question detected — injecting extracted facts from ${userDocs.length} document(s)`);
+          factModeAddendum = `
+
+---
+DIRECT FACT MODE
+The user is asking for a specific factual value from a legal document.
+
+EXTRACTED FACTS FROM THE USER'S UPLOADED DOCUMENTS:
+${factsText}
+
+RULES FOR ANSWERING FACT QUESTIONS:
+1. Answer with the exact value from the documents above. State which document it came from.
+2. Format your answer as: Direct answer → Source document → Any important caveat.
+3. If the fact is found: state it clearly and directly at the start of your summary.
+4. If the fact is NOT in the list above: say exactly "I could not find [requested fact] in your uploaded documents." Then suggest uploading the relevant document or contacting the court clerk.
+5. NEVER guess, invent, or infer a court name, address, case number, or date that is not listed above.
+6. Court addresses in particular must only come from the document — never from general knowledge.`;
+        } else {
+          console.log(`[ask] Fact question detected — no extracted facts found in user's documents`);
+          factModeAddendum = `
+
+---
+DIRECT FACT MODE
+The user is asking for a specific factual value (e.g., case number, court name, address, hearing date).
+
+No documents have been uploaded yet, or the uploaded documents do not contain extracted structured facts.
+
+RULES:
+1. Do NOT provide a court name, address, case number, or hearing date from general knowledge — these must come from the user's actual documents.
+2. Explain clearly that you cannot provide this specific value without seeing their documents.
+3. Suggest they upload their document using the Document Analysis feature in the Workspace.
+4. For courthouse addresses, suggest they contact the court clerk's office or check their court's official website.`;
+        }
+      }
+
+      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + factModeAddendum;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -690,6 +798,7 @@ Rules:
 - Always remind users to consult a licensed family law attorney.
 - The document text provided may come from a single PDF, a single scanned image, or multiple scanned pages combined in order. Treat the full text as one complete legal document regardless of how many pages were submitted.
 - When analyzing multi-page documents, consider the full context across all pages before generating your response. Important information such as signature blocks, effective dates, and final orders often appear on later pages.
+- CRITICAL EXTRACTION RULE: For every field in "extracted_facts", return the exact value as it appears in the document text — copy it verbatim. If a value is not clearly and explicitly stated in the document, return null. NEVER guess, infer, or invent a court name, address, case number, judge name, or date.
 
 You MUST respond with valid JSON in exactly this structure:
 {
@@ -703,10 +812,23 @@ You MUST respond with valid JSON in exactly this structure:
   ],
   "key_dates": ["Each item is a plain text string. Example: 'March 15, 2024 – Order effective date'. Empty array if no dates found."],
   "possible_implications": ["Each item is a plain text string explaining what this document means for the people involved. 3-5 items."],
-  "questions_to_ask_attorney": ["Each item is a plain text string — a specific question to ask an attorney. 3-5 items."]
+  "questions_to_ask_attorney": ["Each item is a plain text string — a specific question to ask an attorney. 3-5 items."],
+  "extracted_facts": {
+    "document_title": "The exact title of this document as it appears at the top or heading — null if not clearly stated",
+    "court_name": "The full court name exactly as written in the document header or caption (e.g., 'Superior Court of the State of California, County of Los Angeles') — null if not found",
+    "court_address": "The full street address of the court as written in the document — null if not found",
+    "case_number": "The case or docket number exactly as written (e.g., '24-DR-00123') — null if not found",
+    "judge_name": "The judge's or commissioner's name exactly as written — null if not found",
+    "hearing_date": "The specific hearing or court date exactly as written (e.g., 'April 15, 2024 at 9:00 AM') — null if not found",
+    "filing_party": "The name of the petitioner or filing party exactly as written — null if not found",
+    "opposing_party": "The name of the respondent or opposing party exactly as written — null if not found"
+  }
 }
 
-CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use nested objects, key-value pairs, or sub-arrays inside any of the arrays.`;
+CRITICAL RULES:
+1. Every array value must be a plain string. Do NOT use nested objects inside arrays.
+2. In extracted_facts, return verbatim text from the document or null — never guess or invent values.
+3. If court_address is not printed in the document, return null even if you know the court's real address.`;
 
       const pageNote = isMultiPage
         ? `\n\nNote: This text was extracted from a ${pageCount}-page document (source: ${sourceType}). The pages have been combined in their original order. Analyze the full text as one complete document.`
@@ -825,6 +947,24 @@ CRITICAL RULE: Every array value in the JSON must be a plain string. Do NOT use 
         ? `The user is located in ${jurisdiction.state}${jurisdiction.county ? `, ${jurisdiction.county} County` : ""}${jurisdiction.country ? `, ${jurisdiction.country}` : ""}.`
         : "No specific jurisdiction was provided.";
 
+      // Build a structured facts block from extracted_facts (if present in this document)
+      const ef = documentAnalysis.extracted_facts;
+      const hasExtractedFacts = ef && Object.values(ef).some(Boolean);
+      const extractedFactsBlock = hasExtractedFacts ? `
+KNOWN FACTS FROM THIS DOCUMENT (verbatim from text — use these to answer factual questions directly):
+${ef.document_title  ? `- Title: ${ef.document_title}` : ""}
+${ef.case_number     ? `- Case Number: ${ef.case_number}` : ""}
+${ef.court_name      ? `- Court: ${ef.court_name}` : ""}
+${ef.court_address   ? `- Court Address: ${ef.court_address}` : ""}
+${ef.judge_name      ? `- Judge: ${ef.judge_name}` : ""}
+${ef.hearing_date    ? `- Hearing Date: ${ef.hearing_date}` : ""}
+${ef.filing_party    ? `- Filing Party: ${ef.filing_party}` : ""}
+${ef.opposing_party  ? `- Opposing Party: ${ef.opposing_party}` : ""}
+`.trim().split("\n").filter(Boolean).join("\n") : "";
+
+      // Detect if this is a direct fact question so we can sharpen the answer posture
+      const docFactQuestion = isDirectFactQuestion(userQuestion);
+
       const systemPrompt = `You are a child custody legal information assistant helping users understand a custody-related document they have uploaded.
 
 READING LEVEL:
@@ -837,6 +977,12 @@ ROLE:
 - Use the user's jurisdiction if provided, but focus primarily on the document's content.
 - Be concise, accurate, and compassionate.
 - Always end with a short disclaimer encouraging verification with a licensed attorney.
+${docFactQuestion ? `
+FACT QUESTION RULES (this user is asking for a specific value):
+- Check the KNOWN FACTS section first. If the value is listed there, state it directly and exactly at the start of your answer.
+- State which part of the document it came from (e.g., "According to the case caption in this document...").
+- If the fact is NOT found in the document or known facts: say clearly "This document does not state [fact]." Do not guess.
+- Never provide a court address or case number from general knowledge.` : ""}
 
 OUTPUT FORMAT:
 Respond with valid JSON matching exactly this structure — no markdown fences:
@@ -853,7 +999,8 @@ Respond with valid JSON matching exactly this structure — no markdown fences:
 SUMMARY: ${documentAnalysis.summary}
 IMPORTANT TERMS: ${documentAnalysis.important_terms.join(" | ")}
 KEY DATES: ${documentAnalysis.key_dates.join(" | ") || "None identified"}
-POSSIBLE IMPLICATIONS: ${documentAnalysis.possible_implications.join(" | ")}`;
+POSSIBLE IMPLICATIONS: ${documentAnalysis.possible_implications.join(" | ")}
+${extractedFactsBlock ? `\n${extractedFactsBlock}` : ""}`;
 
       const rawTextContext = extractedText
         ? `\n\nEXTRACTED DOCUMENT TEXT (first 6000 characters):\n${extractedText.slice(0, 6000)}`

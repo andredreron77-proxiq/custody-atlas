@@ -21,7 +21,7 @@ import { TTSControls } from "@/components/app/TTSControls";
 import { getAccessToken } from "@/lib/tokenStore";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { useQueryClient } from "@tanstack/react-query";
-import type { DocumentAnalysisResult, DocumentQAResponse } from "@shared/schema";
+import type { DocumentAnalysisResult, DocumentQAResponse, ExtractedFacts } from "@shared/schema";
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
@@ -134,7 +134,46 @@ async function combineImagePages(files: File[]): Promise<File> {
   });
 }
 
-/* ── Small sub-components (unchanged from original) ──────────────────────── */
+/* ── Extracted Facts Card ─────────────────────────────────────────────────── */
+
+const FACT_LABELS: Record<keyof ExtractedFacts, string> = {
+  document_title: "Document Title",
+  court_name:     "Court",
+  court_address:  "Court Address",
+  case_number:    "Case Number",
+  judge_name:     "Judge",
+  hearing_date:   "Hearing Date",
+  filing_party:   "Filing Party",
+  opposing_party: "Opposing Party",
+};
+
+function ExtractedFactsCard({ facts }: { facts: ExtractedFacts }) {
+  const entries = (Object.keys(FACT_LABELS) as Array<keyof ExtractedFacts>)
+    .map((k) => ({ key: k, label: FACT_LABELS[k], value: facts[k] }))
+    .filter((e) => e.value);
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 p-4" data-testid="card-extracted-facts">
+      <div className="flex items-center gap-2 mb-3">
+        <FileSearch className="w-4 h-4 text-primary" />
+        <h3 className="text-sm font-semibold text-foreground">Key Document Facts</h3>
+        <span className="text-xs text-muted-foreground ml-auto">Extracted directly from document</span>
+      </div>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+        {entries.map(({ key, label, value }) => (
+          <div key={key} className="flex flex-col gap-0.5" data-testid={`fact-${key}`}>
+            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</dt>
+            <dd className="text-sm text-foreground font-medium break-words">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/* ── Analysis Result Card ─────────────────────────────────────────────────── */
 
 function AnalysisResultCard({ result }: { result: DocumentAnalysisResult }) {
   const ttsText = [
@@ -155,6 +194,8 @@ function AnalysisResultCard({ result }: { result: DocumentAnalysisResult }) {
           <span>Analysis complete</span>
         </div>
       </div>
+
+      {result.extracted_facts && <ExtractedFactsCard facts={result.extracted_facts} />}
 
       <div>
         <h3 className="text-sm font-semibold mb-2 text-foreground">Summary</h3>

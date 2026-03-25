@@ -182,6 +182,24 @@ export type ChatMessage = z.infer<typeof chatMessageSchema>;
  * extractedText is NOT from the AI; it is appended by the server after validation
  * so the client can use it for follow-up Q&A without re-uploading.
  */
+/**
+ * Structured facts extracted directly from the document text.
+ * Every field is nullable — if a value is not clearly present in the document
+ * the model must return null, never invent or guess.
+ */
+export const extractedFactsSchema = z.object({
+  document_title:  z.string().nullable().optional(),
+  court_name:      z.string().nullable().optional(),
+  court_address:   z.string().nullable().optional(),
+  case_number:     z.string().nullable().optional(),
+  judge_name:      z.string().nullable().optional(),
+  hearing_date:    z.string().nullable().optional(),
+  filing_party:    z.string().nullable().optional(),
+  opposing_party:  z.string().nullable().optional(),
+});
+
+export type ExtractedFacts = z.infer<typeof extractedFactsSchema>;
+
 export const documentAnalysisResultSchema = z.object({
   document_type: z.string(),
   summary: z.string(),
@@ -189,6 +207,8 @@ export const documentAnalysisResultSchema = z.object({
   key_dates: z.array(z.string()),
   possible_implications: z.array(z.string()),
   questions_to_ask_attorney: z.array(z.string()),
+  /** Structured facts pulled directly from the document — null means not found */
+  extracted_facts: extractedFactsSchema.optional(),
   /** Appended by the server — the OCR-extracted raw text for follow-up Q&A */
   extractedText: z.string().optional(),
 });
