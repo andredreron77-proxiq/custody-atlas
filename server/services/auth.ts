@@ -72,13 +72,25 @@ export async function requireAdmin(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  const token = req.headers.authorization?.replace("Bearer ", "").trim();
   const user = await getCurrentUser(req);
+
+  // ── Debug logging (temporary) ─────────────────────────────────────────────
+  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
+  console.log("[requireAdmin]", {
+    path: req.path,
+    hasToken: !!token,
+    resolvedEmail: user?.email ?? null,
+    adminEmail: adminEmail ?? "(not set)",
+    match: user ? (user.email ?? "").toLowerCase() === (adminEmail ?? "") : false,
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (!user) {
     res.status(401).json({ error: "Authentication required.", code: "UNAUTHENTICATED" });
     return;
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
   if (!adminEmail) {
     res.status(403).json({ error: "Admin access not configured.", code: "FORBIDDEN" });
     return;

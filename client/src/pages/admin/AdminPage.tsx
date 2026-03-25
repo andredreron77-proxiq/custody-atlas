@@ -43,6 +43,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, apiRequestRaw, getQueryFn } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/use-auth";
 
 /* ── Types mirroring server ──────────────────────────────────────────────── */
 
@@ -585,13 +586,55 @@ function CodesTab() {
  * ══════════════════════════════════════════════════════════════════════════ */
 
 export default function AdminPage() {
-  // Check admin status (403 → access denied, 401 → not signed in)
-  const { data: statusData, isLoading: statusLoading, error: statusError } = useQuery<{ isAdmin: boolean }>({
+  // Step 1: wait for Supabase auth to resolve before making any API calls.
+  // This prevents the admin status query from firing before the token is
+  // available in the token store (which would always return 401).
+  const { user, isLoading: authLoading } = useCurrentUser();
+
+  // Step 2: only query admin status once we know a user is signed in.
+  const {
+    data: statusData,
+    isLoading: statusLoading,
+    error: statusError,
+  } = useQuery<{ isAdmin: boolean }>({
     queryKey: ["/api/admin/status"],
     queryFn: getQueryFn({ on401: "throw" }),
+    enabled: !authLoading && !!user,   // <── the key fix: wait for auth
     retry: false,
+    staleTime: 30_000,
   });
 
+  // Still resolving auth state
+  if (authLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center py-24">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Signed out entirely
+  if (!user) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-16">
+        <Card className="w-full max-w-sm">
+          <CardContent className="pt-10 pb-10 flex flex-col items-center gap-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <Shield className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-foreground">Please sign in</h2>
+              <p className="text-sm text-muted-foreground">
+                You need to be signed in to access the admin panel.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Signed in but waiting for admin status response
   if (statusLoading) {
     return (
       <div className="flex-1 flex items-center justify-center py-24">
@@ -600,8 +643,9 @@ export default function AdminPage() {
     );
   }
 
+  // Signed in but not admin (or API error)
   if (statusError || !statusData?.isAdmin) {
-    const msg = (statusError as Error)?.message ?? "Access denied.";
+    const isAuthError = (statusError as Error)?.message?.toLowerCase().includes("authentication");
     return (
       <div className="flex-1 flex items-center justify-center px-4 py-16">
         <Card className="w-full max-w-sm">
@@ -610,8 +654,14 @@ export default function AdminPage() {
               <Shield className="w-6 h-6 text-destructive" />
             </div>
             <div className="space-y-1">
-              <h2 className="text-base font-semibold text-foreground">Access denied</h2>
-              <p className="text-sm text-muted-foreground">{msg}</p>
+              <h2 className="text-base font-semibold text-foreground">
+                {isAuthError ? "Please sign in" : "Admin access only"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {isAuthError
+                  ? "Your session may have expired. Please sign in again."
+                  : `This area is restricted. Signed in as ${user.email ?? "unknown"}.`}
+              </p>
             </div>
           </CardContent>
         </Card>
