@@ -1,0 +1,122 @@
+Add a “Recommended Next Step” card to the Custody Atlas Workspace.
+
+Goal:
+Help users immediately understand the best next action to take based on their current progress, so the product feels guided and useful instead of passive.
+
+Requirements:
+
+========================================
+PART 1 — Add Recommended Next Step Card
+========================================
+
+1. Add a prominent but clean card near the top of the Workspace page.
+
+Title:
+“Recommended Next Step”
+
+2. The card should show:
+- a short recommendation
+- a brief explanation
+- a primary CTA button
+
+========================================
+PART 2 — Recommendation Logic
+========================================
+
+3. Determine the recommendation based on the user’s current state.
+
+Use logic like:
+
+Case A — No jurisdiction set:
+Recommendation:
+“Set your location”
+Explanation:
+“We’ll use your state and county to provide more relevant custody information.”
+CTA:
+“Set Location”
+
+Case B — Jurisdiction set, but no questions asked:
+Recommendation:
+“Ask your first custody question”
+Explanation:
+“Ask Atlas can help you understand custody rules that may apply where you live.”
+CTA:
+“Ask Atlas”
+
+Case C — Questions asked, but no documents uploaded:
+Recommendation:
+“Upload a custody document”
+Explanation:
+“Analyze a custody order or legal notice to get a plain-English explanation.”
+CTA:
+“Analyze a Document”
+
+Case D — Questions and document exist, but no workspace activity beyond that:
+Recommendation:
+“Review your saved conversations”
+Explanation:
+“Your questions and documents are saved here so you can continue where you left off.”
+CTA:
+“Open Workspace Items” or “Resume Conversation”
+
+Case E — Pro user with active usage:
+Recommendation:
+“Summarize your situation”
+Explanation:
+“Generate a structured summary based on your questions and documents.”
+CTA:
+“Summarize My Situation”
+(only if the feature exists or is safely stubbed)
+
+========================================
+PART 3 — Navigation Behavior
+========================================
+
+4. Each CTA should route to the correct place:
+- Set Location → location/jurisdiction flow
+- Ask Atlas → Ask Atlas page
+- Analyze a Document → upload page
+- Resume Conversation → most recent thread
+- Summarize My Situation → case summary feature or placeholder
+
+========================================
+PART 4 — UX / Design
+========================================
+
+5. Style the card so it feels helpful and premium:
+- strong visual hierarchy
+- concise wording
+- one clear CTA
+- fits the existing legal-tech design system
+
+6. Make it mobile-friendly.
+
+========================================
+PART 5 — Persistence / Dynamic Updates
+========================================
+
+7. Update the recommendation dynamically as the user progresses.
+If the user completes the current recommended step, the next recommendation should appear automatically on the next visit or refresh.
+
+========================================
+PART 6 — Do Not Break
+========================================
+
+8. Preserve:
+- Ask Atlas
+- workspace auto-save
+- document analysis
+- auth
+- usage limits
+- admin panel
+- invite code system
+
+========================================
+PART 7 — Summary
+========================================
+
+9. After implementation, summarize:
+- files changed
+- recommendation rules added
+- how the CTA destination is chosen
+- any placeholder or future-ready logic used

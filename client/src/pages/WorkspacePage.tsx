@@ -122,7 +122,7 @@ function formatEventDate(dateStr: string): string {
 
 /* ── Next Best Step ───────────────────────────────────────────────────────── */
 
-type StepScenario = "no-jurisdiction" | "no-questions" | "no-document" | "no-doc-followup" | "explore-map";
+type StepScenario = "no-jurisdiction" | "no-questions" | "no-document" | "review-conversations" | "pro-summarize";
 
 interface StepConfig {
   icon: React.ElementType;
@@ -139,32 +139,32 @@ const STEP_CONFIGS: Record<StepScenario, StepConfig> = {
   "no-jurisdiction": {
     icon: MapPin, iconBg: "bg-blue-100 dark:bg-blue-950/50", iconColor: "text-blue-600 dark:text-blue-400",
     title: "Set your location",
-    description: "Start by identifying your location so we can show the custody laws that apply to you.",
-    ctaLabel: "Set Your Location", ctaHref: "/location", secondaryLabel: "Skip for now",
+    description: "We'll use your state and county to provide more relevant custody information.",
+    ctaLabel: "Set Location", ctaHref: "/location", secondaryLabel: "Skip for now",
   },
   "no-questions": {
     icon: MessageSquare, iconBg: "bg-blue-100 dark:bg-blue-950/50", iconColor: "text-blue-600 dark:text-blue-400",
-    title: "Ask a custody question",
-    description: "Ask a custody question to better understand how the laws in your state may apply to your situation.",
-    ctaLabel: "Ask a Custody Question", ctaHref: "/ask", secondaryLabel: "Skip for now",
+    title: "Ask your first custody question",
+    description: "Ask Atlas can help you understand custody rules that may apply where you live.",
+    ctaLabel: "Ask Atlas", ctaHref: "/ask", secondaryLabel: "Skip for now",
   },
   "no-document": {
     icon: FileText, iconBg: "bg-emerald-100 dark:bg-emerald-950/50", iconColor: "text-emerald-600 dark:text-emerald-400",
-    title: "Analyze your custody order",
-    description: "Upload your custody order or court notice to get a plain-English explanation.",
+    title: "Upload a custody document",
+    description: "Analyze a custody order or legal notice to get a plain-English explanation.",
     ctaLabel: "Analyze a Document", ctaHref: "/upload-document", secondaryLabel: "Skip for now",
   },
-  "no-doc-followup": {
+  "review-conversations": {
     icon: MessageSquare, iconBg: "bg-violet-100 dark:bg-violet-950/50", iconColor: "text-violet-600 dark:text-violet-400",
-    title: "Ask about your document",
-    description: "You can ask questions about the document you uploaded to better understand what it means.",
-    ctaLabel: "Ask About This Document", ctaHref: "/ask", secondaryLabel: "Skip for now",
+    title: "Review your saved conversations",
+    description: "Your questions and documents are saved here so you can continue where you left off.",
+    ctaLabel: "Resume Conversation", ctaHref: "/ask", secondaryLabel: "Maybe later",
   },
-  "explore-map": {
-    icon: Map, iconBg: "bg-blue-100 dark:bg-blue-950/50", iconColor: "text-blue-600 dark:text-blue-400",
-    title: "Keep exploring",
-    description: "Explore custody laws across states or compare legal rules.",
-    ctaLabel: "Explore Custody Map", ctaHref: "/custody-map", secondaryLabel: "View workspace",
+  "pro-summarize": {
+    icon: Sparkles, iconBg: "bg-amber-100 dark:bg-amber-950/50", iconColor: "text-amber-600 dark:text-amber-400",
+    title: "Summarize your situation",
+    description: "Generate a structured summary based on your questions and documents.",
+    ctaLabel: "Summarize My Situation", ctaHref: "#case-summary", secondaryLabel: "Maybe later",
   },
 };
 
@@ -172,38 +172,45 @@ function NextBestStepPanel({ scenario, ctaHref }: { scenario: StepScenario; ctaH
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
   const { icon: Icon, iconBg, iconColor, title, description, ctaLabel, secondaryLabel } = STEP_CONFIGS[scenario];
+  const isHashLink = ctaHref.startsWith("#");
+  const CtaWrapper = ({ children }: { children: React.ReactNode }) =>
+    isHashLink ? (
+      <a href={ctaHref} onClick={() => setDismissed(false)}>{children}</a>
+    ) : (
+      <Link href={ctaHref}>{children}</Link>
+    );
   return (
     <div data-testid="panel-next-best-step">
       <div className="flex items-center gap-1.5 mb-2">
         <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Next Best Step</span>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Recommended Next Step</span>
       </div>
-      <div className="relative rounded-xl border border-blue-200 dark:border-blue-800/60 bg-gradient-to-r from-blue-50 to-slate-50 dark:from-blue-950/30 dark:to-slate-900/30 px-5 py-4 shadow-sm">
+      <div className="relative rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background dark:from-primary/10 dark:via-background dark:to-background px-5 py-5 shadow-sm">
         <button
           onClick={() => setDismissed(true)}
-          className="absolute top-3 right-3 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+          className="absolute top-3 right-3 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/50 hover:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           aria-label="Dismiss"
           data-testid="button-dismiss-next-step"
         >
           <X className="w-3.5 h-3.5" />
         </button>
         <div className="flex items-start gap-4 pr-6">
-          <div className={`w-10 h-10 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
-            <Icon className={`w-5 h-5 ${iconColor}`} />
+          <div className={`w-12 h-12 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
+            <Icon className={`w-6 h-6 ${iconColor}`} />
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="font-semibold text-foreground text-base leading-tight mb-1" data-testid="text-next-step-title">
               {title}
             </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed mb-3" data-testid="text-next-step-description">
+            <p className="text-sm text-muted-foreground leading-relaxed mb-3.5" data-testid="text-next-step-description">
               {description}
             </p>
             <div className="flex items-center gap-3 flex-wrap">
-              <Link href={ctaHref}>
-                <Button size="sm" className="gap-1.5 shadow-sm" data-testid="button-next-step-cta">
+              <CtaWrapper>
+                <Button size="sm" className="gap-1.5 shadow-sm px-4" data-testid="button-next-step-cta">
                   {ctaLabel}<ArrowRight className="w-3.5 h-3.5" />
                 </Button>
-              </Link>
+              </CtaWrapper>
               <button
                 onClick={() => setDismissed(true)}
                 className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors"
@@ -419,7 +426,7 @@ function CaseSummarySection() {
   });
 
   return (
-    <Card className="shadow-sm border md:col-span-2" data-testid="card-case-summary">
+    <Card id="case-summary" className="shadow-sm border md:col-span-2" data-testid="card-case-summary">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
@@ -705,20 +712,28 @@ export default function WorkspacePage() {
 
   const hasQuestions = threads.length > 0;
   const hasDocuments = documents.length > 0;
-  const hasDocFollowup = hasDocuments && hasQuestions;
 
   function resolveScenario(): StepScenario {
     if (!jurisdiction) return "no-jurisdiction";
     if (!hasQuestions) return "no-questions";
     if (!hasDocuments) return "no-document";
-    if (!hasDocFollowup) return "no-doc-followup";
-    return "explore-map";
+    if (isProUser) return "pro-summarize";
+    return "review-conversations";
   }
   const scenario = resolveScenario();
 
   const scenarioCta = ((): string => {
+    if (scenario === "review-conversations") {
+      const threadParam = threads[0] ? `thread=${threads[0].id}` : null;
+      if (jurisdiction) {
+        const jParams = `state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`;
+        return threadParam ? `/ask?${threadParam}&${jParams}` : `/ask?${jParams}`;
+      }
+      return threadParam ? `/ask?${threadParam}` : "/ask";
+    }
+    if (scenario === "pro-summarize") return "#case-summary";
     const base = STEP_CONFIGS[scenario].ctaHref;
-    if ((scenario === "no-questions" || scenario === "no-doc-followup") && jurisdiction) {
+    if (scenario === "no-questions" && jurisdiction) {
       return `/ask?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`;
     }
     return base;
