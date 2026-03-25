@@ -18,6 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
+import { CaseSelector } from "@/components/app/CaseSelector";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -789,6 +790,19 @@ export default function WorkspacePage() {
 
       {/* Next Best Step */}
       <NextBestStepPanel scenario={scenario} ctaHref={scenarioCta} />
+
+      {/* Cases */}
+      <Card className="shadow-sm border" data-testid="card-cases">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <LayoutDashboard className="w-3.5 h-3.5 text-primary" />
+            My Cases
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CaseSelector />
+        </CardContent>
+      </Card>
 
       {/* Dashboard grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

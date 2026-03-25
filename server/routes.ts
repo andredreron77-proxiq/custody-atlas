@@ -35,6 +35,15 @@ import {
   deleteTimelineEvent,
 } from "./services/timeline";
 import {
+  createCase,
+  listCases,
+  getCaseById,
+  createConversation,
+  listConversations,
+  getConversationById,
+  listMessages,
+} from "./services/cases";
+import {
   createThread,
   appendMessage,
   getThread,
@@ -1323,6 +1332,111 @@ Respond only with the JSON object. No markdown, no extra text.`;
     const result = await redeemInviteCode(code.trim(), user.id);
     if (!result.ok) return res.status(400).json({ error: result.error });
     return res.json({ ok: true, tier: result.tier });
+  });
+
+  /* ════════════════════════════════════════════════════════════════════════
+   *  CASES — case-based architecture foundation
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * POST /api/cases
+   * Create a new case for the authenticated user.
+   */
+  app.post("/api/cases", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const schema = z.object({
+      title: z.string().min(1).max(200),
+      description: z.string().max(1000).optional(),
+      jurisdictionState: z.string().optional(),
+      jurisdictionCounty: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid case payload.", details: parsed.error.flatten() });
+    }
+    try {
+      const newCase = await createCase(user.id, parsed.data);
+      if (!newCase) return res.status(503).json({ error: "Case storage unavailable." });
+      return res.status(201).json({ case: newCase });
+    } catch (err) {
+      console.error("[cases] POST /api/cases error:", err);
+      return res.status(500).json({ error: "Failed to create case." });
+    }
+  });
+
+  /**
+   * GET /api/cases
+   * List all cases belonging to the authenticated user.
+   */
+  app.get("/api/cases", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    try {
+      const cases = await listCases(user.id);
+      return res.json({ cases });
+    } catch (err) {
+      console.error("[cases] GET /api/cases error:", err);
+      return res.status(500).json({ error: "Failed to list cases." });
+    }
+  });
+
+  /**
+   * POST /api/cases/:caseId/conversations
+   * Create a new conversation under the specified case.
+   */
+  app.post("/api/cases/:caseId/conversations", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    const schema = z.object({
+      title: z.string().max(200).optional(),
+      threadType: z.enum(["general", "document", "comparison"]).default("general"),
+      jurisdictionState: z.string().optional(),
+      jurisdictionCounty: z.string().optional(),
+      documentId: z.string().uuid().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid conversation payload." });
+    }
+    try {
+      const conversation = await createConversation(user.id, caseId, parsed.data);
+      if (!conversation) return res.status(404).json({ error: "Case not found or storage unavailable." });
+      return res.status(201).json({ conversation });
+    } catch (err) {
+      console.error("[cases] POST conversations error:", err);
+      return res.status(500).json({ error: "Failed to create conversation." });
+    }
+  });
+
+  /**
+   * GET /api/cases/:caseId/conversations
+   * List all conversations for the specified case (must be owned by the caller).
+   */
+  app.get("/api/cases/:caseId/conversations", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const conversations = await listConversations(caseId, user.id);
+      return res.json({ conversations });
+    } catch (err) {
+      console.error("[cases] GET conversations error:", err);
+      return res.status(500).json({ error: "Failed to list conversations." });
+    }
+  });
+
+  /**
+   * GET /api/conversations/:conversationId/messages
+   * List messages for a conversation (caller must own the conversation).
+   */
+  app.get("/api/conversations/:conversationId/messages", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { conversationId } = req.params;
+    try {
+      const messages = await listMessages(conversationId, user.id);
+      return res.json({ messages });
+    } catch (err) {
+      console.error("[cases] GET messages error:", err);
+      return res.status(500).json({ error: "Failed to list messages." });
+    }
   });
 
   return httpServer;
