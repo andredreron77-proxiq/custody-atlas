@@ -160,4 +160,54 @@ Every `triggerAIEntry` call logs `{ topic, state, timestamp }` to the browser co
 GOOGLE_MAPS_API_KEY=        # Google Maps Geocoding API key
 OPENAI_API_KEY=             # OpenAI API key (or AI_INTEGRATIONS_OPENAI_API_KEY for Replit AI)
 DATABASE_URL=               # PostgreSQL connection string (only needed for chat/audio integrations)
+ADMIN_EMAIL=                # Email address of the internal admin user (enforced server-side)
+VITE_SUPABASE_URL=          # Supabase project URL
+VITE_SUPABASE_ANON_KEY=     # Supabase anon/public key
+SUPABASE_SERVICE_ROLE_KEY=  # Supabase service role key (server-only, never exposed to client)
+SESSION_SECRET=             # Express session secret
 ```
+
+---
+
+## Admin System
+
+### Overview
+An internal admin panel at `/admin` lets the designated admin manage users and access control.
+
+### Access control
+- Server-side: `requireAdmin` middleware in `server/services/auth.ts` verifies the authenticated user's email against `ADMIN_EMAIL` env var. Returns 403 for everyone else.
+- Frontend: the page calls `GET /api/admin/status` first; if it gets 401/403, it shows an "Access denied" screen without loading any user data.
+
+### Features
+
+| Tab | What it does |
+|---|---|
+| Users | Lists all Supabase auth users with their tier, join date. Inline select + Save button to change any user's tier (free/pro). Search by email. |
+| Invite User | Enter an email + tier. If the user doesn't exist yet, sends a Supabase invite email and pre-assigns the tier in `user_profiles`. If the user already exists, updates their tier. |
+| Invite Codes | Generate codes in the format `ATLAS-XXXX-XXXX`. Each code can have an optional max uses and expiry date. Codes are listed with their usage count and a Deactivate button. |
+
+### Code redemption
+Any signed-in user can go to `/redeem` to enter an invite code. Valid codes upgrade their tier immediately.
+
+### Key files
+- `server/services/auth.ts` — `requireAdmin` middleware
+- `server/services/adminService.ts` — all Supabase admin operations (list users, set tier, invite, code CRUD, redeem)
+- `client/src/pages/admin/AdminPage.tsx` — tabbed admin UI
+- `client/src/pages/RedeemCodePage.tsx` — user-facing code redemption page
+
+### Supabase table required
+```sql
+CREATE TABLE IF NOT EXISTS invite_codes (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code        text NOT NULL UNIQUE,
+  tier        text NOT NULL DEFAULT 'pro',
+  max_uses    int,
+  uses_count  int NOT NULL DEFAULT 0,
+  expires_at  timestamptz,
+  is_active   boolean NOT NULL DEFAULT true,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+```
+
+### Tier preservation on invited signup
+When an admin invites a user, the tier is written to `user_profiles` immediately after `inviteUserByEmail`. When the invited user accepts and signs in for the first time, `getUserTier` reads their pre-assigned tier from `user_profiles`. Any database trigger that creates a `free` row on signup fires before our upsert, so the upsert always wins with the correct tier.
