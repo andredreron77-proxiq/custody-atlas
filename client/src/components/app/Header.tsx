@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock } from "lucide-react";
+import { Scale, Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock, ShieldCheck } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { AuthButton } from "./AuthButton";
 import { UsageIndicator } from "./UsageIndicator";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { getQueryFn } from "@/lib/queryClient";
 
 interface NavItem {
   label: string;
@@ -23,6 +26,20 @@ const NAV_ITEMS: NavItem[] = [
 export function Header() {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Auth state — needed to gate the admin status check
+  const { user, isLoading: authLoading } = useCurrentUser();
+
+  // Admin status — only queried once the user is confirmed signed-in.
+  // Uses the same query key as AdminPage so the result is shared from cache.
+  const { data: adminStatus } = useQuery<{ isAdmin: boolean }>({
+    queryKey: ["/api/admin/status"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled: !authLoading && !!user,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const isAdmin = adminStatus?.isAdmin === true;
 
   const isActive = (href: string, exact = false) => {
     if (exact) return location === href;
@@ -95,6 +112,27 @@ export function Header() {
                 </Link>
               );
             })}
+
+            {/* Admin link — only shown to the designated admin user */}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className={`
+                  relative flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors
+                  ${isActive("/admin")
+                    ? "text-amber-300 bg-amber-500/15"
+                    : "text-amber-400/80 hover:text-amber-300 hover:bg-amber-500/10"
+                  }
+                `}
+                data-testid="nav-admin"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>Admin</span>
+                {isActive("/admin") && (
+                  <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-amber-400 rounded-full" />
+                )}
+              </Link>
+            )}
           </nav>
 
           {/* Desktop: usage indicator + auth button */}
@@ -166,6 +204,31 @@ export function Header() {
                   </li>
                 );
               })}
+
+              {/* Admin link — only shown to the designated admin user */}
+              {isAdmin && (
+                <li>
+                  <Link
+                    href="/admin"
+                    className={`
+                      flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium transition-colors
+                      ${isActive("/admin")
+                        ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                        : "text-amber-400/80 hover:text-amber-300 hover:bg-amber-500/10 border border-transparent"
+                      }
+                    `}
+                    data-testid="mobile-nav-admin"
+                  >
+                    <span className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${isActive("/admin") ? "bg-amber-500/30" : "bg-amber-500/10"}`}>
+                      <ShieldCheck className="w-4 h-4 text-amber-400" />
+                    </span>
+                    <span className="flex-1">Admin</span>
+                    {isActive("/admin") && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    )}
+                  </Link>
+                </li>
+              )}
             </ul>
 
             {/* Mobile auth + usage footer */}
