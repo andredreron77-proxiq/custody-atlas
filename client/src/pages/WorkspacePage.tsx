@@ -738,18 +738,12 @@ function DocumentsSection({
               >
                 {/* Header row: icon + filename + badge + Review/Ask/Delete buttons */}
                 <div className="flex items-center gap-2">
-                  <FileText className={`w-4 h-4 flex-shrink-0 ${!doc.hasStoragePath ? "text-amber-500/80" : "text-muted-foreground"}`} />
+                  <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
                   <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium truncate">{doc.fileName}</span>
                     {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
-                    {!doc.hasStoragePath && (
-                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5 flex-shrink-0">
-                        File missing
-                      </span>
-                    )}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {/* Review button — only makes sense if file is available or has analysis */}
                     <Link href={`/document/${doc.id}`}>
                       <Button
                         variant="ghost"
@@ -780,23 +774,6 @@ function DocumentsSection({
                     </Button>
                   </div>
                 </div>
-
-                {/* Broken-state helper — prompts removal when file is missing */}
-                {!doc.hasStoragePath && Object.keys(doc.analysisJson).length === 0 && (
-                  <div className="pl-6 flex items-center gap-2">
-                    <TriangleAlert className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                    <span className="text-[11px] text-muted-foreground">
-                      Original file is no longer available.{" "}
-                      <button
-                        className="underline hover:text-foreground transition-colors"
-                        onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
-                        data-testid={`button-remove-broken-${doc.id}`}
-                      >
-                        Remove from workspace
-                      </button>
-                    </span>
-                  </div>
-                )}
 
                 {/* Type selector + date */}
                 <div className="flex items-center gap-2 pl-6">
