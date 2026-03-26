@@ -21,14 +21,20 @@ import {
   ArrowLeft, FolderOpen, MessageSquare, Upload, MapPin, Building2,
   Hash, Calendar, User2, ClipboardList, Loader2, CircleCheck, X,
   ChevronRight, CheckCheck, Zap, ExternalLink, FileText, AlertTriangle,
-  File, ChevronDown, ChevronUp, History, Info, Scale,
+  File, ChevronDown, ChevronUp, History, Info, Scale, Trash2,
 } from "lucide-react";
 import {
   DocFactChips, DocKeyDatesRow, DocQuickActions,
   DocObligationBadge, DocImplicationsSection, DocActionInsight,
 } from "@/components/app/DocIntelPanel";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ComponentType, type ReactNode } from "react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
@@ -668,6 +674,10 @@ function DocumentsPanel({
   uploadHref: string;
   askHref: string;
 }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
+
   const { data, isLoading } = useQuery<{ documents: DocumentRow[] }>({
     queryKey: ["/api/cases", caseId, "documents"],
     queryFn: async () => {
@@ -677,6 +687,30 @@ function DocumentsPanel({
     },
     staleTime: 30_000,
     enabled: !!caseId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (docId: string) => {
+      const res = await fetch(`/api/documents/${docId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      // 404 = already gone; still succeed so list stays clean.
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not delete document. Please try again.");
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/cases", caseId, "documents"] });
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
+      qc.invalidateQueries({ queryKey: ["/api/documents"] });
+      setPendingDelete(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+      setPendingDelete(null);
+    },
   });
 
   const documents = data?.documents ?? [];
@@ -770,6 +804,18 @@ function DocumentsPanel({
                             </Button>
                           </a>
                         </Link>
+                        {/* Delete — always surfaced so no document is permanently stuck */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-muted-foreground hover:text-destructive"
+                          onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
+                          disabled={deleteMutation.isPending && pendingDelete?.id === doc.id}
+                          data-testid={`btn-delete-doc-${doc.id}`}
+                          aria-label={`Delete ${doc.fileName}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
                       </div>
                     </div>
 
@@ -803,6 +849,36 @@ function DocumentsPanel({
           })}
         </div>
       )}
+
+      {/* ── Shared delete confirmation dialog ────────────────────────────── */}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium">{pendingDelete?.fileName}</span>
+              {" "}and all extracted analysis data will be permanently removed.
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="btn-case-delete-doc-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="btn-case-delete-doc-confirm"
+            >
+              {deleteMutation.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />Deleting…</>
+              ) : "Delete permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1567,11 +1567,17 @@ ${userQuestion}`;
   app.get("/api/workspace", requireAuth, async (req, res) => {
     const user = (req as any).user;
     try {
-      const [threads, documents, timelineEvents] = await Promise.all([
+      const [threads, rawDocuments, timelineEvents] = await Promise.all([
         listThreads(user.id, 10),
         getDocuments(user.id),
         listTimelineEvents(user.id),
       ]);
+      // Strip internal fields (storagePath, extractedText) from workspace response;
+      // expose hasStoragePath flag so the UI can show a broken-file indicator.
+      const documents = rawDocuments.map(({ storagePath, extractedText, ...safe }) => ({
+        ...safe,
+        hasStoragePath: !!storagePath,
+      }));
       return res.json({ threads, documents, timelineEvents });
     } catch (err) {
       console.error("[workspace] GET error:", err);

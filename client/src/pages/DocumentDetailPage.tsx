@@ -559,6 +559,82 @@ function LoadingSkeleton() {
   );
 }
 
+/* ── Document Not Found State ─────────────────────────────────────────────── */
+
+/**
+ * Shown when GET /api/documents/:id returns a 404 (file gone or access denied).
+ * Unlike a plain error screen, it offers a one-click "Remove from workspace"
+ * action that calls DELETE so the orphaned DB record is also cleaned up.
+ *
+ * The DELETE call succeeds on 404 too (no record = already clean), so
+ * clicking "Remove" always leaves the workspace in a consistent state.
+ */
+function DocumentNotFoundState({ documentId }: { documentId: string }) {
+  const [, navigate] = useLocation();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const removeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      // 404 = already deleted — that's fine, still navigate away.
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not remove document.");
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
+      qc.invalidateQueries({ queryKey: ["/api/documents"] });
+      qc.removeQueries({ queryKey: ["/api/documents", documentId] });
+      navigate("/workspace");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not remove document", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-5">
+      <AlertCircle className="w-10 h-10 text-muted-foreground/40 mx-auto" />
+      <div className="space-y-1.5">
+        <p className="text-sm font-semibold">This document is no longer available</p>
+        <p className="text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
+          The file may have been removed from storage, or you may not have access to it.
+          You can safely remove the entry from your workspace.
+        </p>
+      </div>
+      <div className="flex items-center justify-center gap-3 flex-wrap">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate("/workspace")}
+          data-testid="btn-back-to-workspace-error"
+        >
+          <ArrowLeft className="w-3 h-3 mr-1" />
+          Back to Workspace
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => removeMutation.mutate()}
+          disabled={removeMutation.isPending}
+          data-testid="btn-remove-unavailable-doc"
+        >
+          {removeMutation.isPending ? (
+            <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Removing…</>
+          ) : (
+            <><Trash2 className="w-3 h-3 mr-1.5" />Remove from workspace</>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main Page ────────────────────────────────────────────────────────────── */
 
 export default function DocumentDetailPage() {
@@ -586,20 +662,10 @@ export default function DocumentDetailPage() {
   const backHref = doc?.caseId ? `/case/${doc.caseId}` : "/workspace";
   const backLabel = doc?.caseId ? "Case Dashboard" : "Workspace";
 
-  /* ── Error state ── */
+  /* ── Error state — document not found or inaccessible ── */
   if (isError) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
-        <FileText className="w-10 h-10 text-muted-foreground/40 mx-auto" />
-        <p className="text-sm font-medium">Document not found</p>
-        <p className="text-xs text-muted-foreground">
-          This document may have been removed or you may not have access to it.
-        </p>
-        <Button variant="outline" size="sm" onClick={() => navigate("/workspace")} data-testid="btn-back-error">
-          <ArrowLeft className="w-3 h-3 mr-1" />
-          Back to Workspace
-        </Button>
-      </div>
+      <DocumentNotFoundState documentId={documentId ?? ""} />
     );
   }
 

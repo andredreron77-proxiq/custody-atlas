@@ -17,6 +17,12 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { CaseSelector } from "@/components/app/CaseSelector";
 import {
@@ -49,6 +55,7 @@ interface WorkspaceDocument {
   docType: DocType;
   analysisJson: Record<string, unknown>;
   createdAt: string;
+  hasStoragePath: boolean;
 }
 
 interface WorkspaceTimelineEvent {
@@ -642,12 +649,38 @@ function DocumentsSection({
   askAIPath: string;
 }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [localTypes, setLocalTypes] = useState<Record<string, DocType>>({});
+  // Track which doc is pending delete confirmation (null = dialog closed).
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
 
   const typeMutation = useMutation({
     mutationFn: ({ docId, docType }: { docId: string; docType: DocType }) =>
       apiRequest("PATCH", `/api/documents/${docId}/type`, { docType }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/workspace"] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (docId: string) => {
+      const res = await fetch(`/api/documents/${docId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      // 404 means record is already gone — treat as success so UI stays consistent.
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not delete document. Please try again.");
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
+      qc.invalidateQueries({ queryKey: ["/api/documents"] });
+      setPendingDelete(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+      setPendingDelete(null);
+    },
   });
 
   function getDocType(doc: WorkspaceDocument): DocType {
@@ -705,14 +738,20 @@ function DocumentsSection({
                 className="rounded-lg border p-3 space-y-2"
                 data-testid={`doc-item-${doc.id}`}
               >
-                {/* Header row: icon + filename + badge + Review/Ask buttons */}
+                {/* Header row: icon + filename + badge + Review/Ask/Delete buttons */}
                 <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <FileText className={`w-4 h-4 flex-shrink-0 ${!doc.hasStoragePath ? "text-amber-500/80" : "text-muted-foreground"}`} />
                   <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium truncate">{doc.fileName}</span>
                     {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
+                    {!doc.hasStoragePath && (
+                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5 flex-shrink-0">
+                        File missing
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* Review button — only makes sense if file is available or has analysis */}
                     <Link href={`/document/${doc.id}`}>
                       <Button
                         variant="ghost"
@@ -729,8 +768,37 @@ function DocumentsSection({
                         <ArrowRight className="w-3 h-3" />
                       </Button>
                     </Link>
+                    {/* Delete — always available; ensures no doc is permanently orphaned */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7 px-2 text-muted-foreground hover:text-destructive"
+                      onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
+                      disabled={deleteMutation.isPending && pendingDelete?.id === doc.id}
+                      data-testid={`button-delete-doc-${doc.id}`}
+                      aria-label={`Delete ${doc.fileName}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 </div>
+
+                {/* Broken-state helper — prompts removal when file is missing */}
+                {!doc.hasStoragePath && Object.keys(doc.analysisJson).length === 0 && (
+                  <div className="pl-6 flex items-center gap-2">
+                    <TriangleAlert className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                    <span className="text-[11px] text-muted-foreground">
+                      Original file is no longer available.{" "}
+                      <button
+                        className="underline hover:text-foreground transition-colors"
+                        onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
+                        data-testid={`button-remove-broken-${doc.id}`}
+                      >
+                        Remove from workspace
+                      </button>
+                    </span>
+                  </div>
+                )}
 
                 {/* Type selector + date */}
                 <div className="flex items-center gap-2 pl-6">
@@ -769,6 +837,36 @@ function DocumentsSection({
           </ul>
         </div>
       ))}
+
+      {/* ── Shared delete confirmation dialog ────────────────────────────── */}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium">{pendingDelete?.fileName}</span>
+              {" "}and all extracted analysis data will be permanently removed.
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="btn-delete-doc-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="btn-delete-doc-confirm"
+            >
+              {deleteMutation.isPending ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />Deleting…</>
+              ) : "Delete permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
