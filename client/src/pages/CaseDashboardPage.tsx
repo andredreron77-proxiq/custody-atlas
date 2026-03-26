@@ -928,8 +928,8 @@ function deriveAlerts({
         "We have no courthouse address recorded for this case. " +
         "Confirm the location before your hearing.",
       cta: {
-        label: "Ask Atlas for the address",
-        href: askWithQ("What is the courthouse address for my upcoming hearing?"),
+        label: "Check case facts",
+        href: "#section-facts",
       },
     });
   }
@@ -968,8 +968,8 @@ function deriveAlerts({
         "These actions have passed their expected resolution window. " +
         "Review them now to avoid missing deadlines.",
       cta: {
-        label: "Ask Atlas for guidance",
-        href: askWithQ("I have overdue items in my case. What should I prioritize?"),
+        label: "View actions",
+        href: "#section-actions",
       },
     });
   }
@@ -1012,8 +1012,8 @@ function deriveAlerts({
       description:
         "Make sure your case facts, documents, and pending actions are in order.",
       cta: {
-        label: "Ask Atlas",
-        href: askWithQ("My hearing is in a week. What should I review and prepare?"),
+        label: "Review actions",
+        href: "#section-actions",
       },
     });
   }
@@ -1029,8 +1029,8 @@ function deriveAlerts({
       title: `${urgentActions.length} urgent action${urgentActions.length > 1 ? "s" : ""} related to your upcoming hearing`,
       description: "Complete these before your hearing date to avoid gaps in your case.",
       cta: {
-        label: "Ask Atlas for help",
-        href: askWithQ("What urgent actions should I complete before my hearing?"),
+        label: "View urgent actions",
+        href: "#section-actions",
       },
     });
   }
@@ -1049,8 +1049,8 @@ function deriveAlerts({
         description:
           "Review your uploaded documents to confirm whether a court date has been scheduled.",
         cta: {
-          label: "Ask Atlas",
-          href: askWithQ("Has a court hearing been scheduled in my case? What does my paperwork say?"),
+          label: "Review documents",
+          href: "#section-documents",
         },
       });
     }
@@ -1176,16 +1176,30 @@ function CaseAlerts({
               </p>
             </div>
 
-            {/* CTA */}
-            <Link href={alert.cta.href}>
-              <a
+            {/* CTA — anchor links scroll in-page; SPA paths use wouter Link */}
+            {alert.cta.href.startsWith("#") ? (
+              <button
                 data-testid={`alert-cta-${alert.id}`}
-                className={`flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold whitespace-nowrap ${s.cta}`}
+                onClick={() => {
+                  const el = document.getElementById(alert.cta.href.slice(1));
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className={`flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold whitespace-nowrap cursor-pointer ${s.cta}`}
               >
                 {alert.cta.label}
                 <ChevronRight className="w-3 h-3" />
-              </a>
-            </Link>
+              </button>
+            ) : (
+              <Link href={alert.cta.href}>
+                <a
+                  data-testid={`alert-cta-${alert.id}`}
+                  className={`flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold whitespace-nowrap ${s.cta}`}
+                >
+                  {alert.cta.label}
+                  <ChevronRight className="w-3 h-3" />
+                </a>
+              </Link>
+            )}
           </div>
         );
       })}
@@ -1714,10 +1728,12 @@ export default function CaseDashboardPage() {
       )}
 
       {/* ── Case Timeline — derived from docs + facts, no new table ──────── */}
-      <CaseTimeline caseId={caseId} />
+      <div id="section-timeline" className="scroll-mt-4">
+        <CaseTimeline caseId={caseId} />
+      </div>
 
       {/* ── Two-column grid: actions + conversations ─────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div id="section-actions" className="grid grid-cols-1 md:grid-cols-5 gap-4 scroll-mt-4">
         <div className="md:col-span-3">
           <ActionsPanel caseId={caseId} />
         </div>
@@ -1731,12 +1747,16 @@ export default function CaseDashboardPage() {
       </div>
 
       {/* ── All case facts — collapsible full table ───────────────────────── */}
-      {!factsLoading && facts.length > 0 && (
-        <CaseFactsSection facts={facts} askHref={askHref} />
-      )}
+      <div id="section-facts" className="scroll-mt-4">
+        {!factsLoading && facts.length > 0 && (
+          <CaseFactsSection facts={facts} askHref={askHref} />
+        )}
+      </div>
 
       {/* ── Documents panel ──────────────────────────────────────────────── */}
-      <DocumentsPanel caseId={caseId} uploadHref={uploadHref} askHref={askHref} />
+      <div id="section-documents" className="scroll-mt-4">
+        <DocumentsPanel caseId={caseId} uploadHref={uploadHref} askHref={askHref} />
+      </div>
 
       {/* ── Footer meta ──────────────────────────────────────────────────── */}
       <p className="text-[11px] text-muted-foreground/50 text-center pb-2">
