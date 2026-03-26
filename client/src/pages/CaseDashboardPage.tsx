@@ -653,18 +653,30 @@ function DocumentsPanel({
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-medium truncate">{doc.fileName}</p>
-                      <Link href={askDocHref}>
-                        <a
-                          className="flex-shrink-0"
-                          data-testid={`link-ask-about-doc-${doc.id}`}
-                          title="Ask Atlas about this document"
-                        >
-                          <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1 text-primary/70 hover:text-primary">
-                            <Zap className="w-3 h-3" />
-                            Ask
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Link href={`/document/${doc.id}`}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+                            data-testid={`btn-review-doc-${doc.id}`}
+                          >
+                            Review
                           </Button>
-                        </a>
-                      </Link>
+                        </Link>
+                        <Link href={askDocHref}>
+                          <a
+                            className="flex-shrink-0"
+                            data-testid={`link-ask-about-doc-${doc.id}`}
+                            title="Ask Atlas about this document"
+                          >
+                            <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1 text-primary/70 hover:text-primary">
+                              <Zap className="w-3 h-3" />
+                              Ask
+                            </Button>
+                          </a>
+                        </Link>
+                      </div>
                     </div>
 
                     {/* Row 2: type · pages · date */}

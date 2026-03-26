@@ -639,19 +639,31 @@ function DocumentsSection({
                 className="rounded-lg border p-3 space-y-2"
                 data-testid={`doc-item-${doc.id}`}
               >
-                {/* Header row: icon + filename + badge + Ask button */}
+                {/* Header row: icon + filename + badge + Review/Ask buttons */}
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                   <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium truncate">{doc.fileName}</span>
                     {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
                   </div>
-                  <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
-                    <Button variant="ghost" size="sm" className="text-xs gap-1 h-7 px-2 flex-shrink-0" data-testid={`button-view-doc-${doc.id}`}>
-                      Ask
-                      <ArrowRight className="w-3 h-3" />
-                    </Button>
-                  </Link>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Link href={`/document/${doc.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                        data-testid={`button-review-doc-${doc.id}`}
+                      >
+                        Review
+                      </Button>
+                    </Link>
+                    <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
+                      <Button variant="ghost" size="sm" className="text-xs gap-1 h-7 px-2 flex-shrink-0 text-primary/70 hover:text-primary" data-testid={`button-ask-doc-${doc.id}`}>
+                        Ask
+                        <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
 
                 {/* Type selector + date */}
