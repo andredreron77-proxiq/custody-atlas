@@ -23,7 +23,10 @@ import {
   ChevronRight, CheckCheck, Zap, ExternalLink, FileText, AlertTriangle,
   File, ChevronDown, ChevronUp, History, Info, Scale,
 } from "lucide-react";
-import { DocFactChips, DocKeyDatesRow, DocQuickActions } from "@/components/app/DocIntelPanel";
+import {
+  DocFactChips, DocKeyDatesRow, DocQuickActions,
+  DocObligationBadge, DocImplicationsSection, DocActionInsight,
+} from "@/components/app/DocIntelPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -673,13 +676,19 @@ function DocumentsPanel({
                       {shortDate(doc.createdAt)}
                     </p>
 
-                    {/* Row 3: extracted fact chips (court, case#, hearing date) */}
+                    {/* Row 3: obligation badges — hearing/deadline/time-sensitive */}
+                    <DocObligationBadge analysisJson={analysis} />
+
+                    {/* Row 4: extracted fact chips (court, case#, hearing date) */}
                     <DocFactChips analysisJson={analysis} />
 
-                    {/* Row 4: key dates preview */}
+                    {/* Row 5: key dates preview */}
                     <DocKeyDatesRow analysisJson={analysis} maxDates={2} />
 
-                    {/* Row 5: quick action buttons */}
+                    {/* Row 6: one deterministic action insight */}
+                    <DocActionInsight analysisJson={analysis} docType={doc.docType} />
+
+                    {/* Row 7: quick action buttons */}
                     <DocQuickActions analysisJson={analysis} askBasePath={askHref} docId={doc.id} />
                   </div>
                 </div>

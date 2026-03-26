@@ -4,18 +4,27 @@
  *
  * Used by both WorkspacePage (DocumentsSection) and CaseDashboardPage (DocumentsPanel).
  *
- * Three sub-components:
- *   DocFactChips      — compact chips for court_name, hearing_date, case_number
- *   DocKeyDatesRow    — shows 1–3 key_dates from analysis, with "No dates found" fallback
- *   DocQuickActions   — "View key dates", "Summarize", "Find deadlines" → Ask Atlas
+ * Sub-components:
+ *   DocFactChips          — compact chips for court_name, hearing_date, case_number
+ *   DocKeyDatesRow        — shows 1–3 key_dates from analysis, with "No dates found" fallback
+ *   DocObligationBadge    — colored pills: "Upcoming hearing", "Response may be required", "Time-sensitive item found"
+ *   DocImplicationsSection — 1–3 bullets from possible_implications[]
+ *   DocActionInsight      — one deterministic action sentence from doc_type + key signals
+ *   DocQuickActions       — "View key dates", "Summarize", "Find deadlines" → Ask Atlas
+ *   DocSummaryLine        — first sentence of summary (utility, available for use anywhere)
  *
  * All sub-components return null when the data they need isn't available,
  * so callers don't need to guard before rendering them.
  */
 
 import { Link } from "wouter";
-import { Calendar, Building2, Hash, Clock, Sparkles, Search, BookOpen } from "lucide-react";
+import {
+  Calendar, Building2, Hash, Clock,
+  Sparkles, Search, BookOpen,
+  AlertCircle, ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -85,7 +94,6 @@ export function DocFactChips({
     items.push({ icon: Calendar, label: "Hearing", value: ef.hearing_date });
   }
   if (ef.court_name) {
-    // Truncate long court names so the chip stays compact
     const name = ef.court_name.length > 30 ? ef.court_name.slice(0, 28) + "…" : ef.court_name;
     items.push({ icon: Building2, label: "Court", value: name });
   }
@@ -112,9 +120,8 @@ export function DocFactChips({
 
 /**
  * Shows the first 1–2 key_dates strings from analysisJson.
- * Shows "No dates found in this document" when key_dates is an empty array
- * (i.e. the document was analyzed but no dates were extracted).
- * Returns null if the document has not been analyzed yet (key_dates absent).
+ * Shows "No dates found in this document" when key_dates is an empty array.
+ * Returns null if the document has not been analyzed yet.
  */
 export function DocKeyDatesRow({
   analysisJson,
@@ -129,8 +136,6 @@ export function DocKeyDatesRow({
 
   const { key_dates } = parseDocAnalysis(analysisJson);
 
-  // key_dates absent means the document hasn't been analyzed (analysisJson is empty)
-  // — we skip rather than showing "no dates" for unanalyzed documents.
   if (!Array.isArray(key_dates)) return null;
 
   if (key_dates.length === 0) {
@@ -157,6 +162,215 @@ export function DocKeyDatesRow({
         <p className="text-[10px] text-muted-foreground/60 pl-4.5">+{remaining} more date{remaining > 1 ? "s" : ""}</p>
       )}
     </div>
+  );
+}
+
+/* ── DocObligationBadge ───────────────────────────────────────────────────── */
+
+type ObligationVariant = "hearing" | "deadline" | "timelimit";
+
+type ObligationItem = {
+  label: string;
+  variant: ObligationVariant;
+};
+
+function deriveObligations(analysis: DocAnalysis): ObligationItem[] {
+  const obligations: ObligationItem[] = [];
+  const ef = analysis.extracted_facts ?? {};
+  const keyDates = (analysis.key_dates ?? []).map(d => d.toLowerCase());
+  const implications = (analysis.possible_implications ?? []).map(i => i.toLowerCase());
+
+  // Explicit hearing date in structured extraction → highest priority signal
+  if (ef.hearing_date) {
+    obligations.push({ label: "Upcoming hearing", variant: "hearing" });
+  } else if (keyDates.some(d => d.includes("hearing"))) {
+    obligations.push({ label: "Upcoming hearing", variant: "hearing" });
+  }
+
+  // Response / answer deadline in key dates
+  const deadlineKws = ["deadline", "respond", "response", "due by", "file by", "serve by", "object", "answer"];
+  if (keyDates.some(d => deadlineKws.some(kw => d.includes(kw)))) {
+    obligations.push({ label: "Response may be required", variant: "deadline" });
+  }
+
+  // Compliance / urgency signals in key dates or implications (max 2 total badges)
+  if (obligations.length < 2) {
+    const urgentKws = ["compli", "mandatory", "required within", "time-sensitive", "immediately", "promptly"];
+    const hasUrgent =
+      keyDates.some(d => urgentKws.some(kw => d.includes(kw))) ||
+      implications.some(i => urgentKws.some(kw => i.includes(kw)));
+    if (hasUrgent) {
+      obligations.push({ label: "Time-sensitive item found", variant: "timelimit" });
+    }
+  }
+
+  return obligations.slice(0, 2);
+}
+
+/**
+ * Colored obligation pills derived entirely from existing analysisJson data.
+ * No LLM calls. Returns null when no obligation signals are found.
+ *
+ * Signals checked (in priority order):
+ *   1. extracted_facts.hearing_date → "Upcoming hearing" (orange)
+ *   2. key_dates[] contains deadline/response keywords → "Response may be required" (amber)
+ *   3. key_dates[] or possible_implications[] contains compliance/urgency keywords → "Time-sensitive item found" (amber)
+ */
+export function DocObligationBadge({
+  analysisJson,
+  className = "",
+}: {
+  analysisJson: Record<string, unknown>;
+  className?: string;
+}) {
+  if (!hasAnalysis(analysisJson)) return null;
+  const analysis = parseDocAnalysis(analysisJson);
+  const obligations = deriveObligations(analysis);
+  if (obligations.length === 0) return null;
+
+  return (
+    <div
+      className={cn("flex flex-wrap items-center gap-1", className)}
+      data-testid="doc-obligation-badges"
+    >
+      {obligations.map(({ label, variant }) => (
+        <span
+          key={label}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium leading-4",
+            variant === "hearing"
+              ? "bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400",
+          )}
+          data-testid={`badge-obligation-${variant}`}
+        >
+          <AlertCircle className="w-2.5 h-2.5 flex-shrink-0" />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/* ── DocImplicationsSection ───────────────────────────────────────────────── */
+
+/**
+ * Shows 1–3 bullets from possible_implications[].
+ * Each bullet comes directly from the AI's analysis — already written in
+ * hedged, plain-English language ("This may mean…", "You may need to…").
+ * Returns null when no implications are available.
+ */
+export function DocImplicationsSection({
+  analysisJson,
+  maxItems = 3,
+  className = "",
+}: {
+  analysisJson: Record<string, unknown>;
+  maxItems?: number;
+  className?: string;
+}) {
+  if (!hasAnalysis(analysisJson)) return null;
+  const { possible_implications } = parseDocAnalysis(analysisJson);
+  if (!possible_implications || possible_implications.length === 0) return null;
+
+  const shown = possible_implications.slice(0, maxItems);
+
+  return (
+    <div className={cn("space-y-0.5", className)} data-testid="doc-implications">
+      <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+        What this may require
+      </p>
+      {shown.map((impl, i) => (
+        <p
+          key={i}
+          className="flex items-start gap-1 text-[10px] text-muted-foreground leading-[1.45]"
+        >
+          <span className="flex-shrink-0 leading-4 text-muted-foreground/50">·</span>
+          <span className="line-clamp-2">{impl}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/* ── DocActionInsight ─────────────────────────────────────────────────────── */
+
+function deriveActionInsight(analysis: DocAnalysis, docType?: string): string | null {
+  const ef = analysis.extracted_facts ?? {};
+  const keyDates = (analysis.key_dates ?? []).map(d => d.toLowerCase());
+
+  const hasHearing =
+    !!ef.hearing_date ||
+    keyDates.some(d => d.includes("hearing"));
+
+  const hasDeadline =
+    keyDates.some(d => /deadline|respond|response|due by|file by|serve by/i.test(d));
+
+  // Derive type from docType prop first, then fall back to extracted document_type
+  const type = (docType ?? analysis.document_type ?? "").toLowerCase();
+
+  // Most specific first: hearing with a known date
+  if (hasHearing && ef.hearing_date) {
+    return `You may need to prepare for a hearing on ${ef.hearing_date}`;
+  }
+  if (hasHearing) {
+    return "You may need to prepare for an upcoming court hearing";
+  }
+  if (hasDeadline) {
+    return "You may need to review the response timing for this document";
+  }
+  if (type.includes("custody_order") || type.includes("order")) {
+    return "You may want to confirm how this order affects your current arrangement";
+  }
+  if (type.includes("communication")) {
+    return "You may want to review this communication with your attorney";
+  }
+  if (type.includes("financial")) {
+    return "You may need to review or respond to this financial document";
+  }
+
+  // Generic fallback when facts are present but nothing specific triggered
+  const hasSomeFacts = Object.values(ef).some(v => v != null && v !== "");
+  if (hasSomeFacts) {
+    return "You may want to discuss this document with your attorney";
+  }
+
+  return null;
+}
+
+/**
+ * One deterministic action sentence derived from existing analysisJson data.
+ * Uses hedged language: "You may need to…", "You may want to…"
+ * No LLM call. Returns null if no useful signal exists.
+ *
+ * @param docType  Optional document type string ("custody_order", "financial", etc.)
+ *                 — used to supplement analysis.document_type when available.
+ */
+export function DocActionInsight({
+  analysisJson,
+  docType,
+  className = "",
+}: {
+  analysisJson: Record<string, unknown>;
+  docType?: string;
+  className?: string;
+}) {
+  if (!hasAnalysis(analysisJson)) return null;
+  const analysis = parseDocAnalysis(analysisJson);
+  const insight = deriveActionInsight(analysis, docType);
+  if (!insight) return null;
+
+  return (
+    <p
+      className={cn(
+        "flex items-start gap-1 text-[10px] text-muted-foreground italic leading-[1.45]",
+        className,
+      )}
+      data-testid="doc-action-insight"
+    >
+      <ChevronRight className="w-3 h-3 flex-shrink-0 mt-px text-muted-foreground/50" />
+      <span>{insight}</span>
+    </p>
   );
 }
 
@@ -189,10 +403,6 @@ const QUICK_ACTIONS = [
 /**
  * Three compact quick-action buttons that open Ask Atlas pre-scoped to the document.
  * Only rendered when the document has been analyzed (analysisJson non-empty).
- *
- * @param askBasePath  Base URL like `/ask?state=Georgia&county=Fulton&case=<id>`
- *                     or `/ask` — the document ID + question are appended here.
- * @param docId        UUID of the document to scope the question to.
  */
 export function DocQuickActions({
   analysisJson,

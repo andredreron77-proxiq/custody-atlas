@@ -19,7 +19,10 @@ import {
 } from "@/components/ui/select";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { CaseSelector } from "@/components/app/CaseSelector";
-import { DocFactChips, DocKeyDatesRow, DocQuickActions } from "@/components/app/DocIntelPanel";
+import {
+  DocFactChips, DocKeyDatesRow, DocQuickActions,
+  DocObligationBadge, DocImplicationsSection, DocActionInsight,
+} from "@/components/app/DocIntelPanel";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -675,11 +678,28 @@ function DocumentsSection({
                   </span>
                 </div>
 
-                {/* Extracted fact chips — only when analysisJson has content */}
+                {/* Obligation badges — hearing/deadline/time-sensitive */}
+                <DocObligationBadge analysisJson={doc.analysisJson} className="pl-6" />
+
+                {/* Extracted fact chips — court, case#, hearing date */}
                 <DocFactChips analysisJson={doc.analysisJson} className="pl-6" />
 
                 {/* Key dates preview — 1–2 dates inline */}
                 <DocKeyDatesRow analysisJson={doc.analysisJson} maxDates={2} className="pl-6" />
+
+                {/* Implications — what this may require (2 bullets max) */}
+                <DocImplicationsSection
+                  analysisJson={doc.analysisJson}
+                  maxItems={2}
+                  className="pl-6"
+                />
+
+                {/* One deterministic action insight */}
+                <DocActionInsight
+                  analysisJson={doc.analysisJson}
+                  docType={doc.docType}
+                  className="pl-6"
+                />
 
                 {/* Quick action buttons */}
                 <DocQuickActions
