@@ -294,6 +294,30 @@ export const insertCaseFactSchema = createInsertSchema(caseFacts).omit({ id: tru
 export type CaseFact = typeof caseFacts.$inferSelect;
 export type InsertCaseFact = typeof insertCaseFactSchema._type;
 
+/* ── Case Actions (Drizzle / Replit PostgreSQL) ───────────────────────────── */
+
+/**
+ * case_actions — generated or manual to-do items tied to a specific case.
+ *
+ * Populated automatically by generateActionsFromFacts() after document analysis
+ * or fact confirmation. action_type is used for deduplication — only one "open"
+ * action per (case_id, user_id, action_type) is allowed at a time.
+ */
+export const caseActions = pgTable("case_actions", {
+  id:           serial("id").primaryKey(),
+  caseId:       text("case_id").notNull(),
+  userId:       text("user_id").notNull(),
+  actionType:   text("action_type").notNull(),
+  title:        text("title").notNull(),
+  description:  text("description").notNull(),
+  status:       text("status").notNull().default("open"),  // open | completed | dismissed
+  createdAt:    timestamp("created_at").defaultNow(),
+});
+
+export const insertCaseActionSchema = createInsertSchema(caseActions).omit({ id: true, createdAt: true });
+export type CaseAction = typeof caseActions.$inferSelect;
+export type InsertCaseAction = typeof insertCaseActionSchema._type;
+
 /* ── Public Questions (Drizzle / Replit PostgreSQL) ───────────────────────── */
 
 /**

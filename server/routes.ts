@@ -30,6 +30,7 @@ import {
 import { saveQuestion } from "./services/questions";
 import { saveDocument, getDocuments, updateDocumentType, type DocumentType } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
+import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus } from "./services/caseActions";
 import {
   listTimelineEvents,
   createTimelineEvent,
@@ -1190,13 +1191,19 @@ CRITICAL RULES:
           analysisJson: validated.data as Record<string, unknown>,
           extractedText: truncatedText,
         }).then((savedDoc) => {
-          // If the request was tied to a case, upsert extracted_facts into case_facts (fire-and-forget).
-          if (docCaseId && savedDoc && validated.data.extracted_facts) {
+          // If the request was tied to a case, upsert extracted_facts into case_facts,
+          // then trigger deterministic action generation from the full fact set (fire-and-forget).
+          if (docCaseId && docUserId && savedDoc && validated.data.extracted_facts) {
+            const factsDict = validated.data.extracted_facts as Record<string, string | null>;
+            const docType = validated.data.document_type as string | null | undefined;
             upsertFactsFromDocument(
-              docCaseId, docUserId!, savedDoc.id, documentName,
-              validated.data.extracted_facts as Record<string, string | null>,
-              validated.data.document_type,
-            ).catch((err) => console.error("[analyze-document] upsertFactsFromDocument error:", err));
+              docCaseId, docUserId, savedDoc.id, documentName, factsDict, docType,
+            ).then(() => {
+              // Build normalized facts dict for action generation
+              const merged: Record<string, string | null | undefined> = { ...factsDict };
+              if (docType) merged.document_type = docType;
+              return generateActionsFromFacts(docCaseId, docUserId!, merged);
+            }).catch((err) => console.error("[analyze-document] post-upsert action generation error:", err));
           }
         }).catch(() => {});
       }
@@ -2008,10 +2015,85 @@ Respond only with the JSON object. No markdown, no extra text.`;
         `[caseFacts] User confirmed: case=${caseId.slice(0, 8)} type=${fact_type} value="${value.trim().slice(0, 60)}"`,
       );
 
+      // After confirmation, refresh actions from full known fact set (fire-and-forget)
+      getCaseFacts(caseId, user.id)
+        .then((allFacts) => {
+          const flatFacts: Record<string, string | null | undefined> = {};
+          for (const f of allFacts) flatFacts[f.factType] = f.value;
+          return generateActionsFromFacts(caseId, user.id, flatFacts);
+        })
+        .catch((err) => console.error("[confirm-fact] action generation error:", err));
+
       return res.json({ success: true, fact_type, value: value.trim(), confidence: "high" });
     } catch (err) {
       console.error("[cases] POST confirm fact error:", err);
       return res.status(500).json({ error: "Failed to confirm fact." });
+    }
+  });
+
+  /**
+   * GET /api/cases/:caseId/actions
+   * Return all actions for the case (open + completed), newest first.
+   */
+  app.get("/api/cases/:caseId/actions", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+      const actions = await getCaseActions(caseId, user.id);
+      return res.json({ actions });
+    } catch (err) {
+      console.error("[cases] GET actions error:", err);
+      return res.status(500).json({ error: "Failed to retrieve case actions." });
+    }
+  });
+
+  /**
+   * POST /api/cases/:caseId/actions
+   * Manually create an action for a case.
+   * Body: { action_type: string; title: string; description: string }
+   */
+  app.post("/api/cases/:caseId/actions", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    const { action_type, title, description } = req.body ?? {};
+
+    if (!action_type || !title || !description) {
+      return res.status(400).json({ error: "action_type, title, and description are required." });
+    }
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+      const action = await createCaseAction(caseId, user.id, action_type, title, description);
+      return res.json({ action });
+    } catch (err) {
+      console.error("[cases] POST action error:", err);
+      return res.status(500).json({ error: "Failed to create action." });
+    }
+  });
+
+  /**
+   * PATCH /api/case-actions/:actionId
+   * Mark an action complete or dismissed.
+   * Body: { status: "completed" | "dismissed" }
+   */
+  app.patch("/api/case-actions/:actionId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const actionId = parseInt(req.params.actionId, 10);
+    const { status } = req.body ?? {};
+
+    if (isNaN(actionId)) return res.status(400).json({ error: "Invalid action ID." });
+    if (status !== "completed" && status !== "dismissed") {
+      return res.status(400).json({ error: "status must be 'completed' or 'dismissed'." });
+    }
+    try {
+      const ok = await updateActionStatus(actionId, user.id, status);
+      if (!ok) return res.status(404).json({ error: "Action not found or permission denied." });
+      return res.json({ success: true, status });
+    } catch (err) {
+      console.error("[cases] PATCH action error:", err);
+      return res.status(500).json({ error: "Failed to update action." });
     }
   });
 
