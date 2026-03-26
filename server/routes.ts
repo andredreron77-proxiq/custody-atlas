@@ -193,52 +193,187 @@ async function geocodeWithGoogle(
   };
 }
 
-/* ── Direct-Fact Question Helpers ─────────────────────────────────────────── */
+/* ── Answer Mode: Intent Detection + Deterministic Fact Resolver ─────────── */
+
+type QuestionIntent = "FACT" | "EXPLANATION" | "ACTION";
+type FactFieldKey =
+  | "document_title" | "document_type" | "court_name" | "court_address"
+  | "case_number" | "judge_name" | "hearing_date" | "filing_party" | "opposing_party";
+
+interface IntentResult {
+  intent: QuestionIntent;
+  factFields: FactFieldKey[];
+}
+
+interface ResolvedFact {
+  value: string;
+  field: FactFieldKey;
+  fieldLabel: string;
+  sourceDocument: string;
+  sourceType: "extracted_facts" | "case_memory";
+}
+
+const FACT_FIELD_LABELS: Record<FactFieldKey, string> = {
+  document_title: "Document Title",
+  document_type:  "Document Type",
+  court_name:     "Court Name",
+  court_address:  "Court Address",
+  case_number:    "Case Number",
+  judge_name:     "Judge",
+  hearing_date:   "Hearing Date",
+  filing_party:   "Filing Party",
+  opposing_party: "Opposing Party",
+};
 
 /**
- * Returns true when the user's question is asking for a specific factual value
- * (case number, court name, hearing date, etc.) rather than legal guidance.
- * Used to switch to a grounded-answer mode that prioritises extracted document
- * facts over generic legal explanation.
+ * Classify user question into FACT / ACTION / EXPLANATION.
+ * FACT: asking for a specific extractable value (case number, judge, date, etc.)
+ * ACTION: asking what to do or how to do something
+ * EXPLANATION: general legal question (default)
  */
-function isDirectFactQuestion(question: string): boolean {
+function detectIntent(question: string): IntentResult {
   const q = question.toLowerCase().trim();
-  return [
-    /\bcase\s+number\b/,
-    /\bdocket\s+number\b/,
-    /\bcase\s+#\b/,
-    /\bcourt\s+(name|house|address|location)\b/,
-    /\bwhich\s+court(house)?\b/,
-    /\bwhere\s+(do\s+i\s+go|is\s+the\s+court|is\s+my\s+hearing)\b/,
-    /\bjudge'?s?\s+name\b/,
-    /\bwho\s+is\s+the\s+judge\b/,
-    /\bhearing\s+date\b/,
-    /\bhearing\s+time\b/,
-    /\bwhen\s+is\s+(my|the)\s+hearing\b/,
-    /\bcourt\s+address\b/,
-    /\bfiling\s+party\b/,
-    /\bpetitioner'?s?\s+name\b/,
-    /\brespondent'?s?\s+name\b/,
-    /\bopposing\s+party\b/,
-    /\bwhat\s+is\s+the\s+(name\s+of\s+(the\s+)?document|document\s+(name|title))\b/,
-    /\bdocument\s+title\b/,
-    /\bname\s+of\s+this\s+document\b/,
-  ].some((p) => p.test(q));
+
+  const factRules: Array<{ pattern: RegExp; fields: FactFieldKey[] }> = [
+    { pattern: /\bcase\s+number\b|\bdocket\s+number\b|\bcase\s+#\b/,                              fields: ["case_number"] },
+    { pattern: /\bcourt\s+address\b|\bcourtroom\s+address\b|\baddress\s+of\s+the\s+court\b/,      fields: ["court_address"] },
+    { pattern: /\bcourt\s+(name|house|location)\b|\bwhich\s+court(house)?\b/,                     fields: ["court_name", "court_address"] },
+    { pattern: /\bwhere\s+(do\s+i\s+go|is\s+the\s+court|is\s+my\s+hearing)\b/,                   fields: ["court_name", "court_address"] },
+    { pattern: /\bjudge'?s?\s+name\b|\bwho\s+is\s+the\s+judge\b/,                                fields: ["judge_name"] },
+    { pattern: /\bhearing\s+(date|time)\b|\bwhen\s+is\s+(my|the)\s+hearing\b/,                   fields: ["hearing_date"] },
+    { pattern: /\bfiling\s+party\b|\bpetitioner'?s?\s+name\b|\bwho\s+filed\b/,                   fields: ["filing_party"] },
+    { pattern: /\brespondent'?s?\s+name\b|\bopposing\s+party\b/,                                  fields: ["opposing_party"] },
+    { pattern: /\b(name|title)\s+of\s+(this\s+)?document\b|\bdocument\s+(name|title)\b|\bname\s+of\s+this\s+document\b/, fields: ["document_title"] },
+    { pattern: /\b(type|kind)\s+of\s+(this\s+)?document\b|\bwhat\s+(kind|type)\s+of\s+document\b/, fields: ["document_type"] },
+  ];
+
+  for (const rule of factRules) {
+    if (rule.pattern.test(q)) {
+      return { intent: "FACT", factFields: rule.fields };
+    }
+  }
+
+  const actionPatterns = [
+    /\bhow\s+do\s+i\b/,
+    /\bwhat\s+(should|can|do)\s+i\s+do\b/,
+    /\bsteps\s+to\b/,
+    /\bhow\s+to\s+(file|respond|appeal|modify|request|get)\b/,
+    /\bwhat\s+are\s+my\s+(rights|options|choices)\b/,
+    /\bwhat\s+happens\s+(if|next|when)\b/,
+    /\bcan\s+i\s+(file|request|appeal|modify|ask)\b/,
+  ];
+  if (actionPatterns.some((p) => p.test(q))) {
+    return { intent: "ACTION", factFields: [] };
+  }
+
+  return { intent: "EXPLANATION", factFields: [] };
 }
 
 /**
- * Compile a human-readable "fact sheet" from a user's saved documents
- * for injection into the system prompt when a direct fact question is detected.
- * Only includes documents that have extracted_facts populated.
- * Returns an empty string when no facts are available.
+ * Attempt to resolve a FACT question without calling the LLM.
+ * Priority: extracted_facts from documents → case_memory entries.
+ * Returns null if no matching fact is found — caller should fall through to LLM.
+ */
+function resolveFactDeterministically(
+  factFields: FactFieldKey[],
+  documents: Array<{ fileName: string; docType: string; analysisJson: Record<string, unknown> }>,
+  caseMemories: Array<{ content: string; memoryType: string }>,
+): ResolvedFact | null {
+  // 1. Extracted document facts — verbatim from document text, most reliable
+  for (const doc of documents.slice(0, 5)) {
+    for (const field of factFields) {
+      let value: string | null = null;
+      if (field === "document_type") {
+        const dt = (doc.analysisJson as any)?.document_type as string | undefined;
+        if (dt) value = dt;
+      } else {
+        const ef = (doc.analysisJson as any)?.extracted_facts;
+        if (ef?.[field]) value = String(ef[field]);
+      }
+      if (value) {
+        return { value, field, fieldLabel: FACT_FIELD_LABELS[field], sourceDocument: doc.fileName, sourceType: "extracted_facts" };
+      }
+    }
+  }
+
+  // 2. Case memory — user-saved facts from prior sessions
+  for (const mem of caseMemories) {
+    for (const field of factFields) {
+      const label = FACT_FIELD_LABELS[field].toLowerCase();
+      if (mem.content.toLowerCase().includes(label)) {
+        return { value: mem.content, field, fieldLabel: FACT_FIELD_LABELS[field], sourceDocument: `case memory (${mem.memoryType})`, sourceType: "case_memory" };
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Build a direct-fact AILegalResponse object — no LLM involved. */
+function buildFactResponse(resolved: ResolvedFact): Record<string, unknown> {
+  return {
+    summary: `${resolved.fieldLabel}: ${resolved.value}`,
+    key_points: [
+      `${resolved.fieldLabel}: ${resolved.value}`,
+      `Source: "${resolved.sourceDocument}"`,
+    ],
+    questions_to_ask_attorney: [],
+    cautions: resolved.field === "court_address"
+      ? ["Always verify the court address with an official source before appearing — addresses can change."]
+      : [],
+    disclaimer: "This information was extracted directly from your uploaded document. Verify with the original before relying on it.",
+    intent: "FACT",
+    factSource: resolved.sourceDocument,
+    factField: resolved.fieldLabel,
+  };
+}
+
+/** Build a "not found" FACT response telling the user what was checked. */
+function buildFactNotFoundResponse(
+  factFields: FactFieldKey[],
+  docCount: number,
+): Record<string, unknown> {
+  const fieldLabels = factFields.map((f) => FACT_FIELD_LABELS[f]).join(" / ");
+  let summary: string;
+  const keyPoints: string[] = [];
+
+  if (docCount === 0) {
+    summary = `I couldn't find the ${fieldLabels} because no documents have been uploaded yet.`;
+    keyPoints.push(
+      "No documents have been uploaded to your Workspace.",
+      `To find your ${fieldLabels}, upload your custody order, court notice, or other relevant document using the Document Analysis feature.`,
+      "After uploading, Atlas can extract the exact value directly from the document text.",
+    );
+  } else {
+    summary = `I searched ${docCount} uploaded document${docCount > 1 ? "s" : ""} but couldn't find the ${fieldLabels}.`;
+    keyPoints.push(
+      `Checked ${docCount} document(s) — the ${fieldLabels} was not clearly present in any of them.`,
+      "This may mean the document uses a non-standard format, or the field appears on a page that wasn't fully captured.",
+      "Try re-uploading the specific page, or check the original document directly.",
+    );
+  }
+
+  return {
+    summary,
+    key_points: keyPoints,
+    questions_to_ask_attorney: [],
+    cautions: ["Do not rely on memory for court names, addresses, or case numbers — always verify with the official document."],
+    disclaimer: "Always verify court and case information directly with the court clerk or your attorney.",
+    intent: "FACT",
+    factSource: null,
+    factField: fieldLabels,
+  };
+}
+
+/**
+ * Compile a human-readable fact sheet from user documents for LLM injection
+ * (used only when deterministic resolution fails and we fall through to the LLM).
  */
 function buildDocumentFactsText(documents: Array<{ fileName: string; docType: string; analysisJson: Record<string, unknown> }>): string {
   const blocks: string[] = [];
-
   for (const doc of documents.slice(0, 5)) {
     const ef = (doc.analysisJson as any)?.extracted_facts;
     if (!ef) continue;
-
     const lines: string[] = [`Document: "${doc.fileName}"`];
     if (ef.document_title)  lines.push(`  Title: ${ef.document_title}`);
     if (ef.case_number)     lines.push(`  Case Number: ${ef.case_number}`);
@@ -248,10 +383,8 @@ function buildDocumentFactsText(documents: Array<{ fileName: string; docType: st
     if (ef.hearing_date)    lines.push(`  Hearing Date: ${ef.hearing_date}`);
     if (ef.filing_party)    lines.push(`  Filing Party: ${ef.filing_party}`);
     if (ef.opposing_party)  lines.push(`  Opposing Party: ${ef.opposing_party}`);
-
     if (lines.length > 1) blocks.push(lines.join("\n"));
   }
-
   return blocks.join("\n\n");
 }
 
@@ -522,27 +655,66 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // ── Case memory injection ────────────────────────────────────────────────
       // When a case is active, load any saved memory entries and prepend them to
       // the system prompt so Atlas is aware of prior context for this specific case.
+      // resolvedCaseMemories is also passed to the deterministic fact resolver below.
       let caseMemoryText = "";
+      let resolvedCaseMemories: Array<{ content: string; memoryType: string }> = [];
       if (caseId && userId) {
-        const memories = await listCaseMemory(caseId, userId);
-        if (memories.length > 0) {
+        resolvedCaseMemories = await listCaseMemory(caseId, userId);
+        if (resolvedCaseMemories.length > 0) {
           caseMemoryText = "\n\n---\nCASE MEMORY (facts saved from prior sessions):\n" +
-            memories.map((m) => `[${m.memoryType}] ${m.content}`).join("\n");
+            resolvedCaseMemories.map((m) => `[${m.memoryType}] ${m.content}`).join("\n");
         }
       }
 
-      // ── Direct-fact detection ────────────────────────────────────────────────
-      // When the user asks for a specific value (case number, court name, etc.)
-      // load structured facts from their uploaded documents and inject into the
-      // system prompt so Atlas can answer directly instead of giving generic law.
-      let factModeAddendum = "";
-      const factQuestion = isDirectFactQuestion(userQuestion);
-      if (factQuestion && userId) {
-        const userDocs = await getDocuments(userId);
-        const factsText = buildDocumentFactsText(userDocs);
+      // ── Intent detection + deterministic fact resolver ───────────────────────
+      // FACT questions: attempt to resolve without calling the LLM at all.
+      // If resolved → return directly (no hallucination possible).
+      // If not resolved → fall through to LLM with injected fact context.
+      // ACTION questions: inject action-guidance addendum into system prompt.
+      const { intent, factFields } = detectIntent(userQuestion);
+      console.log(`[ask] intent="${intent}"${factFields.length ? ` fields=[${factFields.join(",")}]` : ""}`);
 
+      let intentUserDocs: Awaited<ReturnType<typeof getDocuments>> = [];
+
+      if (intent === "FACT" && userId) {
+        intentUserDocs = await getDocuments(userId);
+        const resolved = resolveFactDeterministically(factFields, intentUserDocs, resolvedCaseMemories);
+
+        if (resolved) {
+          console.log(`[ask] FACT resolved deterministically: ${resolved.field}="${resolved.value.slice(0, 60)}" from "${resolved.sourceDocument}"`);
+          const factResponse = buildFactResponse(resolved);
+
+          await trackQuestion(req);
+          if (userId) {
+            saveQuestion(userId, {
+              jurisdictionState: jurisdiction.state,
+              jurisdictionCounty: jurisdiction.county,
+              questionText: userQuestion,
+              responseJson: factResponse,
+            }).catch(() => {});
+          }
+          if (activeConversationId) {
+            Promise.all([
+              appendConversationMessage(activeConversationId, "user", userQuestion),
+              appendConversationMessage(activeConversationId, "assistant", factResponse.summary as string, factResponse),
+            ]).catch((err) => console.error("[ask] Failed to persist deterministic fact messages:", err));
+          }
+
+          return res.json({
+            ...factResponse,
+            ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+          });
+        }
+
+        console.log(`[ask] FACT intent — no deterministic match, falling through to LLM (docs=${intentUserDocs.length})`);
+      }
+
+      // ── System prompt addenda based on intent ────────────────────────────────
+      let factModeAddendum = "";
+
+      if (intent === "FACT") {
+        const factsText = buildDocumentFactsText(intentUserDocs);
         if (factsText) {
-          console.log(`[ask] Fact question detected — injecting extracted facts from ${userDocs.length} document(s)`);
           factModeAddendum = `
 
 ---
@@ -552,29 +724,26 @@ The user is asking for a specific factual value from a legal document.
 EXTRACTED FACTS FROM THE USER'S UPLOADED DOCUMENTS:
 ${factsText}
 
-RULES FOR ANSWERING FACT QUESTIONS:
+RULES:
 1. Answer with the exact value from the documents above. State which document it came from.
-2. Format your answer as: Direct answer → Source document → Any important caveat.
-3. If the fact is found: state it clearly and directly at the start of your summary.
-4. If the fact is NOT in the list above: say exactly "I could not find [requested fact] in your uploaded documents." Then suggest uploading the relevant document or contacting the court clerk.
-5. NEVER guess, invent, or infer a court name, address, case number, or date that is not listed above.
-6. Court addresses in particular must only come from the document — never from general knowledge.`;
+2. If the fact is NOT listed: say "I could not find [fact] in your uploaded documents." Do not invent a value.
+3. Court addresses must ONLY come from the document — never from general knowledge.`;
         } else {
-          console.log(`[ask] Fact question detected — no extracted facts found in user's documents`);
           factModeAddendum = `
 
 ---
 DIRECT FACT MODE
-The user is asking for a specific factual value (e.g., case number, court name, address, hearing date).
-
-No documents have been uploaded yet, or the uploaded documents do not contain extracted structured facts.
-
-RULES:
-1. Do NOT provide a court name, address, case number, or hearing date from general knowledge — these must come from the user's actual documents.
-2. Explain clearly that you cannot provide this specific value without seeing their documents.
-3. Suggest they upload their document using the Document Analysis feature in the Workspace.
-4. For courthouse addresses, suggest they contact the court clerk's office or check their court's official website.`;
+The user is asking for a specific factual value (case number, court name, address, hearing date).
+No structured facts were found in their uploaded documents.
+Do NOT provide a court name, address, case number, or date from general knowledge.
+Explain that you cannot provide this without seeing their documents, and suggest uploading via Document Analysis.`;
         }
+      } else if (intent === "ACTION") {
+        factModeAddendum = `
+
+---
+ACTION GUIDANCE MODE
+The user is asking what they should do or how to take a specific action. Focus your response on concrete next steps. Keep steps numbered and clear. Distinguish between actions they can take themselves and actions that require an attorney.`;
       }
 
       const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + factModeAddendum;
@@ -650,10 +819,11 @@ RULES:
         responseJson: validated.data as Record<string, unknown>,
       }).catch((err) => console.error("[publicQuestions] maybePublishQuestion error:", err));
 
-      // Return the AI response, plus conversationId when a case is active so the
-      // client can thread subsequent messages into the same conversation.
+      // Return the AI response, plus intent (always) and conversationId (when case is active)
+      // so the client can apply intent-aware rendering and thread subsequent messages.
       return res.json({
         ...validated.data,
+        intent,
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       });
     } catch (err: any) {

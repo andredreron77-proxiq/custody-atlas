@@ -3,6 +3,7 @@ import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
   MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck, BookmarkCheck,
+  FileSearch, Zap, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,16 +86,67 @@ function CautionsList({ cautions }: { cautions: string[] }) {
 }
 
 function StructuredResponse({ data }: { data: AILegalResponse }) {
+  const isFact = data.intent === "FACT";
+  const isAction = data.intent === "ACTION";
+
   return (
     <div className="space-y-4">
-      <div className="text-sm leading-relaxed text-foreground">{data.summary}</div>
+      {/* ── FACT mode: direct answer banner ── */}
+      {isFact && (
+        <div
+          className={`rounded-md p-3 flex items-start gap-2.5 ${
+            data.factSource
+              ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50"
+              : "bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50"
+          }`}
+          data-testid="fact-answer-banner"
+        >
+          {data.factSource
+            ? <FileSearch className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+            : <Search className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          }
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground leading-snug">{data.summary}</p>
+            {data.factSource && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Extracted from: <span className="font-medium">{data.factSource}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
-      {data.key_points.length > 0 && (
+      {/* ── Default summary (non-FACT) ── */}
+      {!isFact && (
+        <div className="text-sm leading-relaxed text-foreground">{data.summary}</div>
+      )}
+
+      {/* ── ACTION mode: numbered steps header ── */}
+      {isAction && data.key_points.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Steps to Take
+            </span>
+          </div>
+          <ol className="space-y-1.5 list-decimal list-inside">
+            {data.key_points.map((point, i) => (
+              <li key={i} className="text-sm leading-relaxed pl-1" data-testid={`key-point-${i}`}>
+                {point}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* ── FACT / EXPLANATION: bullet key points ── */}
+      {!isAction && data.key_points.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Key Points
+              {isFact ? "Details" : "Key Points"}
             </span>
           </div>
           <ul className="space-y-1.5">
