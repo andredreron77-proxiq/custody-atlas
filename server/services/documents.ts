@@ -187,6 +187,30 @@ export async function saveDocument(
   }
 }
 
+/**
+ * Fetch a single document by ID, enforcing user ownership.
+ * Returns null if the document doesn't exist or belongs to a different user.
+ */
+export async function getDocumentById(
+  documentId: string,
+  userId: string,
+): Promise<SavedDocument | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("documents")
+      .select("*")
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .single();
+    if (error || !data) return null;
+    return mapRow(data);
+  } catch (err) {
+    console.error("[documents] getDocumentById exception:", err);
+    return null;
+  }
+}
+
 export async function updateDocumentType(
   documentId: string,
   userId: string,

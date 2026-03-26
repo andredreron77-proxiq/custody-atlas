@@ -155,6 +155,12 @@ export const askAIRequestSchema = z.object({
   userQuestion: z.string().min(5, "Question must be at least 5 characters").max(2000),
   /** Prior conversation turns (last ≤8), oldest first. Client-managed. */
   history: z.array(conversationHistoryItemSchema).max(16).optional(),
+  /**
+   * When present, scope this question to a specific uploaded document.
+   * The server loads the document, verifies ownership, and injects its
+   * full text + analysis into the prompt BEFORE jurisdiction law context.
+   */
+  documentId: z.string().uuid().optional(),
 });
 
 export type AskAIRequest = z.infer<typeof askAIRequestSchema>;

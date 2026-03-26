@@ -40,6 +40,13 @@ interface ChatBoxProps {
    * The server enforces ownership — this value is only used to route the request.
    */
   caseId?: string;
+  /**
+   * When provided, scopes every /api/ask request to this specific document.
+   * The server loads the document, verifies ownership, and injects its full
+   * text + extracted facts into the system prompt before jurisdiction law.
+   * Answers for date/fact questions come from this document first.
+   */
+  documentId?: string;
 }
 
 function getSuggestedQuestions(state: string): string[] {
@@ -372,7 +379,7 @@ function FollowUpChips({
   );
 }
 
-export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, initialConversationId, caseId }: ChatBoxProps) {
+export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, initialConversationId, caseId, documentId }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -510,6 +517,9 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
         history: caseId ? undefined : historySnapshot.length > 0 ? historySnapshot : undefined,
         // Case context — when present, the server handles persistence
         ...(caseId ? { caseId, conversationId: conversationIdRef.current } : {}),
+        // Document scope — when present, the server loads this specific document
+        // and answers from its text/analysis before falling back to jurisdiction law.
+        ...(documentId ? { documentId } : {}),
       });
 
       if (res.status === 429) {

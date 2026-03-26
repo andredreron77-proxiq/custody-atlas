@@ -631,7 +631,7 @@ function DocumentsPanel({
         <div className="divide-y">
           {documents.map((doc) => {
             const typeLabel = DOC_TYPE_LABELS[doc.docType] ?? "Document";
-            const askDocHref = `${askHref}&q=${encodeURIComponent(
+            const askDocHref = `${askHref}&document=${encodeURIComponent(doc.id)}&q=${encodeURIComponent(
               `Tell me about the ${typeLabel.toLowerCase()} I uploaded: ${doc.fileName}`,
             )}`;
 

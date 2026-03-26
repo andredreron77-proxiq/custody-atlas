@@ -664,7 +664,7 @@ function DocumentsSection({
                     </span>
                   </div>
                 </div>
-                <Link href={askAIPath}>
+                <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
                   <Button variant="ghost" size="sm" className="text-xs gap-1 h-7 px-2 flex-shrink-0" data-testid={`button-view-doc-${doc.id}`}>
                     Ask about it
                     <ArrowRight className="w-3 h-3" />

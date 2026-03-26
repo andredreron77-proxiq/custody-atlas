@@ -1,0 +1,77 @@
+We found a real product bug:
+
+From the workspace / saved documents area, clicking “Ask a question” next to a document does not appear to scope Ask Atlas to that document. Example: asking “what are the key dates” returns generic county custody timeline guidance instead of dates found in the selected document.
+
+Next pass: implement true document-scoped Ask Atlas behavior.
+
+Scope:
+
+1. Verify the current “Ask a question” action for saved documents
+
+   * Inspect what parameters it currently passes
+   * Determine whether it passes:
+
+     * caseId
+     * documentId
+     * neither / only legacy values
+
+2. Wire document context end-to-end
+
+   * When user clicks “Ask a question” next to a document:
+
+     * open Ask Atlas with the selected document context
+   * Prefer URL param support such as:
+
+     * ?case=<caseId>&document=<documentId>
+   * Preserve current case-aware behavior
+
+3. Update AskAIPage and ChatBox
+
+   * Read documentId from the URL or passed state
+   * Pass documentId into /api/ask requests when present
+   * Show a lightweight indicator that the current question is scoped to a specific document
+
+4. Update /api/ask backend flow
+
+   * If documentId is present:
+
+     * load that document
+     * verify ownership / case ownership
+     * load document analysis / extracted facts / extracted text / metadata
+   * Add a document-scoped prompt/context block before general case/jurisdiction context
+   * For direct fact questions like:
+
+     * “what are the key dates”
+     * “what is the hearing date”
+     * “what deadlines are in this document”
+       prioritize document-derived answers first
+
+5. Improve “key dates” handling
+
+   * Treat date-oriented document questions as document fact extraction questions
+   * Return a direct answer format:
+
+     * dates found
+     * source
+     * confidence
+     * what was not found
+
+6. Keep everything additive and safe
+
+   * Do not break normal Ask Atlas
+   * Do not refactor the whole document system
+   * Reuse existing extracted facts / document analysis where possible
+
+Important:
+
+* Do not answer from generic county guidance when a specific document is selected unless the document truly contains no usable date information
+* Verify ownership server-side for documentId access
+* Log clearly in development whether /api/ask is receiving and loading documentId
+
+At the end, show:
+
+* files changed
+* what the saved-document “Ask a question” action now passes
+* how Ask Atlas knows a document is active
+* how document context is prioritized over generic jurisdiction guidance
+* any remaining limitations for document-scoped Q&A

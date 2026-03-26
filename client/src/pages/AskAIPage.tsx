@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { MessageSquare, MapPin, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar, ClipboardList, CircleCheck, X } from "lucide-react";
+import { MessageSquare, MapPin, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar, ClipboardList, CircleCheck, X, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChatBox } from "@/components/app/ChatBox";
@@ -245,6 +245,9 @@ export default function AskAIPage() {
   const conversationIdParam = urlParams.get("conversation") ?? undefined;
   // ?case= URL param lets other pages deep-link into a specific case context
   const caseIdParam = urlParams.get("case") ?? undefined;
+  // ?document= scopes this Ask Atlas session to a specific uploaded document.
+  // When present, every question is answered from that document first.
+  const documentIdParam = urlParams.get("document") ?? undefined;
 
   const urlJurisdiction: Jurisdiction | null =
     stateParam
@@ -296,6 +299,28 @@ export default function AskAIPage() {
     queryFn: async () => {
       if (!conversationIdParam) return null;
       const res = await apiRequestRaw("GET", `/api/conversations/${conversationIdParam}/messages`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  // Document scope: fetch the selected document's metadata so we can show the
+  // scope indicator.  extractedText is NOT returned by this endpoint (too large).
+  interface ScopedDocMeta {
+    id: string;
+    fileName: string;
+    docType: string;
+    pageCount: number;
+    analysisJson: Record<string, unknown>;
+  }
+  const { data: scopedDocMeta } = useQuery<ScopedDocMeta | null>({
+    queryKey: ["/api/documents", documentIdParam],
+    enabled: !!documentIdParam,
+    staleTime: 120_000,
+    retry: false,
+    queryFn: async () => {
+      if (!documentIdParam) return null;
+      const res = await apiRequestRaw("GET", `/api/documents/${documentIdParam}`);
       if (!res.ok) return null;
       return res.json();
     },
@@ -509,6 +534,34 @@ export default function AskAIPage() {
         </div>
       )}
 
+      {/* Document scope indicator — shown when ?document= is in URL */}
+      {documentIdParam && (
+        <div
+          className="rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2 flex items-center gap-2.5"
+          data-testid="document-scope-indicator"
+        >
+          <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Document scope active</span>
+            {scopedDocMeta ? (
+              <span className="ml-1.5 text-xs text-blue-600/80 dark:text-blue-400/80 truncate">
+                — {scopedDocMeta.fileName}
+              </span>
+            ) : (
+              <span className="ml-1.5 text-xs text-blue-500/60 dark:text-blue-500/60">Loading…</span>
+            )}
+          </div>
+          <span className="text-xs text-blue-500/70 dark:text-blue-400/50 flex-shrink-0 hidden sm:inline">
+            Questions answered from this document first
+          </span>
+          <Link href={`/ask${jurisdiction ? `?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}` : ""}`}>
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70" data-testid="button-clear-document-scope">
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {/* Case facts quick-view — shows court, case number, hearing date for active case */}
       {activeCaseId && <CaseFactsPanel caseId={activeCaseId} />}
 
@@ -523,6 +576,7 @@ export default function AskAIPage() {
         initialThreadId={threadIdParam}
         initialConversationId={conversationIdParam}
         caseId={activeCaseId}
+        documentId={documentIdParam}
       />
 
       {/* Trust signal footer */}

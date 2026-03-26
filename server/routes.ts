@@ -28,7 +28,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, updateDocumentType, type DocumentType } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, type DocumentType, type SavedDocument } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import {
@@ -659,7 +659,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId } = parsed.data;
+      const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId, documentId } = parsed.data;
       const userId = (req as any).user?.id as string | undefined;
 
       if (!jurisdiction.state || !jurisdiction.county) {
@@ -762,18 +762,82 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
+      // ── Document-scoped context ──────────────────────────────────────────────
+      // When documentId is provided, load that document, verify ownership, and
+      // build a focused context block injected into the system prompt BEFORE
+      // jurisdiction law content.  This is the primary fix for document-scoped Q&A.
+      let scopedDocument: SavedDocument | null = null;
+      let documentContextAddendum = "";
+
+      if (documentId && userId) {
+        scopedDocument = await getDocumentById(documentId, userId);
+        if (!scopedDocument) {
+          console.warn(`[ask] documentId provided but not found/unauthorized: id=${documentId.slice(0, 8)} userId=${userId}`);
+          return res.status(403).json({ error: "Document not found or access denied." });
+        }
+        const hasText = scopedDocument.extractedText.trim().length > 0;
+        const hasAnalysis = Object.keys(scopedDocument.analysisJson).length > 0;
+        console.log(
+          `[ask] document-scoped: doc="${scopedDocument.fileName}" id=${documentId.slice(0, 8)} hasText=${hasText} hasAnalysis=${hasAnalysis}`,
+        );
+
+        const docLines: string[] = [`Document: "${scopedDocument.fileName}" (${scopedDocument.docType})`];
+        const ef = (scopedDocument.analysisJson as any)?.extracted_facts;
+        if (ef) {
+          if (ef.document_title)  docLines.push(`  Title: ${ef.document_title}`);
+          if (ef.case_number)     docLines.push(`  Case Number: ${ef.case_number}`);
+          if (ef.court_name)      docLines.push(`  Court: ${ef.court_name}`);
+          if (ef.court_address)   docLines.push(`  Court Address: ${ef.court_address}`);
+          if (ef.judge_name)      docLines.push(`  Judge: ${ef.judge_name}`);
+          if (ef.hearing_date)    docLines.push(`  Hearing Date: ${ef.hearing_date}`);
+          if (ef.filing_date)     docLines.push(`  Filing Date: ${ef.filing_date}`);
+          if (ef.effective_date)  docLines.push(`  Effective Date: ${ef.effective_date}`);
+          if (ef.expiration_date) docLines.push(`  Expiration Date: ${ef.expiration_date}`);
+          if (ef.filing_party)    docLines.push(`  Filing Party: ${ef.filing_party}`);
+          if (ef.opposing_party)  docLines.push(`  Opposing Party: ${ef.opposing_party}`);
+        }
+
+        // Include up to 10 000 chars of extracted text — covers date/deadline questions
+        const textBlock = scopedDocument.extractedText.slice(0, 10000).trim();
+
+        documentContextAddendum = `
+
+---
+DOCUMENT-SCOPED QUESTION
+The user is asking about a SPECIFIC uploaded document listed below.
+Answer based PRIMARILY on this document. Do NOT fall back to general jurisdiction guidance unless the document is silent on the topic.
+
+${docLines.join("\n")}
+${textBlock
+  ? `\nFULL DOCUMENT TEXT (first 10 000 characters):\n${textBlock}`
+  : "\n[No extracted text available for this document]"}
+
+RULES FOR DOCUMENT-SCOPED QUESTIONS:
+1. Treat the document text above as the authoritative source.
+2. For date questions (hearing, deadlines, filing, effective, expiration): list EVERY date found in the document with its context — do not summarize.
+3. For fact questions: quote the exact value and state which section it appeared in.
+4. If the answer is NOT present in this document, say clearly: "I could not find [X] in this specific document." Do not substitute with general guidance.
+5. Reference the document by name ("${scopedDocument.fileName}") when citing values.`;
+      }
+
       // ── Intent detection + deterministic fact resolver ───────────────────────
       // FACT questions: attempt to resolve without calling the LLM at all.
       // If resolved → return directly (no hallucination possible).
       // If not resolved → fall through to LLM with injected fact context.
       // ACTION questions: inject action-guidance addendum into system prompt.
       const { intent, factFields } = detectIntent(userQuestion);
-      console.log(`[ask] intent="${intent}"${factFields.length ? ` fields=[${factFields.join(",")}]` : ""}`);
+      console.log(`[ask] intent="${intent}"${factFields.length ? ` fields=[${factFields.join(",")}]` : ""} documentScoped=${!!scopedDocument}`);
 
       let intentUserDocs: Awaited<ReturnType<typeof getDocuments>> = [];
 
       if (intent === "FACT" && userId) {
-        intentUserDocs = await getDocuments(userId);
+        // When a document is scoped, use only that document for fact resolution.
+        // This ensures FACT answers come from the selected document, not all docs.
+        if (scopedDocument) {
+          intentUserDocs = [scopedDocument];
+        } else {
+          intentUserDocs = await getDocuments(userId);
+        }
         const resolverResult = await resolveFactDeterministically(
           factFields, intentUserDocs, resolvedCaseMemories, caseId, userId,
         );
@@ -852,7 +916,7 @@ ACTION GUIDANCE MODE
 The user is asking what they should do or how to take a specific action. Focus your response on concrete next steps. Keep steps numbered and clear. Distinguish between actions they can take themselves and actions that require an attorney.`;
       }
 
-      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + factModeAddendum;
+      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + documentContextAddendum + factModeAddendum;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -1660,6 +1724,36 @@ ${userQuestion}`;
    * PATCH /api/documents/:documentId/type
    * Update the document type label. Body: { docType }.
    */
+
+  /**
+   * GET /api/documents/:documentId
+   * Return a single document's metadata (id, fileName, docType, analysisJson,
+   * createdAt) for the authenticated user.  Ownership enforced server-side.
+   * Used by AskAIPage to display the document scope indicator.
+   */
+  app.get("/api/documents/:documentId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { documentId } = req.params;
+    try {
+      const doc = await getDocumentById(documentId, user.id);
+      if (!doc) return res.status(404).json({ error: "Document not found." });
+      // Return a safe subset — no extractedText (large, not needed by the client here)
+      return res.json({
+        id: doc.id,
+        fileName: doc.fileName,
+        mimeType: doc.mimeType,
+        docType: doc.docType,
+        pageCount: doc.pageCount,
+        caseId: doc.caseId,
+        analysisJson: doc.analysisJson,
+        createdAt: doc.createdAt,
+      });
+    } catch (err) {
+      console.error("[documents] GET single error:", err);
+      return res.status(500).json({ error: "Failed to load document." });
+    }
+  });
+
   app.patch("/api/documents/:documentId/type", requireAuth, async (req, res) => {
     const user = (req as any).user;
     const { documentId } = req.params;
