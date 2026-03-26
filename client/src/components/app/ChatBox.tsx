@@ -768,8 +768,8 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
 
       </div>{/* end sticky zone */}
 
-      {/* ── Suggested questions — visible only on empty state ─────────────── */}
-      {!hasMessages && (
+      {/* ── Suggested questions — visible on empty state, hidden when case is active ─ */}
+      {!hasMessages && !caseId && (
         <div className="space-y-2" data-testid="suggested-questions">
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide px-0.5">
             Common questions

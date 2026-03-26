@@ -28,7 +28,7 @@ import {
   DocObligationBadge, DocImplicationsSection, DocActionInsight,
 } from "@/components/app/DocIntelPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
@@ -171,6 +171,79 @@ const THREAD_TYPE_LABELS: Record<string, string> = {
   qa:                "Q&A",
 };
 
+/* ── Dashboard state ──────────────────────────────────────────────────────────
+ * Derived from existing cached data (facts at page level).
+ * No new API calls — uses hearing_date fact from the page-level facts query.
+ *
+ *   urgent      → hearing ≤ 7 days, or overdue hearing date
+ *   in_progress → everything else (default calm state)
+ *
+ * Used to drive defaultOpen state for collapsible sections and to cap alerts.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+type DashboardState = "in_progress" | "urgent";
+
+/**
+ * Resolve dashboard state from the facts already loaded at the page level.
+ * Uses `diffDaysFromNow` (defined in the CaseAlerts section below — JS hoisting
+ * means function declarations are available throughout the module scope).
+ */
+function resolveDashboardState(facts: CaseFactItem[]): DashboardState {
+  const hearingFact = facts.find(f => f.factType === "hearing_date");
+  if (hearingFact?.value) {
+    const days = diffDaysFromNow(hearingFact.value);
+    if (days !== null && days <= 7) return "urgent"; // includes overdue (days < 0)
+  }
+  return "in_progress";
+}
+
+/* ── Collapsible section ──────────────────────────────────────────────────────
+ * Lightweight show/hide toggle for secondary dashboard sections.
+ * Sections collapse to a single header row, keeping the page scannable.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+function CollapsibleSection({
+  title,
+  icon: Icon,
+  badge,
+  children,
+  defaultOpen = false,
+  testId,
+}: {
+  title: string;
+  icon: ComponentType<{ className?: string }>;
+  badge?: string | number | null;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div data-testid={testId}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 py-1.5 px-0 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        data-testid={`toggle-${testId ?? title.toLowerCase().replace(/\s+/g, "-")}`}
+      >
+        <Icon className="w-4 h-4 flex-shrink-0" />
+        <span className="font-semibold text-foreground/80">{title}</span>
+        {badge !== undefined && badge !== null && (
+          <span className="text-[10px] bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-medium">
+            {badge}
+          </span>
+        )}
+        <span className="ml-auto">
+          {open
+            ? <ChevronUp className="w-3.5 h-3.5" />
+            : <ChevronDown className="w-3.5 h-3.5" />}
+        </span>
+      </button>
+      {open && <div className="mt-2">{children}</div>}
+    </div>
+  );
+}
+
 /* ── Case Snapshot Panel ──────────────────────────────────────────────────── */
 
 /**
@@ -260,25 +333,26 @@ function CaseSnapshotPanel({
 
       {/* Aggregate stat pills */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href={askHref}>
-          <a
-            className={cn(
-              "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border",
-              hasOverdue
-                ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"
-                : hasUrgent
-                ? "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300"
-                : "bg-muted/60 border-border text-muted-foreground",
-            )}
-            data-testid="stat-open-actions"
-          >
-            <ClipboardList className="w-3 h-3" />
-            {actionsData == null
-              ? "…"
-              : `${openActions.length} open action${openActions.length !== 1 ? "s" : ""}`}
-            {hasOverdue && <span className="font-bold">!</span>}
-          </a>
-        </Link>
+        <button
+          onClick={() =>
+            document.getElementById("section-actions")?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border cursor-pointer",
+            hasOverdue
+              ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"
+              : hasUrgent
+              ? "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300"
+              : "bg-muted/60 border-border text-muted-foreground",
+          )}
+          data-testid="stat-open-actions"
+        >
+          <ClipboardList className="w-3 h-3" />
+          {actionsData == null
+            ? "…"
+            : `${openActions.length} open action${openActions.length !== 1 ? "s" : ""}`}
+          {hasOverdue && <span className="font-bold">!</span>}
+        </button>
 
         <span
           className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border bg-muted/60 border-border text-muted-foreground"
@@ -719,7 +793,7 @@ function DocumentsPanel({
  * Shows all known case facts in a readable table.
  * Starts collapsed; expand to see all. First 5 shown by default.
  */
-function CaseFactsSection({ facts, askHref }: { facts: CaseFactItem[]; askHref: string }) {
+function CaseFactsSection({ facts, askHref, hideAskAtlas = false }: { facts: CaseFactItem[]; askHref: string; hideAskAtlas?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const PREVIEW_COUNT = 5;
 
@@ -745,13 +819,15 @@ function CaseFactsSection({ facts, askHref }: { facts: CaseFactItem[]; askHref: 
           <span className="text-sm font-semibold">Case Facts</span>
           <span className="text-xs text-muted-foreground">({dedupedFacts.length})</span>
         </div>
-        <Link href={`${askHref}&q=${encodeURIComponent("What else do you know about my case facts?")}`}>
-          <a className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-             data-testid="link-ask-about-facts">
-            <Zap className="w-3 h-3" />
-            Add / confirm facts
-          </a>
-        </Link>
+        {!hideAskAtlas && (
+          <Link href={`${askHref}&q=${encodeURIComponent("What else do you know about my case facts?")}`}>
+            <a className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+               data-testid="link-ask-about-facts">
+              <Zap className="w-3 h-3" />
+              Add / confirm facts
+            </a>
+          </Link>
+        )}
       </div>
 
       {/* Facts table */}
@@ -955,7 +1031,7 @@ function deriveAlerts({
     });
   }
 
-  if (alerts.length >= 3) return alerts.slice(0, 3);
+  if (alerts.length >= 2) return alerts.slice(0, 2);
 
   // 4. IMPORTANT — open overdue actions
   if (overdueActions.length > 0) {
@@ -974,7 +1050,7 @@ function deriveAlerts({
     });
   }
 
-  if (alerts.length >= 3) return alerts.slice(0, 3);
+  if (alerts.length >= 2) return alerts.slice(0, 2);
 
   // 5. IMPORTANT — hearing within 7 days + no documents
   if (
@@ -994,7 +1070,7 @@ function deriveAlerts({
     });
   }
 
-  if (alerts.length >= 3) return alerts.slice(0, 3);
+  if (alerts.length >= 2) return alerts.slice(0, 2);
 
   // 6. IMPORTANT — hearing within 7 days (general nudge, no docs alert)
   if (
@@ -1018,7 +1094,7 @@ function deriveAlerts({
     });
   }
 
-  if (alerts.length >= 3) return alerts.slice(0, 3);
+  if (alerts.length >= 2) return alerts.slice(0, 2);
 
   // 7. IMPORTANT — urgent open actions
   if (urgentActions.length > 0 && !alerts.find(a => a.id === "hearing-soon")) {
@@ -1035,7 +1111,7 @@ function deriveAlerts({
     });
   }
 
-  if (alerts.length >= 3) return alerts.slice(0, 3);
+  if (alerts.length >= 2) return alerts.slice(0, 2);
 
   // 8. INFORMATIONAL — documents exist but no hearing date recorded
   if (hasDocs && !nextHearingEv && !overdueHearing) {
@@ -1056,7 +1132,7 @@ function deriveAlerts({
     }
   }
 
-  return alerts.slice(0, 3);
+  return alerts.slice(0, 2);
 }
 
 const ALERT_STYLES = {
@@ -1590,6 +1666,24 @@ export default function CaseDashboardPage() {
   const caseRecord = caseData?.case ?? null;
   const facts      = factsData?.facts ?? [];
 
+  // Page-level conversations query — shared cache key with ConversationsPanel.
+  // Used to derive hasConversations (hide redundant CTAs once user has chatted).
+  const { data: pageConvsData } = useQuery<{ conversations: ConversationRecord[] }>({
+    queryKey: ["/api/cases", caseId, "conversations"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/conversations`);
+      if (!res.ok) return { conversations: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+    enabled: !!caseId,
+  });
+  const hasConversations = (pageConvsData?.conversations ?? []).length > 0;
+
+  // Dashboard state — derived from hearing_date fact (page-level, no extra query).
+  // "urgent" when hearing ≤ 7 days or overdue; "in_progress" otherwise.
+  const dashboardState: DashboardState = factsLoading ? "in_progress" : resolveDashboardState(facts);
+
   const askParams = new URLSearchParams();
   askParams.set("case", caseId);
   if (caseRecord?.jurisdictionState) askParams.set("state", caseRecord.jurisdictionState);
@@ -1692,7 +1786,7 @@ export default function CaseDashboardPage() {
             <a data-testid="link-ask-atlas">
               <Button size="sm" className="gap-1.5 h-8 text-xs">
                 <Zap className="w-3.5 h-3.5" />
-                Ask Atlas
+                Ask about this case
               </Button>
             </a>
           </Link>
@@ -1727,35 +1821,60 @@ export default function CaseDashboardPage() {
         />
       )}
 
-      {/* ── Case Timeline — derived from docs + facts, no new table ──────── */}
+      {/* ── Case Timeline — collapsed by default ─────────────────────────── */}
       <div id="section-timeline" className="scroll-mt-4">
-        <CaseTimeline caseId={caseId} />
+        <CollapsibleSection
+          title="Case Timeline"
+          icon={History}
+          defaultOpen={false}
+          testId="collapsible-timeline"
+        >
+          <CaseTimeline caseId={caseId} />
+        </CollapsibleSection>
       </div>
 
-      {/* ── Two-column grid: actions + conversations ─────────────────────── */}
+      {/* ── Two-column grid: actions always visible; conversations collapsed ─ */}
       <div id="section-actions" className="grid grid-cols-1 md:grid-cols-5 gap-4 scroll-mt-4">
         <div className="md:col-span-3">
           <ActionsPanel caseId={caseId} />
         </div>
         <div className="md:col-span-2">
-          <ConversationsPanel
-            caseId={caseId}
-            jurisdictionState={caseRecord.jurisdictionState}
-            jurisdictionCounty={caseRecord.jurisdictionCounty}
-          />
+          <CollapsibleSection
+            title="Conversations"
+            icon={MessageSquare}
+            defaultOpen={dashboardState === "urgent"}
+            testId="collapsible-conversations"
+          >
+            <ConversationsPanel
+              caseId={caseId}
+              jurisdictionState={caseRecord.jurisdictionState}
+              jurisdictionCounty={caseRecord.jurisdictionCounty}
+            />
+          </CollapsibleSection>
         </div>
       </div>
 
       {/* ── All case facts — collapsible full table ───────────────────────── */}
       <div id="section-facts" className="scroll-mt-4">
         {!factsLoading && facts.length > 0 && (
-          <CaseFactsSection facts={facts} askHref={askHref} />
+          <CaseFactsSection
+            facts={facts}
+            askHref={askHref}
+            hideAskAtlas={hasConversations}
+          />
         )}
       </div>
 
-      {/* ── Documents panel ──────────────────────────────────────────────── */}
+      {/* ── Documents — collapsed by default ─────────────────────────────── */}
       <div id="section-documents" className="scroll-mt-4">
-        <DocumentsPanel caseId={caseId} uploadHref={uploadHref} askHref={askHref} />
+        <CollapsibleSection
+          title="Documents"
+          icon={FileText}
+          defaultOpen={false}
+          testId="collapsible-documents"
+        >
+          <DocumentsPanel caseId={caseId} uploadHref={uploadHref} askHref={askHref} />
+        </CollapsibleSection>
       </div>
 
       {/* ── Footer meta ──────────────────────────────────────────────────── */}
