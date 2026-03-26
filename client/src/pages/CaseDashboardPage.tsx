@@ -1,13 +1,19 @@
 /**
- * CaseDashboardPage — the home base for a single case.
+ * CaseDashboardPage — command center for a single case.
  *
  * Route: /case/:caseId
  *
- * Loads in parallel:
- *   • Case metadata         GET /api/cases/:caseId
- *   • Key facts             GET /api/cases/:caseId/facts
- *   • Actions (with urgency) GET /api/cases/:caseId/actions
- *   • Recent conversations  GET /api/cases/:caseId/conversations
+ * Panels (all queries share cache keys — TanStack deduplicates):
+ *   • Case metadata          GET /api/cases/:caseId
+ *   • Key facts              GET /api/cases/:caseId/facts
+ *   • Actions (enriched)     GET /api/cases/:caseId/actions
+ *   • Conversations          GET /api/cases/:caseId/conversations
+ *   • Documents              GET /api/cases/:caseId/documents
+ *
+ * Bug fixes applied in this version:
+ *   • Added useQueryClient import (was missing — ActionsPanel broke on every render)
+ *   • Fixed WhatMattersNow: fact.factValue → fact.value (CaseFactItem has .value)
+ *   • Fixed WhatMattersNow: action.actionTitle → action.title (API returns .title)
  */
 
 import { useParams, Link } from "wouter";
@@ -15,9 +21,9 @@ import {
   ArrowLeft, FolderOpen, MessageSquare, Upload, MapPin, Building2,
   Hash, Calendar, User2, ClipboardList, Loader2, CircleCheck, X,
   ChevronRight, CheckCheck, Zap, ExternalLink, FileText, AlertTriangle,
-  File,
+  File, ChevronDown, ChevronUp, History, Info, Scale,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +44,10 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
 interface CaseRecord {
@@ -54,7 +64,7 @@ interface CaseRecord {
 interface CaseFactItem {
   id: number;
   factType: string;
-  value: string;
+  value: string;      // ← the real field name from the API
   source: string;
   sourceName: string | null;
   confidence: string;
@@ -63,7 +73,7 @@ interface CaseFactItem {
 interface CaseActionItem {
   id: number;
   actionType: string;
-  title: string;
+  title: string;       // ← the real field name from the API
   description: string;
   status: "open" | "completed" | "dismissed";
   urgency: "overdue" | "urgent" | "soon" | "normal";
@@ -77,6 +87,15 @@ interface ConversationRecord {
   title: string | null;
   threadType: string;
   jurisdictionState: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+interface DocumentRow {
+  id: string;
+  fileName: string;
+  docType: string;
+  pageCount: number;
   createdAt: string;
 }
 
@@ -94,7 +113,7 @@ const URGENCY: Record<
   urgent: {
     badge:  "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300",
     border: "border-l-2 border-l-orange-400 dark:border-l-orange-600",
-    label:  (d) => d === 0 ? "Due today" : `Due in ${d} day${d === 1 ? "" : "s"}`,
+    label:  (d) => d === 0 ? "Due today" : d != null ? `Due in ${d}d` : "Due soon",
   },
   soon: {
     badge:  "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300",
@@ -104,47 +123,165 @@ const URGENCY: Record<
   normal: { badge: "", border: "", label: () => "" },
 };
 
-/* ── Court & hearing info bar ─────────────────────────────────────────────── */
+/* ── Fact display labels ──────────────────────────────────────────────────── */
 
-const FACT_DISPLAY: Array<{ key: string; label: string; Icon: typeof Hash }> = [
-  { key: "court_name",    label: "Court",         Icon: Building2 },
-  { key: "case_number",   label: "Case #",        Icon: Hash },
-  { key: "hearing_date",  label: "Hearing",       Icon: Calendar },
-  { key: "court_address", label: "Address",       Icon: MapPin },
-  { key: "judge_name",    label: "Judge",         Icon: User2 },
-];
+const FACT_TYPE_LABELS: Record<string, string> = {
+  court_name:            "Court",
+  case_number:           "Case number",
+  hearing_date:          "Next hearing",
+  court_address:         "Courthouse address",
+  judge_name:            "Judge",
+  attorney_name:         "My attorney",
+  opposing_counsel:      "Opposing counsel",
+  filing_date:           "Filing date",
+  child_name:            "Child name",
+  child_dob:             "Child date of birth",
+  custody_type:          "Custody type",
+  visitation_schedule:   "Visitation schedule",
+  modification_reason:   "Modification reason",
+  state:                 "State",
+  county:                "County",
+};
 
-function CourtInfoBar({ facts }: { facts: CaseFactItem[] }) {
+const FACT_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
+  user_confirmed:  { label: "Confirmed by you",  color: "text-emerald-600 dark:text-emerald-400" },
+  ai_extracted:    { label: "AI extracted",       color: "text-blue-600 dark:text-blue-400" },
+  document_ocr:    { label: "From document",      color: "text-violet-600 dark:text-violet-400" },
+  attorney_input:  { label: "Attorney",           color: "text-amber-600 dark:text-amber-400" },
+  system_inferred: { label: "System",             color: "text-muted-foreground" },
+};
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  custody_order:  "Custody Order",
+  communication:  "Communication",
+  financial:      "Financial",
+  other:          "Document",
+};
+
+const THREAD_TYPE_LABELS: Record<string, string> = {
+  general:           "General",
+  custody_question:  "Custody Q&A",
+  document_review:   "Doc Review",
+  strategy:          "Strategy",
+  qa:                "Q&A",
+};
+
+/* ── Case Snapshot Panel ──────────────────────────────────────────────────── */
+
+/**
+ * Compact at-a-glance bar: shows the 4–5 core court facts + live action/doc counts.
+ * Replaces the old CourtInfoBar and adds aggregate stat pills.
+ */
+function CaseSnapshotPanel({
+  facts,
+  caseId,
+  askHref,
+}: {
+  facts: CaseFactItem[];
+  caseId: string;
+  askHref: string;
+}) {
   const byType = new Map<string, CaseFactItem>();
   for (const f of facts) {
     const cur = byType.get(f.factType);
     if (!cur || f.source === "user_confirmed") byType.set(f.factType, f);
   }
 
-  const visible = FACT_DISPLAY
-    .map(({ key, label, Icon }) => ({ key, label, Icon, fact: byType.get(key) }))
-    .filter((x) => x.fact);
+  const TOP_FACTS = ["court_name", "case_number", "hearing_date", "court_address", "judge_name"];
+  const visible = TOP_FACTS
+    .map((key) => ({ key, fact: byType.get(key) }))
+    .filter((x) => !!x.fact);
 
-  if (visible.length === 0) return null;
+  const ICONS: Record<string, typeof Building2> = {
+    court_name: Building2, case_number: Hash, hearing_date: Calendar,
+    court_address: MapPin, judge_name: User2,
+  };
+
+  const { data: actionsData } = useQuery<{ actions: CaseActionItem[] }>({
+    queryKey: ["/api/cases", caseId, "actions"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
+      if (!res.ok) return { actions: [] };
+      return res.json();
+    },
+    staleTime: 20_000,
+  });
+
+  const { data: docsData } = useQuery<{ documents: DocumentRow[] }>({
+    queryKey: ["/api/cases", caseId, "documents"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
+      if (!res.ok) return { documents: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const openActions   = (actionsData?.actions ?? []).filter((a) => a.status === "open");
+  const hasOverdue    = openActions.some((a) => a.urgency === "overdue");
+  const hasUrgent     = openActions.some((a) => a.urgency === "urgent");
+  const docCount      = docsData?.documents.length ?? null;
+
+  if (visible.length === 0 && openActions.length === 0) return null;
 
   return (
-    <div className="rounded-lg border bg-card px-4 py-3" data-testid="court-info-bar">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-        Court &amp; Hearing Info
-      </p>
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
-        {visible.map(({ key, label, Icon, fact }) => (
-          <div key={key} className="flex items-center gap-1.5 min-w-0">
-            <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="text-xs text-muted-foreground">{label}:</span>
-            <span className="text-xs font-semibold text-foreground truncate max-w-[180px]">
-              {fact!.value}
-            </span>
-            {fact!.source === "user_confirmed" && (
-              <CheckCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 flex-shrink-0" aria-label="Confirmed" />
-            )}
+    <div className="rounded-lg border bg-card px-4 py-3" data-testid="case-snapshot-panel">
+      {visible.length > 0 && (
+        <>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+            Case Overview
+          </p>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 mb-3">
+            {visible.map(({ key, fact }) => {
+              const Icon = ICONS[key] ?? Info;
+              const isConfirmed = fact!.source === "user_confirmed";
+              return (
+                <div key={key} className="flex items-center gap-1.5 min-w-0">
+                  <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                  <span className="text-xs text-muted-foreground">{FACT_TYPE_LABELS[key] ?? key}:</span>
+                  <span className="text-xs font-semibold text-foreground truncate max-w-[200px]">
+                    {fact!.value}
+                  </span>
+                  {isConfirmed && (
+                    <CheckCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 flex-shrink-0" aria-label="Confirmed" />
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
+          <div className="border-t pt-2.5" />
+        </>
+      )}
+
+      {/* Aggregate stat pills */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Link href={askHref}>
+          <a
+            className={cn(
+              "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border",
+              hasOverdue
+                ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"
+                : hasUrgent
+                ? "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300"
+                : "bg-muted/60 border-border text-muted-foreground",
+            )}
+            data-testid="stat-open-actions"
+          >
+            <ClipboardList className="w-3 h-3" />
+            {actionsData == null
+              ? "…"
+              : `${openActions.length} open action${openActions.length !== 1 ? "s" : ""}`}
+            {hasOverdue && <span className="font-bold">!</span>}
+          </a>
+        </Link>
+
+        <span
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border bg-muted/60 border-border text-muted-foreground"
+          data-testid="stat-doc-count"
+        >
+          <FileText className="w-3 h-3" />
+          {docCount === null ? "…" : `${docCount} document${docCount !== 1 ? "s" : ""}`}
+        </span>
       </div>
     </div>
   );
@@ -156,12 +293,13 @@ function ActionsPanel({ caseId }: { caseId: string }) {
   const queryClient = useQueryClient();
   const queryKey = ["/api/cases", caseId, "actions"];
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
-  const { data, isLoading } = useQuery<{ actions: CaseActionItem[]; hearingDate: string | null }>({
+  const { data, isLoading } = useQuery<{ actions: CaseActionItem[] }>({
     queryKey,
     queryFn: async () => {
       const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
-      if (!res.ok) return { actions: [], hearingDate: null };
+      if (!res.ok) return { actions: [] };
       return res.json();
     },
     staleTime: 20_000,
@@ -177,12 +315,15 @@ function ActionsPanel({ caseId }: { caseId: string }) {
     }
   }
 
-  const openActions = (data?.actions ?? []).filter((a) => a.status === "open");
-  const hasUrgent = openActions.some((a) => a.urgency === "overdue" || a.urgency === "urgent");
+  const allActions    = data?.actions ?? [];
+  const openActions   = allActions.filter((a) => a.status === "open");
+  const doneActions   = allActions.filter((a) => a.status === "completed" || a.status === "dismissed");
+  const hasUrgent     = openActions.some((a) => a.urgency === "overdue" || a.urgency === "urgent");
 
   return (
-    <div className="rounded-lg border bg-card divide-y overflow-hidden" data-testid="dashboard-actions-panel">
-      <div className={cn("px-4 py-2.5 flex items-center gap-2", hasUrgent && "bg-red-50/50 dark:bg-red-950/20")}>
+    <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-actions-panel">
+      {/* Header */}
+      <div className={cn("px-4 py-2.5 flex items-center gap-2 border-b", hasUrgent && "bg-red-50/50 dark:bg-red-950/20")}>
         <ClipboardList className={cn("w-4 h-4", hasUrgent ? "text-red-600 dark:text-red-400" : "text-primary/70")} />
         <span className="text-sm font-semibold text-foreground">Action Items</span>
         <Badge
@@ -208,55 +349,100 @@ function ActionsPanel({ caseId }: { caseId: string }) {
         </p>
       )}
 
-      {openActions.map((action) => {
-        const style = URGENCY[action.urgency];
-        const label = style.label(action.daysUntilHearing);
-        return (
-          <div
-            key={action.id}
-            className={cn("px-4 py-3 flex items-start gap-3", style.border)}
-            data-testid={`dashboard-action-item-${action.id}`}
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start gap-2 flex-wrap">
-                <p className="text-sm font-medium text-foreground leading-snug flex-1 min-w-0">
-                  {action.title}
+      {/* Open actions */}
+      <div className="divide-y">
+        {openActions.map((action) => {
+          const style = URGENCY[action.urgency];
+          const label = style.label(action.daysUntilHearing);
+          return (
+            <div
+              key={action.id}
+              className={cn("px-4 py-3 flex items-start gap-3", style.border)}
+              data-testid={`dashboard-action-item-${action.id}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-foreground leading-snug flex-1 min-w-0">
+                    {action.title}
+                  </p>
+                  {label && (
+                    <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0", style.badge)}>
+                      {label}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">
+                  {action.description}
                 </p>
-                {label && (
-                  <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0", style.badge)}>
-                    {label}
-                  </span>
-                )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">
-                {action.description}
-              </p>
+              <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                <button
+                  onClick={() => markStatus(action.id, "completed")}
+                  disabled={pendingId === action.id}
+                  className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors disabled:opacity-50"
+                  data-testid={`button-complete-action-${action.id}`}
+                >
+                  {pendingId === action.id
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <CircleCheck className="w-3 h-3" />}
+                  Done
+                </button>
+                <button
+                  onClick={() => markStatus(action.id, "dismissed")}
+                  disabled={pendingId === action.id}
+                  className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
+                  aria-label="Dismiss"
+                  data-testid={`button-dismiss-action-${action.id}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-              <button
-                onClick={() => markStatus(action.id, "completed")}
-                disabled={pendingId === action.id}
-                className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 transition-colors disabled:opacity-50"
-                data-testid={`button-complete-action-${action.id}`}
-              >
-                {pendingId === action.id
-                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                  : <CircleCheck className="w-3 h-3" />}
-                Done
-              </button>
-              <button
-                onClick={() => markStatus(action.id, "dismissed")}
-                disabled={pendingId === action.id}
-                className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
-                aria-label="Dismiss"
-                data-testid={`button-dismiss-action-${action.id}`}
-              >
-                <X className="w-3 h-3" />
-              </button>
+          );
+        })}
+      </div>
+
+      {/* History toggle */}
+      {!isLoading && doneActions.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors border-t"
+            data-testid="button-toggle-action-history"
+          >
+            <span className="flex items-center gap-1.5">
+              <History className="w-3 h-3" />
+              History ({doneActions.length})
+            </span>
+            {showHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+
+          {showHistory && (
+            <div className="divide-y bg-muted/10">
+              {doneActions.map((action) => (
+                <div
+                  key={action.id}
+                  className="px-4 py-2.5 flex items-start gap-3 opacity-60"
+                  data-testid={`dashboard-action-done-${action.id}`}
+                >
+                  <CircleCheck className={cn(
+                    "w-3.5 h-3.5 flex-shrink-0 mt-0.5",
+                    action.status === "completed" ? "text-emerald-500" : "text-muted-foreground",
+                  )} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-foreground line-through decoration-muted-foreground/40">
+                      {action.title}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground capitalize">
+                      {action.status} · {relativeTime(action.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        );
-      })}
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -291,15 +477,17 @@ function ConversationsPanel({
   const newChatHref = `/ask?${askParams.toString()}`;
 
   return (
-    <div className="rounded-lg border bg-card divide-y overflow-hidden" data-testid="dashboard-conversations-panel">
-      <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+    <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-conversations-panel">
+      <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-primary/70" />
           <span className="text-sm font-semibold text-foreground">Conversations</span>
         </div>
         <Link href={newChatHref}>
-          <a className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-             data-testid="link-new-conversation">
+          <a
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            data-testid="link-new-conversation"
+          >
             New chat
             <ChevronRight className="w-3 h-3" />
           </a>
@@ -314,10 +502,12 @@ function ConversationsPanel({
 
       {!isLoading && conversations.length === 0 && (
         <div className="px-4 py-4 flex flex-col gap-2" data-testid="text-no-conversations">
-          <p className="text-sm text-muted-foreground">No conversations yet for this case.</p>
+          <p className="text-sm text-muted-foreground">No conversations yet.</p>
           <Link href={newChatHref}>
-            <a className="inline-flex items-center gap-1.5 text-sm text-primary font-medium hover:text-primary/80 transition-colors"
-               data-testid="link-start-first-chat">
+            <a
+              className="inline-flex items-center gap-1.5 text-sm text-primary font-medium hover:text-primary/80 transition-colors"
+              data-testid="link-start-first-chat"
+            >
               <MessageSquare className="w-3.5 h-3.5" />
               Start a conversation
             </a>
@@ -325,49 +515,60 @@ function ConversationsPanel({
         </div>
       )}
 
-      {conversations.map((conv) => {
-        // Use ?conversation= NOT ?thread= — conv.id is a Supabase conversations UUID,
-        // not a legacy thread ID. The two are different tables and different systems.
-        const resumeParams = new URLSearchParams();
-        resumeParams.set("case", caseId);
-        resumeParams.set("conversation", conv.id);
-        if (conv.jurisdictionState) resumeParams.set("state", conv.jurisdictionState);
-        if (jurisdictionCounty) resumeParams.set("county", jurisdictionCounty);
-        const href = `/ask?${resumeParams.toString()}`;
+      <div className="divide-y">
+        {conversations.map((conv) => {
+          // Use ?conversation= — conv.id is a Supabase conversations UUID, not a threads ID.
+          const resumeParams = new URLSearchParams();
+          resumeParams.set("case", caseId);
+          resumeParams.set("conversation", conv.id);
+          if (conv.jurisdictionState) resumeParams.set("state", conv.jurisdictionState);
+          if (jurisdictionCounty) resumeParams.set("county", jurisdictionCounty);
+          const href = `/ask?${resumeParams.toString()}`;
 
-        return (
-          <Link key={conv.id} href={href}>
-            <a
-              className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors group"
-              data-testid={`link-conversation-${conv.id}`}
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
-                  {conv.title ?? `${conv.threadType.replace(/_/g, " ")} conversation`}
-                </p>
-                <p className="text-[11px] text-muted-foreground">{relativeTime(conv.createdAt)}</p>
-              </div>
-              <ExternalLink className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/50 flex-shrink-0 transition-colors" />
-            </a>
-          </Link>
-        );
-      })}
+          const typeLabel = THREAD_TYPE_LABELS[conv.threadType] ?? conv.threadType.replace(/_/g, " ");
+          const dateStr = conv.updatedAt
+            ? shortDate(conv.updatedAt)
+            : relativeTime(conv.createdAt);
+
+          return (
+            <Link key={conv.id} href={href}>
+              <a
+                className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors group"
+                data-testid={`link-conversation-${conv.id}`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors leading-snug">
+                    {conv.title ?? "Untitled conversation"}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-muted-foreground/60 bg-muted/60 rounded px-1 py-px capitalize">
+                      {typeLabel}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{dateStr}</span>
+                  </div>
+                </div>
+                <ExternalLink className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/50 flex-shrink-0 mt-1 transition-colors" />
+              </a>
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/* ── DocumentsPanel ───────────────────────────────────────────────────────── */
+/* ── Documents panel ──────────────────────────────────────────────────────── */
 
-interface DocumentRow {
-  id: string;
-  fileName: string;
-  docType: string;
-  pageCount: number;
-  createdAt: string;
-}
-
-function DocumentsPanel({ caseId, uploadHref }: { caseId: string; uploadHref: string }) {
+function DocumentsPanel({
+  caseId,
+  uploadHref,
+  askHref,
+}: {
+  caseId: string;
+  uploadHref: string;
+  askHref: string;
+}) {
   const { data, isLoading } = useQuery<{ documents: DocumentRow[] }>({
     queryKey: ["/api/cases", caseId, "documents"],
     queryFn: async () => {
@@ -381,19 +582,15 @@ function DocumentsPanel({ caseId, uploadHref }: { caseId: string; uploadHref: st
 
   const documents = data?.documents ?? [];
 
-  const DOC_TYPE_LABELS: Record<string, string> = {
-    custody_order:  "Custody Order",
-    communication:  "Communication",
-    financial:      "Financial",
-    other:          "Document",
-  };
-
   return (
-    <div className="rounded-lg border bg-card shadow-sm">
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+    <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-documents-panel">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b">
         <div className="flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5 text-primary/70" />
-          <h3 className="text-sm font-semibold">Documents</h3>
+          <FileText className="w-4 h-4 text-primary/70" />
+          <span className="text-sm font-semibold">Documents</span>
+          {!isLoading && documents.length > 0 && (
+            <span className="text-xs text-muted-foreground">({documents.length})</span>
+          )}
         </div>
         <Link href={uploadHref}>
           <a data-testid="link-upload-document-panel">
@@ -406,7 +603,7 @@ function DocumentsPanel({ caseId, uploadHref }: { caseId: string; uploadHref: st
       </div>
 
       {isLoading && (
-        <div className="flex items-center gap-2 px-4 py-3 text-muted-foreground text-xs animate-pulse">
+        <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
           <Loader2 className="w-3 h-3 animate-spin" />
           Loading documents…
         </div>
@@ -416,6 +613,9 @@ function DocumentsPanel({ caseId, uploadHref }: { caseId: string; uploadHref: st
         <div className="px-4 py-6 flex flex-col items-center gap-2 text-center">
           <File className="w-6 h-6 text-muted-foreground/30" />
           <p className="text-xs text-muted-foreground">No documents linked to this case yet.</p>
+          <p className="text-[11px] text-muted-foreground/60">
+            Upload a custody order or court filing to extract key facts automatically.
+          </p>
           <Link href={uploadHref}>
             <a>
               <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs mt-1">
@@ -429,51 +629,167 @@ function DocumentsPanel({ caseId, uploadHref }: { caseId: string; uploadHref: st
 
       {!isLoading && documents.length > 0 && (
         <div className="divide-y">
-          {documents.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center gap-3 px-4 py-2.5"
-              data-testid={`row-document-${doc.id}`}
-            >
-              <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium truncate">{doc.fileName}</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {DOC_TYPE_LABELS[doc.docType] ?? "Document"}
-                  {" · "}
-                  {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
-                  {" · "}
-                  {relativeTime(doc.createdAt)}
-                </p>
+          {documents.map((doc) => {
+            const typeLabel = DOC_TYPE_LABELS[doc.docType] ?? "Document";
+            const askDocHref = `${askHref}&q=${encodeURIComponent(
+              `Tell me about the ${typeLabel.toLowerCase()} I uploaded: ${doc.fileName}`,
+            )}`;
+
+            return (
+              <div
+                key={doc.id}
+                className="flex items-center gap-3 px-4 py-2.5 group hover:bg-muted/20 transition-colors"
+                data-testid={`row-document-${doc.id}`}
+              >
+                <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{doc.fileName}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {typeLabel}
+                    {" · "}
+                    {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
+                    {" · "}
+                    {shortDate(doc.createdAt)}
+                  </p>
+                </div>
+                <Link href={askDocHref}>
+                  <a
+                    className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    data-testid={`link-ask-about-doc-${doc.id}`}
+                    title="Ask Atlas about this document"
+                  >
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1 text-primary/70 hover:text-primary">
+                      <Zap className="w-3 h-3" />
+                      Ask
+                    </Button>
+                  </a>
+                </Link>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-/* ── WhatMattersNow ────────────────────────────────────────────────────────── */
-
-interface EnrichedAction {
-  id: number;
-  actionType: string;
-  actionTitle: string;
-  actionDetail?: string | null;
-  status: string;
-  urgency?: string | null;
-  daysUntilHearing?: number | null;
-}
+/* ── Case Facts Section ───────────────────────────────────────────────────── */
 
 /**
- * Deterministic CTA priority for "What matters now":
+ * Shows all known case facts in a readable table.
+ * Starts collapsed; expand to see all. First 5 shown by default.
+ */
+function CaseFactsSection({ facts, askHref }: { facts: CaseFactItem[]; askHref: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const PREVIEW_COUNT = 5;
+
+  if (facts.length === 0) return null;
+
+  // Deduplicate by type, prefer user_confirmed
+  const byType = new Map<string, CaseFactItem>();
+  for (const f of facts) {
+    const cur = byType.get(f.factType);
+    if (!cur || f.source === "user_confirmed") byType.set(f.factType, f);
+  }
+  const dedupedFacts = Array.from(byType.values());
+
+  const visible = expanded ? dedupedFacts : dedupedFacts.slice(0, PREVIEW_COUNT);
+  const hasMore = dedupedFacts.length > PREVIEW_COUNT;
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden" data-testid="case-facts-section">
+      {/* Header */}
+      <div className="px-4 py-2.5 flex items-center justify-between border-b">
+        <div className="flex items-center gap-2">
+          <Scale className="w-4 h-4 text-primary/70" />
+          <span className="text-sm font-semibold">Case Facts</span>
+          <span className="text-xs text-muted-foreground">({dedupedFacts.length})</span>
+        </div>
+        <Link href={`${askHref}&q=${encodeURIComponent("What else do you know about my case facts?")}`}>
+          <a className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+             data-testid="link-ask-about-facts">
+            <Zap className="w-3 h-3" />
+            Add / confirm facts
+          </a>
+        </Link>
+      </div>
+
+      {/* Facts table */}
+      <div className="divide-y">
+        {visible.map((f) => {
+          const label = FACT_TYPE_LABELS[f.factType] ?? f.factType.replace(/_/g, " ");
+          const src   = FACT_SOURCE_LABELS[f.source] ?? { label: f.source, color: "text-muted-foreground" };
+          const isConfirmed = f.source === "user_confirmed";
+
+          return (
+            <div
+              key={f.id}
+              className="grid grid-cols-[1fr_auto] sm:grid-cols-[180px_1fr_auto] items-start gap-x-3 gap-y-0.5 px-4 py-2.5"
+              data-testid={`fact-row-${f.id}`}
+            >
+              {/* Fact type label */}
+              <p className="text-xs text-muted-foreground font-medium capitalize hidden sm:block">
+                {label}
+              </p>
+
+              {/* Value + mobile label */}
+              <div className="min-w-0">
+                <p className="text-xs sm:hidden text-muted-foreground mb-0.5">{label}</p>
+                <p className="text-xs font-semibold text-foreground break-words">{f.value}</p>
+                <p className={cn("text-[10px]", src.color)}>
+                  {f.sourceName ? `${src.label} · ${f.sourceName}` : src.label}
+                </p>
+              </div>
+
+              {/* Confirmed badge */}
+              <div className="flex items-center mt-0.5">
+                {isConfirmed ? (
+                  <CheckCheck
+                    className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0"
+                    aria-label="Confirmed by you"
+                    data-testid={`icon-fact-confirmed-${f.id}`}
+                  />
+                ) : (
+                  <span className="w-3.5 h-3.5" />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Expand / collapse */}
+      {hasMore && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors border-t"
+          data-testid="button-toggle-facts"
+        >
+          {expanded ? (
+            <><ChevronUp className="w-3.5 h-3.5" /> Show fewer</>
+          ) : (
+            <><ChevronDown className="w-3.5 h-3.5" /> Show all {dedupedFacts.length} facts</>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── What Matters Now ─────────────────────────────────────────────────────── */
+
+/**
+ * Deterministic CTA priority:
  *   1. Overdue action       → "Act on overdue action"   → askHref
- *   2. Upcoming hearing     → "Prepare for hearing"     → askHref
- *   3. No documents linked  → "Upload a document"       → uploadHref
- *   4. Court address missing (hearing known) → "Confirm courthouse" → askHref w/ question
+ *   2. Hearing ≤ 7 days     → "Prepare for hearing"     → askHref
+ *   3. No documents         → "Upload a document"       → uploadHref
+ *   4. Hearing + no address → "Confirm courthouse"      → askHref w/ question
  *   5. Urgent action        → "Review open actions"     → askHref
  *   6. Default              → "Ask Atlas"               → askHref
+ *
+ * Field names confirmed:
+ *   - CaseFactItem.value  (not .factValue — that was a bug)
+ *   - CaseActionItem.title (not .actionTitle — that was a bug)
  */
 function WhatMattersNow({
   facts,
@@ -490,19 +806,17 @@ function WhatMattersNow({
   const courtNameFact    = facts.find((f) => f.factType === "court_name");
   const courtAddressFact = facts.find((f) => f.factType === "court_address");
 
-  // Actions query — same key as ActionsPanel, so TanStack deduplicates the request.
-  const { data: actionsData } = useQuery<{ actions: EnrichedAction[] }>({
+  const { data: actionsData } = useQuery<{ actions: CaseActionItem[] }>({
     queryKey: ["/api/cases", caseId, "actions"],
     queryFn: async () => {
       const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
       if (!res.ok) return { actions: [] };
       return res.json();
     },
-    staleTime: 30_000,
+    staleTime: 20_000,
     enabled: !!caseId,
   });
 
-  // Documents count — same key as DocumentsPanel, so TanStack deduplicates the request.
   const { data: docsData } = useQuery<{ documents: { id: string }[] }>({
     queryKey: ["/api/cases", caseId, "documents"],
     queryFn: async () => {
@@ -515,30 +829,28 @@ function WhatMattersNow({
   });
 
   const openActions = (actionsData?.actions ?? []).filter((a) => a.status === "open");
-  const topAction = openActions.find((a) => a.urgency === "overdue")
-    ?? openActions.find((a) => a.urgency === "urgent")
-    ?? openActions.find((a) => a.urgency === "soon")
-    ?? openActions[0];
+  const topAction   =
+    openActions.find((a) => a.urgency === "overdue") ??
+    openActions.find((a) => a.urgency === "urgent")  ??
+    openActions.find((a) => a.urgency === "soon")    ??
+    openActions[0];
 
-  const hasHearing   = !!hearingDateFact?.factValue;
+  // Use .value — the correct field name on CaseFactItem
+  const hasHearing   = !!hearingDateFact?.value;
   const hasTopAction = !!topAction;
-
-  // Only render when there is something actionable to surface
   if (!hasHearing && !hasTopAction) return null;
 
-  const daysUntil    = topAction?.daysUntilHearing ?? null;
-  const hasOverdue   = openActions.some((a) => a.urgency === "overdue");
-  const hasUrgent    = openActions.some((a) => a.urgency === "urgent");
+  const daysUntil      = topAction?.daysUntilHearing ?? null;
+  const hasOverdue     = openActions.some((a) => a.urgency === "overdue");
+  const hasUrgent      = openActions.some((a) => a.urgency === "urgent");
   const hasHearingSoon = hasHearing && daysUntil !== null && daysUntil >= 0 && daysUntil <= 7;
-  // Only flag missing docs once the query has settled (data !== undefined)
-  const docsMissing  = docsData !== undefined && docsData.documents.length === 0;
-  const courtAddressMissing = !courtAddressFact?.factValue;
+  const docsMissing    = docsData !== undefined && docsData.documents.length === 0;
+  const courtAddressMissing = !courtAddressFact?.value;
 
-  /* ── Determine urgency tier (for color/icon) ─────────────────────── */
   const urgencyKey: string =
-    hasOverdue       ? "overdue" :
-    hasUrgent        ? "urgent"  :
-    hasHearingSoon   ? "soon"    : "normal";
+    hasOverdue     ? "overdue" :
+    hasUrgent      ? "urgent"  :
+    hasHearingSoon ? "soon"    : "normal";
 
   const URGENCY_COLORS: Record<string, string> = {
     overdue: "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800/50",
@@ -552,35 +864,31 @@ function WhatMattersNow({
     soon:    "text-yellow-500",
     normal:  "text-blue-500",
   };
-  const colorClass = URGENCY_COLORS[urgencyKey];
-  const iconColor  = URGENCY_ICON_COLORS[urgencyKey];
 
-  /* ── Determine single primary CTA (priority order) ───────────────── */
   type CTADef = { label: string; href: string; Icon: typeof Zap };
-
   const cta: CTADef =
     hasOverdue
-      ? { label: "Act on overdue action", href: askHref, Icon: Zap }
+      ? { label: "Act on overdue action",   href: askHref,    Icon: Zap         }
     : hasHearingSoon
-      ? { label: "Prepare for hearing", href: askHref, Icon: Calendar }
+      ? { label: "Prepare for hearing",     href: askHref,    Icon: Calendar    }
     : docsMissing
-      ? { label: "Upload a document", href: uploadHref, Icon: Upload }
-    : hasHearing && courtAddressMissing && courtNameFact?.factValue
+      ? { label: "Upload a document",       href: uploadHref, Icon: Upload      }
+    : hasHearing && courtAddressMissing && courtNameFact?.value
       ? {
           label: "Confirm courthouse",
-          href: `${askHref}&q=${encodeURIComponent(`What is the address for ${courtNameFact.factValue}?`)}`,
-          Icon: MapPin,
+          href:  `${askHref}&q=${encodeURIComponent(`What is the address for ${courtNameFact.value}?`)}`,
+          Icon:  MapPin,
         }
     : hasUrgent
-      ? { label: "Review open actions", href: askHref, Icon: ClipboardList }
-    : { label: "Ask Atlas", href: askHref, Icon: Zap };
+      ? { label: "Review open actions",     href: askHref,    Icon: ClipboardList }
+    : { label: "Ask Atlas",                  href: askHref,    Icon: Zap         };
 
   return (
     <div
-      className={cn("rounded-lg border px-4 py-3 flex items-start gap-3 shadow-sm", colorClass)}
+      className={cn("rounded-lg border px-4 py-3 flex items-start gap-3 shadow-sm", URGENCY_COLORS[urgencyKey])}
       data-testid="banner-what-matters-now"
     >
-      <AlertTriangle className={cn("w-4 h-4 flex-shrink-0 mt-0.5", iconColor)} />
+      <AlertTriangle className={cn("w-4 h-4 flex-shrink-0 mt-0.5", URGENCY_ICON_COLORS[urgencyKey])} />
 
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-foreground mb-0.5">What matters now</p>
@@ -588,10 +896,10 @@ function WhatMattersNow({
           {hasHearing && (
             <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
               <Calendar className="w-3 h-3 flex-shrink-0" />
-              Next hearing:{" "}
-              <span className="font-medium text-foreground">{hearingDateFact!.factValue}</span>
-              {courtNameFact?.factValue && (
-                <span className="text-muted-foreground"> · {courtNameFact.factValue}</span>
+              <span>Next hearing:</span>
+              <span className="font-medium text-foreground">{hearingDateFact!.value}</span>
+              {courtNameFact?.value && (
+                <span className="text-muted-foreground"> · {courtNameFact.value}</span>
               )}
               {daysUntil !== null && (
                 <span className="text-muted-foreground">
@@ -608,9 +916,7 @@ function WhatMattersNow({
           {hasTopAction && (
             <p className="text-xs text-muted-foreground flex items-start gap-1">
               <ClipboardList className="w-3 h-3 flex-shrink-0 mt-0.5" />
-              <span>
-                {topAction!.actionTitle}
-              </span>
+              <span>{topAction!.title}</span>
             </p>
           )}
         </div>
@@ -661,9 +967,8 @@ export default function CaseDashboardPage() {
   });
 
   const caseRecord = caseData?.case ?? null;
-  const facts = factsData?.facts ?? [];
+  const facts      = factsData?.facts ?? [];
 
-  /* ── Build Ask Atlas link ─────────────────────────────────────────────── */
   const askParams = new URLSearchParams();
   askParams.set("case", caseId);
   if (caseRecord?.jurisdictionState) askParams.set("state", caseRecord.jurisdictionState);
@@ -674,7 +979,6 @@ export default function CaseDashboardPage() {
     ? `/upload-document?case=${caseId}&state=${caseRecord.jurisdictionState}`
     : `/upload-document?case=${caseId}`;
 
-  /* ── Loading state ────────────────────────────────────────────────────── */
   if (caseLoading) {
     return (
       <div className="flex items-center justify-center gap-3 py-24 text-muted-foreground">
@@ -710,8 +1014,10 @@ export default function CaseDashboardPage() {
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <Link href="/workspace">
-          <a className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-             data-testid="link-back-to-workspace">
+          <a
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+            data-testid="link-back-to-workspace"
+          >
             <ArrowLeft className="w-3.5 h-3.5" />
             My Cases
           </a>
@@ -743,6 +1049,11 @@ export default function CaseDashboardPage() {
               >
                 {caseRecord.status}
               </Badge>
+              {caseRecord.description && (
+                <span className="text-[11px] text-muted-foreground/70 truncate max-w-[240px]">
+                  {caseRecord.description}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -767,13 +1078,15 @@ export default function CaseDashboardPage() {
         </div>
       </div>
 
-      {/* ── Court & hearing info bar ─────────────────────────────────────── */}
-      {!factsLoading && facts.length > 0 && <CourtInfoBar facts={facts} />}
+      {/* ── Case Snapshot: court facts + aggregate stats ─────────────────── */}
       {factsLoading && (
-        <div className="rounded-lg border bg-card px-4 py-3 h-14 animate-pulse" />
+        <div className="rounded-lg border bg-card px-4 py-3 h-16 animate-pulse" />
+      )}
+      {!factsLoading && (
+        <CaseSnapshotPanel facts={facts} caseId={caseId} askHref={askHref} />
       )}
 
-      {/* ── What matters now — urgency banner from facts + smart CTA ──────── */}
+      {/* ── What matters now — smart urgency CTA ─────────────────────────── */}
       {!factsLoading && facts.length > 0 && (
         <WhatMattersNow
           facts={facts}
@@ -785,12 +1098,9 @@ export default function CaseDashboardPage() {
 
       {/* ── Two-column grid: actions + conversations ─────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {/* Actions — wider column */}
         <div className="md:col-span-3">
           <ActionsPanel caseId={caseId} />
         </div>
-
-        {/* Conversations — narrower column */}
         <div className="md:col-span-2">
           <ConversationsPanel
             caseId={caseId}
@@ -800,13 +1110,19 @@ export default function CaseDashboardPage() {
         </div>
       </div>
 
+      {/* ── All case facts — collapsible full table ───────────────────────── */}
+      {!factsLoading && facts.length > 0 && (
+        <CaseFactsSection facts={facts} askHref={askHref} />
+      )}
+
       {/* ── Documents panel ──────────────────────────────────────────────── */}
-      <DocumentsPanel caseId={caseId} uploadHref={uploadHref} />
+      <DocumentsPanel caseId={caseId} uploadHref={uploadHref} askHref={askHref} />
 
       {/* ── Footer meta ──────────────────────────────────────────────────── */}
       <p className="text-[11px] text-muted-foreground/50 text-center pb-2">
         Case created {relativeTime(caseRecord.createdAt)}
-        {caseRecord.updatedAt !== caseRecord.createdAt && ` · updated ${relativeTime(caseRecord.updatedAt)}`}
+        {" · "}
+        <Link href="/workspace"><a className="hover:underline">All cases</a></Link>
       </p>
     </div>
   );
