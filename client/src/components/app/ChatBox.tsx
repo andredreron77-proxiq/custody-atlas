@@ -22,6 +22,8 @@ import { useSpeechRecording } from "@/hooks/useSpeechRecording";
 import { useCurrentUser } from "@/hooks/use-auth";
 
 interface ChatBoxProps {
+  /** Pre-populate the active conversation ID (for case conversation resume). */
+  initialConversationId?: string;
   jurisdiction: Jurisdiction;
   /**
    * If provided, the ChatBox will auto-submit this question once on mount.
@@ -370,7 +372,7 @@ function FollowUpChips({
   );
 }
 
-export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, caseId }: ChatBoxProps) {
+export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, initialConversationId, caseId }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -382,7 +384,9 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
   const _sendRef = useRef<(q: string) => void>(() => {});
   const threadIdRef = useRef<string | undefined>(initialThreadId);
   // Tracks the active conversation ID when using the case-based path
-  const conversationIdRef = useRef<string | undefined>(undefined);
+  // When resuming a case conversation, pre-seed the ref so the next message
+  // is appended to the correct conversation instead of creating a new one.
+  const conversationIdRef = useRef<string | undefined>(initialConversationId);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();

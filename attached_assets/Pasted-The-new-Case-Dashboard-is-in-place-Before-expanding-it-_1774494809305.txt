@@ -1,0 +1,64 @@
+The new Case Dashboard is in place. Before expanding it further, do a stabilization pass focused on architectural consistency.
+
+Scope:
+
+1. Verify document linkage for cases
+
+   * Inspect the actual `documents` table/schema being used by the app
+   * Determine whether `case_id` already exists and is usable
+   * If `case_id` exists:
+
+     * implement the dashboard documents section using linked case documents
+   * If `case_id` truly does not exist in the active schema:
+
+     * explain exactly why, and add the smallest safe fix path
+   * Do not guess; inspect the real code and schema assumptions
+
+2. Verify conversation resume routing
+
+   * Inspect whether the current case-aware chat flow uses:
+
+     * legacy `thread/thread_messages`
+     * or new `conversation/messages`
+   * If dashboard resume links currently use `?thread=`, confirm whether that is correct
+   * If not correct, update resume links to use the proper case-aware conversation parameter/path
+   * Preserve backward compatibility if needed, but do not keep routing inconsistencies
+
+3. Add dashboard documents panel
+
+   * Show recent documents linked to the case
+   * Basic list is enough:
+
+     * file name
+     * upload date
+     * document type if known
+   * Reuse existing document data/services where practical
+
+4. Improve dashboard top summary
+
+   * Add a lightweight “What matters now” section at the top using:
+
+     * next hearing date if present
+     * highest urgency open action
+     * court name if present
+   * Keep it simple, not a redesign
+
+5. Keep everything additive and safe
+
+   * Do not break Ask Atlas
+   * Do not refactor the whole document system
+   * Do not remove legacy compatibility unless clearly safe
+
+Important:
+
+* Challenge incorrect assumptions instead of coding around them
+* Prefer architectural consistency over adding more surface area
+* Be explicit about whether documents and conversations are using the new case-centered model or legacy paths
+
+At the end, show:
+
+* files changed
+* whether documents.case_id exists in the active app path
+* whether resume links now use the correct conversation path
+* how the documents panel works
+* any remaining architectural inconsistencies that should be fixed next

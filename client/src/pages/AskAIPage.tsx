@@ -240,6 +240,9 @@ export default function AskAIPage() {
   const countyParam = urlParams.get("county");
   const initialQuestion = urlParams.get("q") ?? undefined;
   const threadIdParam = urlParams.get("thread") ?? undefined;
+  // ?conversation= resumes a case-aware conversation (Supabase conversations table)
+  // This is DIFFERENT from ?thread= which is the legacy threads table.
+  const conversationIdParam = urlParams.get("conversation") ?? undefined;
   // ?case= URL param lets other pages deep-link into a specific case context
   const caseIdParam = urlParams.get("case") ?? undefined;
 
@@ -261,7 +264,7 @@ export default function AskAIPage() {
   const [showCasePicker, setShowCasePicker] = useState(false);
   const { user } = useCurrentUser();
 
-  // Thread resume: fetch saved messages when ?thread= is in URL
+  // Legacy thread resume: fetch saved messages when ?thread= is in URL
   const { data: threadData, isLoading: isLoadingThread } = useQuery<ThreadWithMessages | null>({
     queryKey: ["/api/threads", threadIdParam],
     enabled: !!threadIdParam,
@@ -270,6 +273,29 @@ export default function AskAIPage() {
     queryFn: async () => {
       if (!threadIdParam) return null;
       const res = await apiRequestRaw("GET", `/api/threads/${threadIdParam}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  // Case conversation resume: fetch messages when ?conversation= is in URL.
+  // Uses the new Supabase conversations/messages path, NOT the legacy threads path.
+  const { data: convMessagesData, isLoading: isLoadingConversation } = useQuery<{
+    messages: Array<{
+      id: string;
+      role: "user" | "assistant";
+      messageText: string;
+      structuredResponseJson: Record<string, unknown> | null;
+      createdAt: string;
+    }>;
+  } | null>({
+    queryKey: ["/api/conversations", conversationIdParam, "messages"],
+    enabled: !!conversationIdParam,
+    staleTime: 0,
+    retry: false,
+    queryFn: async () => {
+      if (!conversationIdParam) return null;
+      const res = await apiRequestRaw("GET", `/api/conversations/${conversationIdParam}/messages`);
       if (!res.ok) return null;
       return res.json();
     },
@@ -306,8 +332,8 @@ export default function AskAIPage() {
     setShowLocationPicker(true);
   };
 
-  // While loading a resumed thread, show a centered spinner
-  if (threadIdParam && isLoadingThread) {
+  // While loading a resumed thread or conversation, show a centered spinner
+  if ((threadIdParam && isLoadingThread) || (conversationIdParam && isLoadingConversation)) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
@@ -316,12 +342,20 @@ export default function AskAIPage() {
     );
   }
 
-  // Convert thread messages to ChatMessage[] for ChatBox
-  const initialMessages: ChatMessage[] | undefined = threadData?.messages?.map((m) => ({
-    role: m.role,
-    content: m.messageText,
-    structured: (m.structuredResponseJson as any) ?? undefined,
-  }));
+  // Build initialMessages from whichever resume path is active:
+  //   ?thread=   → legacy threads table  (no case context)
+  //   ?conversation= → Supabase conversations (case-aware)
+  const initialMessages: ChatMessage[] | undefined =
+    threadData?.messages?.map((m) => ({
+      role: m.role,
+      content: m.messageText,
+      structured: (m.structuredResponseJson as any) ?? undefined,
+    })) ??
+    convMessagesData?.messages?.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.messageText,
+      structured: (m.structuredResponseJson as any) ?? undefined,
+    }));
 
   /* ── Location picker (no jurisdiction yet) ───────────────────────────── */
   if (!jurisdiction || showLocationPicker) {
@@ -487,6 +521,7 @@ export default function AskAIPage() {
         initialQuestion={initialQuestion}
         initialMessages={initialMessages}
         initialThreadId={threadIdParam}
+        initialConversationId={conversationIdParam}
         caseId={activeCaseId}
       />
 

@@ -28,7 +28,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, updateDocumentType, type DocumentType } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, updateDocumentType, type DocumentType } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import {
@@ -1183,13 +1183,17 @@ CRITICAL RULES:
         const documentName = req.file.originalname || "document";
 
         // Await the save so we have the document ID for case_facts population.
+        // Pass caseId so the document row is linked to the case in Supabase.
+        // (Requires the case_id column — saveDocument degrades gracefully if missing.)
         saveDocument(docUserId, {
           fileName: documentName,
           storagePath: null,
+          caseId: docCaseId ?? null,
           mimeType: req.file.mimetype,
           pageCount,
           analysisJson: validated.data as Record<string, unknown>,
           extractedText: truncatedText,
+          docType: "other",
         }).then((savedDoc) => {
           // If the request was tied to a case, upsert extracted_facts into case_facts,
           // then trigger deterministic action generation from the full fact set (fire-and-forget).
@@ -1956,6 +1960,26 @@ Respond only with the JSON object. No markdown, no extra text.`;
     } catch (err) {
       console.error("[cases] GET :caseId error:", err);
       return res.status(500).json({ error: "Failed to load case." });
+    }
+  });
+
+  /**
+   * GET /api/cases/:caseId/documents
+   * Return documents linked to a specific case.
+   * Requires the case_id column on the Supabase documents table.
+   * Returns [] (gracefully) if the column does not yet exist.
+   */
+  app.get("/api/cases/:caseId/documents", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+      const documents = await getDocumentsByCase(caseId, user.id);
+      return res.json({ documents });
+    } catch (err) {
+      console.error("[cases] GET documents error:", err);
+      return res.status(500).json({ error: "Failed to retrieve documents." });
     }
   });
 

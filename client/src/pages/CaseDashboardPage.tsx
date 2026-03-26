@@ -14,9 +14,10 @@ import { useParams, Link } from "wouter";
 import {
   ArrowLeft, FolderOpen, MessageSquare, Upload, MapPin, Building2,
   Hash, Calendar, User2, ClipboardList, Loader2, CircleCheck, X,
-  ChevronRight, CheckCheck, Zap, ExternalLink,
+  ChevronRight, CheckCheck, Zap, ExternalLink, FileText, AlertTriangle,
+  File,
 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -325,9 +326,11 @@ function ConversationsPanel({
       )}
 
       {conversations.map((conv) => {
+        // Use ?conversation= NOT ?thread= — conv.id is a Supabase conversations UUID,
+        // not a legacy thread ID. The two are different tables and different systems.
         const resumeParams = new URLSearchParams();
         resumeParams.set("case", caseId);
-        resumeParams.set("thread", conv.id);
+        resumeParams.set("conversation", conv.id);
         if (conv.jurisdictionState) resumeParams.set("state", conv.jurisdictionState);
         if (jurisdictionCounty) resumeParams.set("county", jurisdictionCounty);
         const href = `/ask?${resumeParams.toString()}`;
@@ -341,7 +344,7 @@ function ConversationsPanel({
               <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
-                  {conv.title ?? `${conv.threadType.replace("_", " ")} conversation`}
+                  {conv.title ?? `${conv.threadType.replace(/_/g, " ")} conversation`}
                 </p>
                 <p className="text-[11px] text-muted-foreground">{relativeTime(conv.createdAt)}</p>
               </div>
@@ -350,6 +353,212 @@ function ConversationsPanel({
           </Link>
         );
       })}
+    </div>
+  );
+}
+
+/* ── DocumentsPanel ───────────────────────────────────────────────────────── */
+
+interface DocumentRow {
+  id: string;
+  fileName: string;
+  docType: string;
+  pageCount: number;
+  createdAt: string;
+}
+
+function DocumentsPanel({ caseId, uploadHref }: { caseId: string; uploadHref: string }) {
+  const { data, isLoading } = useQuery<{ documents: DocumentRow[] }>({
+    queryKey: ["/api/cases", caseId, "documents"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
+      if (!res.ok) return { documents: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+    enabled: !!caseId,
+  });
+
+  const documents = data?.documents ?? [];
+
+  const DOC_TYPE_LABELS: Record<string, string> = {
+    custody_order:  "Custody Order",
+    communication:  "Communication",
+    financial:      "Financial",
+    other:          "Document",
+  };
+
+  return (
+    <div className="rounded-lg border bg-card shadow-sm">
+      <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5 text-primary/70" />
+          <h3 className="text-sm font-semibold">Documents</h3>
+        </div>
+        <Link href={uploadHref}>
+          <a data-testid="link-upload-document-panel">
+            <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+              <Upload className="w-3 h-3" />
+              Upload
+            </Button>
+          </a>
+        </Link>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 px-4 py-3 text-muted-foreground text-xs animate-pulse">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Loading documents…
+        </div>
+      )}
+
+      {!isLoading && documents.length === 0 && (
+        <div className="px-4 py-6 flex flex-col items-center gap-2 text-center">
+          <File className="w-6 h-6 text-muted-foreground/30" />
+          <p className="text-xs text-muted-foreground">No documents linked to this case yet.</p>
+          <Link href={uploadHref}>
+            <a>
+              <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs mt-1">
+                <Upload className="w-3 h-3" />
+                Upload your first document
+              </Button>
+            </a>
+          </Link>
+        </div>
+      )}
+
+      {!isLoading && documents.length > 0 && (
+        <div className="divide-y">
+          {documents.map((doc) => (
+            <div
+              key={doc.id}
+              className="flex items-center gap-3 px-4 py-2.5"
+              data-testid={`row-document-${doc.id}`}
+            >
+              <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium truncate">{doc.fileName}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {DOC_TYPE_LABELS[doc.docType] ?? "Document"}
+                  {" · "}
+                  {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
+                  {" · "}
+                  {relativeTime(doc.createdAt)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── WhatMattersNow ────────────────────────────────────────────────────────── */
+
+interface EnrichedAction {
+  id: number;
+  actionType: string;
+  actionTitle: string;
+  actionDetail?: string | null;
+  status: string;
+  urgency?: string | null;
+  daysUntilHearing?: number | null;
+}
+
+function WhatMattersNow({
+  facts,
+  caseId,
+  askHref,
+}: {
+  facts: CaseFactItem[];
+  caseId: string;
+  askHref: string;
+}) {
+  const hearingDateFact = facts.find((f) => f.factType === "hearing_date");
+  const courtNameFact = facts.find((f) => f.factType === "court_name");
+
+  const { data: actionsData } = useQuery<{ actions: EnrichedAction[] }>({
+    queryKey: ["/api/cases", caseId, "actions"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
+      if (!res.ok) return { actions: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+    enabled: !!caseId,
+  });
+
+  const openActions = (actionsData?.actions ?? []).filter((a) => a.status === "open");
+  const topAction = openActions.find((a) => a.urgency === "overdue")
+    ?? openActions.find((a) => a.urgency === "urgent")
+    ?? openActions.find((a) => a.urgency === "soon")
+    ?? openActions[0];
+
+  const hasHearing = !!hearingDateFact?.factValue;
+  const hasTopAction = !!topAction;
+  if (!hasHearing && !hasTopAction) return null;
+
+  const daysUntil = topAction?.daysUntilHearing ?? null;
+
+  const URGENCY_COLORS: Record<string, string> = {
+    overdue: "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800/50",
+    urgent:  "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50",
+    soon:    "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-800/50",
+    normal:  "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800/50",
+  };
+  const urgencyKey = topAction?.urgency ?? "normal";
+  const colorClass = URGENCY_COLORS[urgencyKey] ?? URGENCY_COLORS.normal;
+
+  const URGENCY_ICON_COLORS: Record<string, string> = {
+    overdue: "text-red-500",
+    urgent:  "text-amber-500",
+    soon:    "text-yellow-500",
+    normal:  "text-blue-500",
+  };
+  const iconColor = URGENCY_ICON_COLORS[urgencyKey] ?? "text-blue-500";
+
+  return (
+    <div
+      className={cn("rounded-lg border px-4 py-3 flex items-start gap-3 shadow-sm", colorClass)}
+      data-testid="banner-what-matters-now"
+    >
+      <AlertTriangle className={cn("w-4 h-4 flex-shrink-0 mt-0.5", iconColor)} />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-foreground mb-0.5">What matters now</p>
+        <div className="flex flex-col gap-0.5">
+          {hasHearing && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Calendar className="w-3 h-3 flex-shrink-0" />
+              Next hearing:{" "}
+              <span className="font-medium text-foreground">{hearingDateFact!.factValue}</span>
+              {courtNameFact?.factValue && (
+                <> · {courtNameFact.factValue}</>
+              )}
+              {daysUntil !== null && (
+                <> · {daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? "Today" : `${daysUntil}d away`}</>
+              )}
+            </p>
+          )}
+          {hasTopAction && (
+            <p className="text-xs text-muted-foreground flex items-start gap-1">
+              <ClipboardList className="w-3 h-3 flex-shrink-0 mt-0.5" />
+              <span>
+                Top action:{" "}
+                <span className="font-medium text-foreground">{topAction!.actionTitle}</span>
+              </span>
+            </p>
+          )}
+        </div>
+      </div>
+      <Link href={askHref}>
+        <a>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 flex-shrink-0 border-current/20 hover:bg-white/50">
+            <Zap className="w-3 h-3" />
+            Ask Atlas
+          </Button>
+        </a>
+      </Link>
     </div>
   );
 }
@@ -495,6 +704,11 @@ export default function CaseDashboardPage() {
         <div className="rounded-lg border bg-card px-4 py-3 h-14 animate-pulse" />
       )}
 
+      {/* ── What matters now — urgency banner from facts + top action ────── */}
+      {!factsLoading && facts.length > 0 && (
+        <WhatMattersNow facts={facts} caseId={caseId} askHref={askHref} />
+      )}
+
       {/* ── Two-column grid: actions + conversations ─────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {/* Actions — wider column */}
@@ -511,6 +725,9 @@ export default function CaseDashboardPage() {
           />
         </div>
       </div>
+
+      {/* ── Documents panel ──────────────────────────────────────────────── */}
+      <DocumentsPanel caseId={caseId} uploadHref={uploadHref} />
 
       {/* ── Footer meta ──────────────────────────────────────────────────── */}
       <p className="text-[11px] text-muted-foreground/50 text-center pb-2">
