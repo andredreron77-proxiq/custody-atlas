@@ -816,6 +816,383 @@ function CaseFactsSection({ facts, askHref }: { facts: CaseFactItem[]; askHref: 
   );
 }
 
+/* ── Case Alerts ─────────────────────────────────────────────────────────────
+ * Deterministic proactive guidance derived from cached dashboard data.
+ * No new API calls — all queries share keys with existing sub-components.
+ *
+ * Alert levels:
+ *   urgent       → red accent  (hearing ≤ 3 days, overdue, missing courthouse)
+ *   important    → amber accent (hearing ≤ 7 days, urgent actions, no docs)
+ *   informational → blue accent (soft nudges)
+ *
+ * Max 3 alerts shown, highest priority first.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+interface CaseAlert {
+  id: string;
+  level: "urgent" | "important" | "informational";
+  icon: "triangle" | "clock" | "info" | "document" | "courthouse";
+  title: string;
+  description: string;
+  cta: { label: string; href: string };
+}
+
+function diffDaysFromNow(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86_400_000);
+}
+
+function deriveAlerts({
+  facts,
+  timelineEvents,
+  actions,
+  documentCount,
+  askHref,
+  uploadHref,
+}: {
+  facts: CaseFactItem[];
+  timelineEvents: CaseTimelineEvent[];
+  actions: CaseActionItem[];
+  documentCount: number;
+  askHref: string;
+  uploadHref: string;
+}): CaseAlert[] {
+  const alerts: CaseAlert[] = [];
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const courtAddressFact = facts.find(f => f.factType === "court_address");
+  const hasCourtAddress  = !!courtAddressFact?.value?.trim();
+
+  // First upcoming hearing event in the timeline
+  const nextHearingEv = timelineEvents.find(
+    e => e.type === "hearing" && e.isUpcoming && e.dateParsed !== null,
+  );
+  const daysUntilHearing = diffDaysFromNow(nextHearingEv?.dateParsed ?? null);
+
+  // Any overdue hearing (isPast + isOverdue)
+  const overdueHearing = timelineEvents.find(
+    e => e.type === "hearing" && e.isOverdue,
+  );
+
+  // Open actions by urgency level
+  const openActions    = actions.filter(a => a.status === "open");
+  const overdueActions = openActions.filter(a => a.urgency === "overdue");
+  const urgentActions  = openActions.filter(a => a.urgency === "urgent");
+
+  // Whether the case has any documents at all
+  const hasDocs = documentCount > 0;
+
+  // Ask Atlas href with a pre-filled question
+  function askWithQ(q: string): string {
+    const sep = askHref.includes("?") ? "&" : "?";
+    return `${askHref}${sep}q=${encodeURIComponent(q)}`;
+  }
+
+  // ── Rules (evaluated in priority order; stop at 3 alerts) ─────────────────
+
+  // 1. URGENT — overdue hearing (may have been missed)
+  if (overdueHearing) {
+    alerts.push({
+      id: "overdue-hearing",
+      level: "urgent",
+      icon: "triangle",
+      title: "A past hearing date was found in your documents",
+      description:
+        "Verify whether this hearing took place and what the outcome was. " +
+        "If an order was issued, upload it to keep your case current.",
+      cta: {
+        label: "Ask Atlas about the outcome",
+        href: askWithQ("What happened at my last hearing? What should I do next?"),
+      },
+    });
+  }
+
+  // 2. URGENT — hearing within 3 days + no courthouse address
+  if (
+    daysUntilHearing !== null &&
+    daysUntilHearing >= 0 &&
+    daysUntilHearing <= 3 &&
+    !hasCourtAddress
+  ) {
+    alerts.push({
+      id: "upcoming-hearing-no-address",
+      level: "urgent",
+      icon: "courthouse",
+      title: `Hearing in ${daysUntilHearing === 0 ? "today" : `${daysUntilHearing} day${daysUntilHearing === 1 ? "" : "s"}`} — courthouse address not on file`,
+      description:
+        "We have no courthouse address recorded for this case. " +
+        "Confirm the location before your hearing.",
+      cta: {
+        label: "Ask Atlas for the address",
+        href: askWithQ("What is the courthouse address for my upcoming hearing?"),
+      },
+    });
+  }
+
+  // 3. URGENT — hearing within 3 days (with or without address)
+  if (
+    daysUntilHearing !== null &&
+    daysUntilHearing >= 0 &&
+    daysUntilHearing <= 3 &&
+    !alerts.find(a => a.id === "upcoming-hearing-no-address")
+  ) {
+    alerts.push({
+      id: "hearing-imminent",
+      level: "urgent",
+      icon: "clock",
+      title: `Hearing ${daysUntilHearing === 0 ? "today" : `in ${daysUntilHearing} day${daysUntilHearing === 1 ? "" : "s"}`} — are you prepared?`,
+      description:
+        "Atlas can review your case facts and actions to help you walk in prepared.",
+      cta: {
+        label: "Prepare with Atlas",
+        href: askWithQ("My custody hearing is coming up soon. What should I know and prepare?"),
+      },
+    });
+  }
+
+  if (alerts.length >= 3) return alerts.slice(0, 3);
+
+  // 4. IMPORTANT — open overdue actions
+  if (overdueActions.length > 0) {
+    alerts.push({
+      id: "overdue-actions",
+      level: "important",
+      icon: "triangle",
+      title: `${overdueActions.length} overdue action${overdueActions.length > 1 ? "s" : ""} need${overdueActions.length === 1 ? "s" : ""} your attention`,
+      description:
+        "These actions have passed their expected resolution window. " +
+        "Review them now to avoid missing deadlines.",
+      cta: {
+        label: "Ask Atlas for guidance",
+        href: askWithQ("I have overdue items in my case. What should I prioritize?"),
+      },
+    });
+  }
+
+  if (alerts.length >= 3) return alerts.slice(0, 3);
+
+  // 5. IMPORTANT — hearing within 7 days + no documents
+  if (
+    daysUntilHearing !== null &&
+    daysUntilHearing >= 0 &&
+    daysUntilHearing <= 7 &&
+    !hasDocs
+  ) {
+    alerts.push({
+      id: "hearing-no-docs",
+      level: "important",
+      icon: "document",
+      title: "No documents uploaded before your upcoming hearing",
+      description:
+        "Upload any court notices, orders, or filings so Atlas can give you hearing-specific guidance.",
+      cta: { label: "Upload a document", href: uploadHref },
+    });
+  }
+
+  if (alerts.length >= 3) return alerts.slice(0, 3);
+
+  // 6. IMPORTANT — hearing within 7 days (general nudge, no docs alert)
+  if (
+    daysUntilHearing !== null &&
+    daysUntilHearing >= 0 &&
+    daysUntilHearing <= 7 &&
+    !alerts.find(a => a.id === "hearing-imminent") &&
+    !alerts.find(a => a.id === "upcoming-hearing-no-address")
+  ) {
+    alerts.push({
+      id: "hearing-soon",
+      level: "important",
+      icon: "clock",
+      title: `Hearing in ${daysUntilHearing} days — review your case`,
+      description:
+        "Make sure your case facts, documents, and pending actions are in order.",
+      cta: {
+        label: "Ask Atlas",
+        href: askWithQ("My hearing is in a week. What should I review and prepare?"),
+      },
+    });
+  }
+
+  if (alerts.length >= 3) return alerts.slice(0, 3);
+
+  // 7. IMPORTANT — urgent open actions
+  if (urgentActions.length > 0 && !alerts.find(a => a.id === "hearing-soon")) {
+    alerts.push({
+      id: "urgent-actions",
+      level: "important",
+      icon: "triangle",
+      title: `${urgentActions.length} urgent action${urgentActions.length > 1 ? "s" : ""} related to your upcoming hearing`,
+      description: "Complete these before your hearing date to avoid gaps in your case.",
+      cta: {
+        label: "Ask Atlas for help",
+        href: askWithQ("What urgent actions should I complete before my hearing?"),
+      },
+    });
+  }
+
+  if (alerts.length >= 3) return alerts.slice(0, 3);
+
+  // 8. INFORMATIONAL — documents exist but no hearing date recorded
+  if (hasDocs && !nextHearingEv && !overdueHearing) {
+    const hearingDateFact = facts.find(f => f.factType === "hearing_date");
+    if (!hearingDateFact?.value) {
+      alerts.push({
+        id: "no-hearing-date",
+        level: "informational",
+        icon: "info",
+        title: "No upcoming hearing date on file",
+        description:
+          "Review your uploaded documents to confirm whether a court date has been scheduled.",
+        cta: {
+          label: "Ask Atlas",
+          href: askWithQ("Has a court hearing been scheduled in my case? What does my paperwork say?"),
+        },
+      });
+    }
+  }
+
+  return alerts.slice(0, 3);
+}
+
+const ALERT_STYLES = {
+  urgent: {
+    wrapper: "border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30",
+    iconBg:  "bg-red-100 dark:bg-red-900/40",
+    iconColor: "text-red-600 dark:text-red-400",
+    badge: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
+    badgeText: "Urgent",
+    cta: "text-red-700 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300",
+  },
+  important: {
+    wrapper: "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30",
+    iconBg:  "bg-amber-100 dark:bg-amber-900/40",
+    iconColor: "text-amber-600 dark:text-amber-400",
+    badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+    badgeText: "Important",
+    cta: "text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300",
+  },
+  informational: {
+    wrapper: "border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/30",
+    iconBg:  "bg-blue-100 dark:bg-blue-900/40",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+    badgeText: "Heads up",
+    cta: "text-blue-700 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300",
+  },
+} as const;
+
+function AlertIcon({ icon, className }: { icon: CaseAlert["icon"]; className?: string }) {
+  const cls = className ?? "w-4 h-4";
+  switch (icon) {
+    case "triangle":   return <AlertTriangle className={cls} />;
+    case "clock":      return <History className={cls} />;
+    case "document":   return <FileText className={cls} />;
+    case "courthouse": return <Building2 className={cls} />;
+    default:           return <Info className={cls} />;
+  }
+}
+
+function CaseAlerts({
+  caseId,
+  facts,
+  askHref,
+  uploadHref,
+}: {
+  caseId: string;
+  facts: CaseFactItem[];
+  askHref: string;
+  uploadHref: string;
+}) {
+  const { data: timelineData } = useQuery<{ events: CaseTimelineEvent[] }>({
+    queryKey: ["/api/cases", caseId, "timeline"],
+    queryFn: async () => {
+      const res = await fetch(`/api/cases/${caseId}/timeline`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load timeline");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: actionsData } = useQuery<{ actions: CaseActionItem[] }>({
+    queryKey: ["/api/cases", caseId, "actions"],
+    staleTime: 30_000,
+  });
+
+  const { data: docsData } = useQuery<{ documents: { id: string }[] }>({
+    queryKey: ["/api/cases", caseId, "documents"],
+    staleTime: 60_000,
+  });
+
+  const timelineEvents = timelineData?.events ?? [];
+  const actions        = actionsData?.actions ?? [];
+  const documentCount  = docsData?.documents?.length ?? 0;
+
+  const alerts = deriveAlerts({
+    facts,
+    timelineEvents,
+    actions,
+    documentCount,
+    askHref,
+    uploadHref,
+  });
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="case-alerts">
+      {alerts.map((alert) => {
+        const s = ALERT_STYLES[alert.level];
+        return (
+          <div
+            key={alert.id}
+            data-testid={`case-alert-${alert.id}`}
+            className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${s.wrapper}`}
+          >
+            {/* Icon */}
+            <div className={`mt-0.5 flex-shrink-0 rounded-md p-1.5 ${s.iconBg}`}>
+              <AlertIcon icon={alert.icon} className={`w-3.5 h-3.5 ${s.iconColor}`} />
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                <span className={`text-[10px] font-semibold rounded px-1.5 py-0.5 ${s.badge}`}>
+                  {s.badgeText}
+                </span>
+                <span
+                  className="text-sm font-semibold leading-snug"
+                  data-testid={`alert-title-${alert.id}`}
+                >
+                  {alert.title}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-snug">
+                {alert.description}
+              </p>
+            </div>
+
+            {/* CTA */}
+            <Link href={alert.cta.href}>
+              <a
+                data-testid={`alert-cta-${alert.id}`}
+                className={`flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold whitespace-nowrap ${s.cta}`}
+              >
+                {alert.cta.label}
+                <ChevronRight className="w-3 h-3" />
+              </a>
+            </Link>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── What Matters Now ─────────────────────────────────────────────────────── */
 
 /* ── Case Timeline ─────────────────────────────────────────────────────────
@@ -1314,6 +1691,16 @@ export default function CaseDashboardPage() {
       )}
       {!factsLoading && (
         <CaseSnapshotPanel facts={facts} caseId={caseId} askHref={askHref} />
+      )}
+
+      {/* ── Case Alerts — proactive guidance derived from cached data ────── */}
+      {!factsLoading && (
+        <CaseAlerts
+          caseId={caseId}
+          facts={facts}
+          askHref={askHref}
+          uploadHref={uploadHref}
+        />
       )}
 
       {/* ── What matters now — smart urgency CTA ─────────────────────────── */}
