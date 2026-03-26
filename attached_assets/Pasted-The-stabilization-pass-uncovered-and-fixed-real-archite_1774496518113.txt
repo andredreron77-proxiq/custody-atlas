@@ -1,0 +1,56 @@
+The stabilization pass uncovered and fixed real architectural issues:
+
+* conversation resume now uses ?conversation= instead of legacy ?thread=
+* document saving now attempts to persist caseId, with graceful fallback if documents.case_id is missing
+
+Next pass: complete document linkage properly and make the Case Dashboard more operational.
+
+Scope:
+
+1. Complete the documents.case_id schema path
+
+   * Verify whether the active Supabase documents table now has a case_id column
+   * If not, add the smallest safe migration path
+   * Remove reliance on graceful fallback where safe
+   * Ensure newly uploaded case-linked documents are actually persisted with case_id
+
+2. Verify document retrieval end-to-end
+
+   * Confirm the dashboard Documents panel is loading true case-linked documents
+   * Ensure document uploads from /upload-document?case=:caseId appear on the correct case dashboard
+
+3. Improve “What matters now”
+
+   * Add one primary CTA based on the most urgent issue
+   * Examples:
+
+     * missing court_address → “Confirm courthouse location”
+     * urgent hearing action → “Open actions”
+     * no documents linked → “Upload document”
+   * Keep this lightweight and deterministic
+
+4. Tighten transition code
+
+   * Keep compatibility only where still necessary
+   * Add clear development logging if document linkage still falls back
+   * Do not leave hidden silent fallback paths if the schema is now correct
+
+5. Keep everything additive and safe
+
+   * Do not redesign the dashboard
+   * Do not break Ask Atlas or conversation resume
+   * Do not refactor the whole document subsystem
+
+Important:
+
+* Prefer finishing the real schema path over carrying fallback logic indefinitely
+* Preserve the now-correct conversation-based case flow
+* Make the dashboard feel more actionable, not just more informative
+
+At the end, show:
+
+* files changed
+* whether documents.case_id now exists and is actively used
+* whether fallback logic is still needed
+* how the Documents panel works end-to-end
+* how the “What matters now” CTA is determined

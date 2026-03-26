@@ -466,23 +466,48 @@ interface EnrichedAction {
   daysUntilHearing?: number | null;
 }
 
+/**
+ * Deterministic CTA priority for "What matters now":
+ *   1. Overdue action       → "Act on overdue action"   → askHref
+ *   2. Upcoming hearing     → "Prepare for hearing"     → askHref
+ *   3. No documents linked  → "Upload a document"       → uploadHref
+ *   4. Court address missing (hearing known) → "Confirm courthouse" → askHref w/ question
+ *   5. Urgent action        → "Review open actions"     → askHref
+ *   6. Default              → "Ask Atlas"               → askHref
+ */
 function WhatMattersNow({
   facts,
   caseId,
   askHref,
+  uploadHref,
 }: {
   facts: CaseFactItem[];
   caseId: string;
   askHref: string;
+  uploadHref: string;
 }) {
-  const hearingDateFact = facts.find((f) => f.factType === "hearing_date");
-  const courtNameFact = facts.find((f) => f.factType === "court_name");
+  const hearingDateFact  = facts.find((f) => f.factType === "hearing_date");
+  const courtNameFact    = facts.find((f) => f.factType === "court_name");
+  const courtAddressFact = facts.find((f) => f.factType === "court_address");
 
+  // Actions query — same key as ActionsPanel, so TanStack deduplicates the request.
   const { data: actionsData } = useQuery<{ actions: EnrichedAction[] }>({
     queryKey: ["/api/cases", caseId, "actions"],
     queryFn: async () => {
       const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
       if (!res.ok) return { actions: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+    enabled: !!caseId,
+  });
+
+  // Documents count — same key as DocumentsPanel, so TanStack deduplicates the request.
+  const { data: docsData } = useQuery<{ documents: { id: string }[] }>({
+    queryKey: ["/api/cases", caseId, "documents"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
+      if (!res.ok) return { documents: [] };
       return res.json();
     },
     staleTime: 30_000,
@@ -495,11 +520,25 @@ function WhatMattersNow({
     ?? openActions.find((a) => a.urgency === "soon")
     ?? openActions[0];
 
-  const hasHearing = !!hearingDateFact?.factValue;
+  const hasHearing   = !!hearingDateFact?.factValue;
   const hasTopAction = !!topAction;
+
+  // Only render when there is something actionable to surface
   if (!hasHearing && !hasTopAction) return null;
 
-  const daysUntil = topAction?.daysUntilHearing ?? null;
+  const daysUntil    = topAction?.daysUntilHearing ?? null;
+  const hasOverdue   = openActions.some((a) => a.urgency === "overdue");
+  const hasUrgent    = openActions.some((a) => a.urgency === "urgent");
+  const hasHearingSoon = hasHearing && daysUntil !== null && daysUntil >= 0 && daysUntil <= 7;
+  // Only flag missing docs once the query has settled (data !== undefined)
+  const docsMissing  = docsData !== undefined && docsData.documents.length === 0;
+  const courtAddressMissing = !courtAddressFact?.factValue;
+
+  /* ── Determine urgency tier (for color/icon) ─────────────────────── */
+  const urgencyKey: string =
+    hasOverdue       ? "overdue" :
+    hasUrgent        ? "urgent"  :
+    hasHearingSoon   ? "soon"    : "normal";
 
   const URGENCY_COLORS: Record<string, string> = {
     overdue: "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800/50",
@@ -507,16 +546,34 @@ function WhatMattersNow({
     soon:    "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-800/50",
     normal:  "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800/50",
   };
-  const urgencyKey = topAction?.urgency ?? "normal";
-  const colorClass = URGENCY_COLORS[urgencyKey] ?? URGENCY_COLORS.normal;
-
   const URGENCY_ICON_COLORS: Record<string, string> = {
     overdue: "text-red-500",
     urgent:  "text-amber-500",
     soon:    "text-yellow-500",
     normal:  "text-blue-500",
   };
-  const iconColor = URGENCY_ICON_COLORS[urgencyKey] ?? "text-blue-500";
+  const colorClass = URGENCY_COLORS[urgencyKey];
+  const iconColor  = URGENCY_ICON_COLORS[urgencyKey];
+
+  /* ── Determine single primary CTA (priority order) ───────────────── */
+  type CTADef = { label: string; href: string; Icon: typeof Zap };
+
+  const cta: CTADef =
+    hasOverdue
+      ? { label: "Act on overdue action", href: askHref, Icon: Zap }
+    : hasHearingSoon
+      ? { label: "Prepare for hearing", href: askHref, Icon: Calendar }
+    : docsMissing
+      ? { label: "Upload a document", href: uploadHref, Icon: Upload }
+    : hasHearing && courtAddressMissing && courtNameFact?.factValue
+      ? {
+          label: "Confirm courthouse",
+          href: `${askHref}&q=${encodeURIComponent(`What is the address for ${courtNameFact.factValue}?`)}`,
+          Icon: MapPin,
+        }
+    : hasUrgent
+      ? { label: "Review open actions", href: askHref, Icon: ClipboardList }
+    : { label: "Ask Atlas", href: askHref, Icon: Zap };
 
   return (
     <div
@@ -524,19 +581,27 @@ function WhatMattersNow({
       data-testid="banner-what-matters-now"
     >
       <AlertTriangle className={cn("w-4 h-4 flex-shrink-0 mt-0.5", iconColor)} />
+
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-foreground mb-0.5">What matters now</p>
         <div className="flex flex-col gap-0.5">
           {hasHearing && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
               <Calendar className="w-3 h-3 flex-shrink-0" />
               Next hearing:{" "}
               <span className="font-medium text-foreground">{hearingDateFact!.factValue}</span>
               {courtNameFact?.factValue && (
-                <> · {courtNameFact.factValue}</>
+                <span className="text-muted-foreground"> · {courtNameFact.factValue}</span>
               )}
               {daysUntil !== null && (
-                <> · {daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? "Today" : `${daysUntil}d away`}</>
+                <span className="text-muted-foreground">
+                  {" "}·{" "}
+                  {daysUntil < 0
+                    ? `${Math.abs(daysUntil)}d overdue`
+                    : daysUntil === 0
+                    ? "Today"
+                    : `${daysUntil}d away`}
+                </span>
               )}
             </p>
           )}
@@ -544,18 +609,22 @@ function WhatMattersNow({
             <p className="text-xs text-muted-foreground flex items-start gap-1">
               <ClipboardList className="w-3 h-3 flex-shrink-0 mt-0.5" />
               <span>
-                Top action:{" "}
-                <span className="font-medium text-foreground">{topAction!.actionTitle}</span>
+                {topAction!.actionTitle}
               </span>
             </p>
           )}
         </div>
       </div>
-      <Link href={askHref}>
-        <a>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 flex-shrink-0 border-current/20 hover:bg-white/50">
-            <Zap className="w-3 h-3" />
-            Ask Atlas
+
+      <Link href={cta.href}>
+        <a data-testid="link-what-matters-cta">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs gap-1 flex-shrink-0 whitespace-nowrap hover:bg-white/60 dark:hover:bg-white/10"
+          >
+            <cta.Icon className="w-3 h-3" />
+            {cta.label}
           </Button>
         </a>
       </Link>
@@ -704,9 +773,14 @@ export default function CaseDashboardPage() {
         <div className="rounded-lg border bg-card px-4 py-3 h-14 animate-pulse" />
       )}
 
-      {/* ── What matters now — urgency banner from facts + top action ────── */}
+      {/* ── What matters now — urgency banner from facts + smart CTA ──────── */}
       {!factsLoading && facts.length > 0 && (
-        <WhatMattersNow facts={facts} caseId={caseId} askHref={askHref} />
+        <WhatMattersNow
+          facts={facts}
+          caseId={caseId}
+          askHref={askHref}
+          uploadHref={uploadHref}
+        />
       )}
 
       {/* ── Two-column grid: actions + conversations ─────────────────────── */}

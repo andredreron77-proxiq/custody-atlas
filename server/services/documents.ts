@@ -1,36 +1,22 @@
 /**
  * server/services/documents.ts
  *
- * Supabase-backed documents service with Storage integration.
+ * Supabase-backed documents service.
  *
- * Active Supabase documents table schema:
- *   id            uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY
- *   user_id       uuid NOT NULL (FK → auth.users)
+ * Active Supabase documents table schema (confirmed 2026-03-26):
+ *   id            uuid PK DEFAULT gen_random_uuid()
+ *   user_id       uuid NOT NULL FK → auth.users
  *   file_name     text NOT NULL
- *   storage_path  text              -- path in Supabase Storage bucket
+ *   storage_path  text
  *   mime_type     text
  *   page_count    int  NOT NULL DEFAULT 1
  *   doc_type      text              -- custody_order | communication | financial | other
  *   analysis_json jsonb
  *   extracted_text text
- *   case_id       uuid              -- nullable FK → cases(id) ON DELETE SET NULL
- *                                  -- Added via: ALTER TABLE documents
- *                                  --   ADD COLUMN IF NOT EXISTS case_id uuid
- *                                  --   REFERENCES cases(id) ON DELETE SET NULL;
+ *   case_id       uuid              -- FK → cases(id) ON DELETE SET NULL  ← confirmed present
  *   created_at    timestamptz NOT NULL DEFAULT now()
  *
- * NOTE ON case_id:
- *   The column must be added in Supabase manually if not already present.
- *   Run in the Supabase SQL Editor:
- *     ALTER TABLE documents
- *       ADD COLUMN IF NOT EXISTS case_id uuid REFERENCES cases(id) ON DELETE SET NULL;
- *   Until this migration is applied, getDocumentsByCase returns [] (graceful fallback).
- *   saveDocument always tries to write case_id; Supabase silently ignores unknown columns
- *   in the REST API insert only if using the auto-generated API — with the service role
- *   client it will surface a PostgreSQL error. We catch and log that error.
- *
- * Supabase Storage bucket: "custody-documents"
- *   - Set bucket visibility to Private (access via service role only)
+ * Supabase Storage bucket: "custody-documents" (Private)
  */
 
 import { readFileSync } from "fs";
@@ -43,7 +29,7 @@ export type DocumentType = "custody_order" | "communication" | "financial" | "ot
 export interface SavedDocument {
   id: string;
   userId: string;
-  caseId: string | null;       // null when not associated with a case
+  caseId: string | null;
   fileName: string;
   storagePath: string | null;
   mimeType: string;
@@ -88,15 +74,7 @@ export async function getDocuments(userId: string): Promise<SavedDocument[]> {
 
 /**
  * Return documents linked to a specific case.
- *
- * Requires the `case_id` column to be present on the `documents` table.
- * If the column does not yet exist (Supabase returns a column-not-found error),
- * this function logs a warning and returns [] — the dashboard documents panel
- * will show an empty state with migration instructions.
- *
- * Migration SQL:
- *   ALTER TABLE documents
- *     ADD COLUMN IF NOT EXISTS case_id uuid REFERENCES cases(id) ON DELETE SET NULL;
+ * Requires documents.case_id (confirmed present — no fallback needed).
  */
 export async function getDocumentsByCase(
   caseId: string,
@@ -113,25 +91,20 @@ export async function getDocumentsByCase(
       .limit(20);
 
     if (error) {
-      // Most likely cause: case_id column doesn't exist yet.
-      // Log the problem clearly but don't crash.
-      console.warn(
-        `[documents] getDocumentsByCase — Supabase error (case_id column may not exist yet): ${error.message}`,
-      );
+      console.error("[documents] getDocumentsByCase error:", error.message);
       return [];
     }
 
-    if (!data) return [];
-    return data.map(mapRow);
+    return data?.map(mapRow) ?? [];
   } catch (err) {
-    console.error("[documents] getDocumentsByCase error:", err);
+    console.error("[documents] getDocumentsByCase exception:", err);
     return [];
   }
 }
 
 /**
- * Upload a file to Supabase Storage and return the storage path.
- * Returns null if storage is not configured or the upload fails.
+ * Upload a file to Supabase Storage.
+ * Returns the storage path on success, null on failure.
  */
 export async function uploadToStorage(
   userId: string,
@@ -160,6 +133,13 @@ export async function uploadToStorage(
   }
 }
 
+/**
+ * Insert a document row into Supabase.
+ *
+ * case_id is a real column (confirmed) — always written when provided.
+ * Dev log emitted whenever a document is successfully case-linked so
+ * the linkage path is observable in server output without noise.
+ */
 export async function saveDocument(
   userId: string,
   fields: Omit<SavedDocument, "id" | "userId" | "createdAt">,
@@ -175,14 +155,9 @@ export async function saveDocument(
       doc_type:       fields.docType ?? "other",
       analysis_json:  fields.analysisJson,
       extracted_text: fields.extractedText,
+      // case_id column confirmed present; include whenever a case is active
+      case_id:        fields.caseId ?? null,
     };
-
-    // Only include case_id when provided — avoids a null write on the legacy path.
-    // If the column does not yet exist in Supabase, this insert will fail; we
-    // catch the error below, retry without case_id, and log a clear warning.
-    if (fields.caseId) {
-      insertPayload.case_id = fields.caseId;
-    }
 
     const { data, error } = await supabaseAdmin
       .from("documents")
@@ -191,26 +166,21 @@ export async function saveDocument(
       .single();
 
     if (error) {
-      // If the error is likely a missing case_id column, retry without it.
-      if (fields.caseId && (error.message?.includes("case_id") || error.code === "42703")) {
-        console.warn(
-          "[documents] saveDocument — case_id column missing, saving without case link. " +
-          "Run: ALTER TABLE documents ADD COLUMN IF NOT EXISTS case_id uuid REFERENCES cases(id) ON DELETE SET NULL;",
-        );
-        const { data: fallbackData, error: fallbackError } = await supabaseAdmin
-          .from("documents")
-          .insert({ ...insertPayload, case_id: undefined })
-          .select()
-          .single();
-        if (fallbackError || !fallbackData) return null;
-        return mapRow(fallbackData);
-      }
       console.error("[documents] saveDocument error:", error.message);
       return null;
     }
 
     if (!data) return null;
-    return mapRow(data);
+
+    const saved = mapRow(data);
+
+    if (saved.caseId) {
+      console.log(
+        `[documents] Saved — id=${saved.id} case_id=${saved.caseId} file=${saved.fileName}`,
+      );
+    }
+
+    return saved;
   } catch (err) {
     console.error("[documents] saveDocument exception:", err);
     return null;
