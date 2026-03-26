@@ -181,20 +181,34 @@ const THREAD_TYPE_LABELS: Record<string, string> = {
  * Used to drive defaultOpen state for collapsible sections and to cap alerts.
  * ─────────────────────────────────────────────────────────────────────────── */
 
-type DashboardState = "in_progress" | "urgent";
+/**
+ * Dashboard UI states — derived from facts + actions at the page level.
+ *
+ *  quiet_case   No urgency signals; hearing is distant or unknown; no overdue/urgent actions.
+ *  active_case  Case is in progress with facts/actions but no pressing deadline.
+ *  urgent_case  Hearing ≤ 7 days, or overdue/urgent actions exist — highest-urgency layout.
+ */
+type DashboardState = "quiet_case" | "active_case" | "urgent_case";
 
 /**
- * Resolve dashboard state from the facts already loaded at the page level.
- * Uses `diffDaysFromNow` (defined in the CaseAlerts section below — JS hoisting
- * means function declarations are available throughout the module scope).
+ * Derive dashboard state from the fact list and enriched action list.
+ * Both are loaded at the page level and shared with sub-panels via TanStack cache.
+ * Uses `diffDaysFromNow` (function declaration — JS hoisting makes it available here).
  */
-function resolveDashboardState(facts: CaseFactItem[]): DashboardState {
-  const hearingFact = facts.find(f => f.factType === "hearing_date");
-  if (hearingFact?.value) {
-    const days = diffDaysFromNow(hearingFact.value);
-    if (days !== null && days <= 7) return "urgent"; // includes overdue (days < 0)
-  }
-  return "in_progress";
+function resolveDashboardState(
+  facts: CaseFactItem[],
+  actions: CaseActionItem[],
+): DashboardState {
+  const openActions    = actions.filter(a => a.status === "open");
+  const hasOverdue     = openActions.some(a => a.urgency === "overdue");
+  const hasUrgent      = openActions.some(a => a.urgency === "urgent");
+  const hearingFact    = facts.find(f => f.factType === "hearing_date");
+  const hearingDays    = hearingFact?.value ? diffDaysFromNow(hearingFact.value) : null;
+  const hearingIsClose = hearingDays !== null && hearingDays <= 7; // includes negative (overdue)
+
+  if (hasOverdue || hasUrgent || hearingIsClose) return "urgent_case";
+  if (facts.length > 0 || openActions.length > 0)  return "active_case";
+  return "quiet_case";
 }
 
 /* ── Collapsible section ──────────────────────────────────────────────────────
@@ -254,10 +268,16 @@ function CaseSnapshotPanel({
   facts,
   caseId,
   askHref,
+  suppressFactTypes = [],
 }: {
   facts: CaseFactItem[];
   caseId: string;
   askHref: string;
+  /**
+   * Fact types to omit from the chip row.
+   * Pass ["hearing_date"] in urgent_case — WhatMattersNow owns that signal.
+   */
+  suppressFactTypes?: string[];
 }) {
   const byType = new Map<string, CaseFactItem>();
   for (const f of facts) {
@@ -268,7 +288,7 @@ function CaseSnapshotPanel({
   const TOP_FACTS = ["court_name", "case_number", "hearing_date", "court_address", "judge_name"];
   const visible = TOP_FACTS
     .map((key) => ({ key, fact: byType.get(key) }))
-    .filter((x) => !!x.fact);
+    .filter((x) => !!x.fact && !suppressFactTypes.includes(x.key));
 
   const ICONS: Record<string, typeof Building2> = {
     court_name: Building2, case_number: Hash, hearing_date: Calendar,
@@ -1178,11 +1198,20 @@ function CaseAlerts({
   facts,
   askHref,
   uploadHref,
+  suppressIds = [],
+  maxAlerts = 2,
 }: {
   caseId: string;
   facts: CaseFactItem[];
   askHref: string;
   uploadHref: string;
+  /**
+   * Alert IDs to omit — used in urgent_case to prevent duplication with WhatMattersNow.
+   * e.g. ["hearing-soon", "hearing-imminent"] when WhatMattersNow already owns the hearing signal.
+   */
+  suppressIds?: string[];
+  /** Maximum number of alerts to show (default 2; pass 1 in urgent_case to keep top area calm). */
+  maxAlerts?: number;
 }) {
   const { data: timelineData } = useQuery<{ events: CaseTimelineEvent[] }>({
     queryKey: ["/api/cases", caseId, "timeline"],
@@ -1208,7 +1237,7 @@ function CaseAlerts({
   const actions        = actionsData?.actions ?? [];
   const documentCount  = docsData?.documents?.length ?? 0;
 
-  const alerts = deriveAlerts({
+  const allAlerts = deriveAlerts({
     facts,
     timelineEvents,
     actions,
@@ -1216,6 +1245,8 @@ function CaseAlerts({
     askHref,
     uploadHref,
   });
+  // Suppress alerts that WhatMattersNow already covers, then cap at maxAlerts.
+  const alerts = allAlerts.filter(a => !suppressIds.includes(a.id)).slice(0, maxAlerts);
 
   if (alerts.length === 0) return null;
 
@@ -1680,9 +1711,25 @@ export default function CaseDashboardPage() {
   });
   const hasConversations = (pageConvsData?.conversations ?? []).length > 0;
 
-  // Dashboard state — derived from hearing_date fact (page-level, no extra query).
-  // "urgent" when hearing ≤ 7 days or overdue; "in_progress" otherwise.
-  const dashboardState: DashboardState = factsLoading ? "in_progress" : resolveDashboardState(facts);
+  // Page-level actions query — shared cache key with ActionsPanel + CaseSnapshotPanel.
+  // Zero extra network requests; used to derive dashboardState accurately.
+  const { data: pageActionsData } = useQuery<{ actions: CaseActionItem[] }>({
+    queryKey: ["/api/cases", caseId, "actions"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
+      if (!res.ok) return { actions: [] };
+      return res.json();
+    },
+    staleTime: 20_000,
+    enabled: !!caseId,
+  });
+  const pageActions = pageActionsData?.actions ?? [];
+
+  // Dashboard state — 3-way: quiet_case / active_case / urgent_case.
+  // Derived from facts + actions; falls back to "active_case" while loading.
+  const dashboardState: DashboardState = factsLoading
+    ? "active_case"
+    : resolveDashboardState(facts, pageActions);
 
   const askParams = new URLSearchParams();
   askParams.set("case", caseId);
@@ -1793,26 +1840,62 @@ export default function CaseDashboardPage() {
         </div>
       </div>
 
-      {/* ── Case Snapshot: court facts + aggregate stats ─────────────────── */}
+      {/* ══════════════════════════════════════════════════════════════════
+           Top area — state-driven rendering.
+           One primary signal occupies the top; secondary guidance follows.
+           State matrix:
+             quiet_case   Snapshot → Alerts (≤2) → WhatMattersNow hidden
+             active_case  Snapshot → Alerts (≤2) → WhatMattersNow
+             urgent_case  Snapshot (no hearing chip) → WhatMattersNow (PRIMARY)
+                          → Alerts (≤1, hearing alerts suppressed)
+          ══════════════════════════════════════════════════════════════════ */}
+
+      {/* ── Case Snapshot: court facts + stat pills ───────────────────────
+           In urgent_case, hearing_date is omitted from the chip row —
+           WhatMattersNow already surfaces it prominently below.          */}
       {factsLoading && (
         <div className="rounded-lg border bg-card px-4 py-3 h-16 animate-pulse" />
       )}
       {!factsLoading && (
-        <CaseSnapshotPanel facts={facts} caseId={caseId} askHref={askHref} />
+        <CaseSnapshotPanel
+          facts={facts}
+          caseId={caseId}
+          askHref={askHref}
+          suppressFactTypes={dashboardState === "urgent_case" ? ["hearing_date"] : []}
+        />
       )}
 
-      {/* ── Case Alerts — proactive guidance derived from cached data ────── */}
+      {/* ── urgent_case: WhatMattersNow is the primary signal (shown first) */}
+      {!factsLoading && dashboardState === "urgent_case" && facts.length > 0 && (
+        <WhatMattersNow
+          facts={facts}
+          caseId={caseId}
+          askHref={askHref}
+          uploadHref={uploadHref}
+        />
+      )}
+
+      {/* ── Case Alerts ───────────────────────────────────────────────────
+           urgent_case: max 1 alert; suppress alerts WhatMattersNow owns.
+           All other states: max 2 alerts, no suppression.                */}
       {!factsLoading && (
         <CaseAlerts
           caseId={caseId}
           facts={facts}
           askHref={askHref}
           uploadHref={uploadHref}
+          suppressIds={
+            dashboardState === "urgent_case"
+              ? ["hearing-soon", "hearing-imminent"]
+              : []
+          }
+          maxAlerts={dashboardState === "urgent_case" ? 1 : 2}
         />
       )}
 
-      {/* ── What matters now — smart urgency CTA ─────────────────────────── */}
-      {!factsLoading && facts.length > 0 && (
+      {/* ── active_case: WhatMattersNow shown after alerts as focus CTA ───
+           quiet_case: WhatMattersNow hidden (nothing urgent to surface).  */}
+      {!factsLoading && dashboardState === "active_case" && facts.length > 0 && (
         <WhatMattersNow
           facts={facts}
           caseId={caseId}
@@ -1842,7 +1925,7 @@ export default function CaseDashboardPage() {
           <CollapsibleSection
             title="Conversations"
             icon={MessageSquare}
-            defaultOpen={dashboardState === "urgent"}
+            defaultOpen={dashboardState === "urgent_case"}
             testId="collapsible-conversations"
           >
             <ConversationsPanel
