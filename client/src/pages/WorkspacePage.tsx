@@ -20,8 +20,7 @@ import {
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { CaseSelector } from "@/components/app/CaseSelector";
 import {
-  DocFactChips, DocKeyDatesRow, DocQuickActions,
-  DocObligationBadge, DocImplicationsSection, DocActionInsight,
+  DocFactChips, DocKeyDatesRow, DocObligationBadge,
 } from "@/components/app/DocIntelPanel";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
@@ -123,6 +122,73 @@ function formatEventDate(dateStr: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, {
     month: "short", day: "numeric", year: "numeric",
   });
+}
+
+/* ── Workspace state ──────────────────────────────────────────────────────────
+ * Drives top-area layout.  Same pattern as Ask Atlas + Case Dashboard.
+ *
+ *  new_user         No questions AND no documents (may or may not have jurisdiction)
+ *  active_workspace Has questions or documents — user is actively working
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+type WorkspaceState = "new_user" | "active_workspace";
+
+function resolveWorkspaceState({
+  hasQuestions,
+  hasDocuments,
+}: {
+  hasQuestions: boolean;
+  hasDocuments: boolean;
+}): WorkspaceState {
+  return hasQuestions || hasDocuments ? "active_workspace" : "new_user";
+}
+
+/* ── Activity summary banner (active_workspace only) ──────────────────────────
+ * Replaces NextBestStepPanel for returning users.
+ * One compact line of context + one focused CTA.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+function ActivitySummaryBanner({
+  threadCount,
+  documentCount,
+  resumeHref,
+  askHref,
+}: {
+  threadCount: number;
+  documentCount: number;
+  resumeHref: string;
+  askHref: string;
+}) {
+  const parts: string[] = [];
+  if (threadCount > 0)
+    parts.push(`${threadCount} conversation${threadCount !== 1 ? "s" : ""}`);
+  if (documentCount > 0)
+    parts.push(`${documentCount} document${documentCount !== 1 ? "s" : ""}`);
+
+  const primaryHref = threadCount > 0 ? resumeHref : askHref;
+  const primaryLabel = threadCount > 0 ? "Resume last conversation" : "Ask Atlas";
+
+  return (
+    <div
+      className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-4 py-3"
+      data-testid="banner-activity-summary"
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <Sparkles className="w-3.5 h-3.5 text-primary/70 flex-shrink-0" />
+        <span className="text-sm text-muted-foreground truncate">
+          {parts.length > 0
+            ? `${parts.join(" · ")} saved`
+            : "Welcome back"}
+        </span>
+      </div>
+      <Link href={primaryHref}>
+        <Button size="sm" className="gap-1.5 h-7 text-xs flex-shrink-0" data-testid="button-activity-primary-cta">
+          <Zap className="w-3 h-3" />
+          {primaryLabel}
+        </Button>
+      </Link>
+    </div>
+  );
 }
 
 /* ── Next Best Step ───────────────────────────────────────────────────────── */
@@ -696,30 +762,8 @@ function DocumentsSection({
                 {/* Extracted fact chips — court, case#, hearing date */}
                 <DocFactChips analysisJson={doc.analysisJson} className="pl-6" />
 
-                {/* Key dates preview — 1–2 dates inline */}
-                <DocKeyDatesRow analysisJson={doc.analysisJson} maxDates={2} className="pl-6" />
-
-                {/* Implications — what this may require (2 bullets max) */}
-                <DocImplicationsSection
-                  analysisJson={doc.analysisJson}
-                  maxItems={2}
-                  className="pl-6"
-                />
-
-                {/* One deterministic action insight */}
-                <DocActionInsight
-                  analysisJson={doc.analysisJson}
-                  docType={doc.docType}
-                  className="pl-6"
-                />
-
-                {/* Quick action buttons */}
-                <DocQuickActions
-                  analysisJson={doc.analysisJson}
-                  askBasePath={askAIPath}
-                  docId={doc.id}
-                  className="pl-6"
-                />
+                {/* Key dates preview — 1 date inline */}
+                <DocKeyDatesRow analysisJson={doc.analysisJson} maxDates={1} className="pl-6" />
               </li>
             ))}
           </ul>
@@ -764,6 +808,11 @@ export default function WorkspacePage() {
   const hasQuestions = threads.length > 0;
   const hasDocuments = documents.length > 0;
 
+  // Page-level workspace state — drives top-area layout and de-duplication.
+  const workspaceState: WorkspaceState = isLoadingWorkspace
+    ? "new_user"
+    : resolveWorkspaceState({ hasQuestions, hasDocuments });
+
   function resolveScenario(): StepScenario {
     if (!jurisdiction) return "no-jurisdiction";
     if (!hasQuestions) return "no-questions";
@@ -802,6 +851,16 @@ export default function WorkspacePage() {
     ? `/ask?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`
     : "/ask";
 
+  // Resume href for ActivitySummaryBanner — deeplinks to last conversation with jurisdiction.
+  const resumeHref = (() => {
+    const lastThread = threads[0];
+    if (!lastThread) return askAIPath;
+    const p = new URLSearchParams({ thread: lastThread.id });
+    if (lastThread.jurisdictionState) p.set("state", lastThread.jurisdictionState);
+    if (lastThread.jurisdictionCounty) p.set("county", lastThread.jurisdictionCounty);
+    return `/ask?${p.toString()}`;
+  })();
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6" data-testid="page-workspace">
       {/* Page header */}
@@ -838,8 +897,21 @@ export default function WorkspacePage() {
         />
       )}
 
-      {/* Next Best Step */}
-      <NextBestStepPanel scenario={scenario} ctaHref={scenarioCta} />
+      {/* ── Top action area — state driven ────────────────────────────────────
+           new_user       → NextBestStepPanel (guided onboarding prompt)
+           active_workspace → ActivitySummaryBanner (compact context + 1 CTA)
+           ─────────────────────────────────────────────────────────────────── */}
+      {workspaceState === "new_user" && (
+        <NextBestStepPanel scenario={scenario} ctaHref={scenarioCta} />
+      )}
+      {workspaceState === "active_workspace" && (
+        <ActivitySummaryBanner
+          threadCount={threads.length}
+          documentCount={documents.length}
+          resumeHref={resumeHref}
+          askHref={askAIPath}
+        />
+      )}
 
       {/* Cases */}
       <Card className="shadow-sm border" data-testid="card-cases">
@@ -868,17 +940,22 @@ export default function WorkspacePage() {
           <CardContent className="space-y-4">
             {jurisdiction ? (
               <>
-                <div>
-                  <p className="text-xl font-bold text-foreground" data-testid="text-workspace-state">{jurisdiction.state}</p>
-                  {!isStateOnlyCounty(jurisdiction.county) && (
-                    <p className="text-sm text-muted-foreground mt-0.5" data-testid="text-workspace-county">
-                      {jurisdiction.county} County
+                {/* In new_user state, show the full location block for orientation.
+                    In active_workspace, JurisdictionContextHeader above already shows
+                    state/county — compact to just the two action buttons. */}
+                {workspaceState === "new_user" && (
+                  <div>
+                    <p className="text-xl font-bold text-foreground" data-testid="text-workspace-state">{jurisdiction.state}</p>
+                    {!isStateOnlyCounty(jurisdiction.county) && (
+                      <p className="text-sm text-muted-foreground mt-0.5" data-testid="text-workspace-county">
+                        {jurisdiction.county} County
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground leading-relaxed mt-2">
+                      Plain-English custody law guidance based on your location.
                     </p>
-                  )}
-                  <p className="text-xs text-muted-foreground leading-relaxed mt-2">
-                    Plain-English custody law guidance based on your location.
-                  </p>
-                </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {lawPagePath && (
                     <Link href={lawPagePath}>
@@ -922,13 +999,21 @@ export default function WorkspacePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* active_workspace: 2-tile row — Ask + Upload (Map/Compare live in Map card below).
+                new_user: all 4 tiles for broader orientation. */}
             <div className="grid grid-cols-2 gap-2">
-              {[
-                { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
-                { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
-                { href: "/custody-map", icon: Map, bg: "bg-violet-100 dark:bg-violet-950/40", color: "text-violet-600 dark:text-violet-400", label: "Explore custody map", testId: "quick-action-explore-map" },
-                { href: "/custody-map?mode=compare", icon: GitCompare, bg: "bg-amber-100 dark:bg-amber-950/40", color: "text-amber-600 dark:text-amber-400", label: "Compare states", testId: "quick-action-compare-states" },
-              ].map(({ href, icon: Icon, bg, color, label, testId }) => (
+              {(workspaceState === "active_workspace"
+                ? [
+                    { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
+                    { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
+                  ]
+                : [
+                    { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
+                    { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
+                    { href: "/custody-map", icon: Map, bg: "bg-violet-100 dark:bg-violet-950/40", color: "text-violet-600 dark:text-violet-400", label: "Explore custody map", testId: "quick-action-explore-map" },
+                    { href: "/custody-map?mode=compare", icon: GitCompare, bg: "bg-amber-100 dark:bg-amber-950/40", color: "text-amber-600 dark:text-amber-400", label: "Compare states", testId: "quick-action-compare-states" },
+                  ]
+              ).map(({ href, icon: Icon, bg, color, label, testId }) => (
                 <Link key={testId} href={href}>
                   <button
                     className="w-full flex flex-col items-start gap-2 rounded-lg border bg-card p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left group"
@@ -997,47 +1082,59 @@ export default function WorkspacePage() {
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
             ) : threads.length > 0 ? (
-              <ul className="space-y-2" data-testid="list-recent-conversations">
-                {threads.map((thread) => {
-                  const params = new URLSearchParams({ thread: thread.id });
-                  if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
-                  if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
-                  return (
-                    <li
-                      key={thread.id}
-                      className="flex items-start justify-between gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors"
-                      data-testid={`conversation-item-${thread.id}`}
-                    >
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
-                          {thread.title ?? "Custody Conversation"}
-                        </p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {thread.jurisdictionState && (
+              <div className="space-y-2">
+                <ul className="space-y-2" data-testid="list-recent-conversations">
+                  {threads.slice(0, 3).map((thread) => {
+                    const params = new URLSearchParams({ thread: thread.id });
+                    if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
+                    if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
+                    return (
+                      <li
+                        key={thread.id}
+                        className="flex items-start justify-between gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors"
+                        data-testid={`conversation-item-${thread.id}`}
+                      >
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
+                            {thread.title ?? "Custody Conversation"}
+                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {thread.jurisdictionState && (
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
+                              </span>
+                            )}
                             <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
+                              <Clock className="w-2.5 h-2.5" />{relativeTime(thread.createdAt)}
                             </span>
-                          )}
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5" />{relativeTime(thread.createdAt)}
-                          </span>
+                          </div>
                         </div>
-                      </div>
-                      <Link href={`/ask?${params.toString()}`}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-shrink-0 text-xs gap-1 h-7 px-2.5"
-                          data-testid={`button-resume-${thread.id}`}
-                        >
-                          <Play className="w-2.5 h-2.5" />
-                          Resume
-                        </Button>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+                        <Link href={`/ask?${params.toString()}`}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-shrink-0 text-xs gap-1 h-7 px-2.5"
+                            data-testid={`button-resume-${thread.id}`}
+                          >
+                            <Play className="w-2.5 h-2.5" />
+                            Resume
+                          </Button>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {threads.length > 3 && (
+                  <Link href={askAIPath}>
+                    <button
+                      className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+                      data-testid="button-show-all-conversations"
+                    >
+                      +{threads.length - 3} more conversations
+                    </button>
+                  </Link>
+                )}
+              </div>
             ) : (
               <EmptyState
                 icon={MessageSquare}
@@ -1071,13 +1168,13 @@ export default function WorkspacePage() {
               Custody Map
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <p className="font-semibold text-foreground mb-1">Explore laws by state</p>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+          <CardContent>
+            {/* Description only shown in new_user — returning users already know the map. */}
+            {workspaceState === "new_user" && (
+              <p className="text-sm text-muted-foreground leading-relaxed mb-3">
                 Explore custody laws across the United States and compare key legal differences between states.
               </p>
-            </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Link href="/custody-map">
                 <Button size="sm" className="gap-1.5" data-testid="button-open-map">
