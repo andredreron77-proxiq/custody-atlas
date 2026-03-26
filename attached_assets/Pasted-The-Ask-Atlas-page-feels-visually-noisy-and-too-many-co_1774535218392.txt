@@ -1,0 +1,80 @@
+The Ask Atlas page feels visually noisy and too many controls compete with each other.
+
+We need to simplify this page first before applying the pattern elsewhere.
+
+Goal:
+Make Ask Atlas feel calm, focused, and guided by establishing a clear hierarchy:
+
+1. primary action
+2. supporting context
+3. secondary tools
+
+Scope for this pass:
+
+1. Simplify the Ask Atlas page only
+
+   * Do not redesign the rest of the app yet
+   * Use this page as the pattern to prove the approach
+
+2. Reduce top-of-page clutter
+
+   * Compress jurisdiction into a slim context row instead of a large card
+   * Remove duplicate “Change Location” functionality from the top area
+   * Keep only one clear way to change location
+
+3. Make Ask Atlas the visual hero
+
+   * The question input area should be the primary focus
+   * Move it visually higher and give it stronger prominence than supporting panels
+
+4. Improve case-linking hierarchy
+
+   * If no case is linked:
+
+     * show a compact decision block:
+
+       * Link Case
+       * Continue without case
+   * Make this feel intentional, not like passive status text
+
+5. Demote secondary actions
+
+   * “View Law Summary” should not visually compete with Ask Atlas
+   * Make it secondary, subtle, or collapsible
+
+6. Reduce redundancy
+
+   * Remove or hide duplicate prompts/buttons that repeat the same function
+   * Prefer one strong primary CTA over multiple similar actions
+
+7. Apply state-driven rendering on this page only
+
+   * Derive simple UI states such as:
+
+     * no_case
+     * active_case
+     * urgent_case
+   * Use these states to conditionally reduce or hide nonessential elements
+   * Example:
+
+     * if active case exists, remove generic suggested prompts
+     * if urgent case, surface “What matters now” and reduce extra guidance
+
+8. Keep everything additive and safe
+
+   * Do not break current Ask Atlas functionality
+   * Do not remove capabilities entirely unless clearly redundant
+   * Focus on hierarchy, conditional rendering, and visual cleanup
+
+Important:
+
+* This page should answer one question clearly: “What should I do here right now?”
+* Prefer fewer, clearer controls over many helpful ones
+* Build the logic in a reusable way so it can later be applied to other pages/panels
+
+At the end, show:
+
+* files changed
+* what was removed, collapsed, or demoted
+* how the page behaves in each UI state
+* what reusable simplification pattern can be applied to other panels next
