@@ -28,7 +28,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, createDocumentSignedUrl, type DocumentType, type SavedDocument } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import {
@@ -1739,18 +1739,83 @@ ${userQuestion}`;
       if (!doc) return res.status(404).json({ error: "Document not found." });
       // Return a safe subset — no extractedText (large, not needed by the client here)
       return res.json({
-        id: doc.id,
-        fileName: doc.fileName,
-        mimeType: doc.mimeType,
-        docType: doc.docType,
-        pageCount: doc.pageCount,
-        caseId: doc.caseId,
-        analysisJson: doc.analysisJson,
-        createdAt: doc.createdAt,
+        document: {
+          id: doc.id,
+          fileName: doc.fileName,
+          mimeType: doc.mimeType,
+          docType: doc.docType,
+          pageCount: doc.pageCount,
+          caseId: doc.caseId,
+          analysisJson: doc.analysisJson,
+          createdAt: doc.createdAt,
+          // Boolean only — never expose raw storage_path to client
+          hasStoragePath: !!doc.storagePath,
+        },
       });
     } catch (err) {
       console.error("[documents] GET single error:", err);
       return res.status(500).json({ error: "Failed to load document." });
+    }
+  });
+
+  /**
+   * GET /api/documents/:documentId/view
+   * Returns a short-lived (90s) signed URL suitable for opening the file in-browser.
+   *
+   * Security:
+   *   - requireAuth: user must be authenticated
+   *   - createDocumentSignedUrl: re-verifies ownership server-side via user_id filter
+   *   - Raw storage_path is never returned; only the opaque signed URL is sent
+   *   - Signed URL expires in 90 seconds; no permanent access is granted
+   */
+  app.get("/api/documents/:documentId/view", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { documentId } = req.params;
+    try {
+      const result = await createDocumentSignedUrl(documentId, user.id, "view");
+      if (!result) {
+        return res.status(404).json({
+          error: "File not available. The original may not have been stored, or it may have been removed.",
+        });
+      }
+      return res.json({
+        signedUrl: result.signedUrl,
+        expiresInSeconds: result.expiresInSeconds,
+        fileName: result.fileName,
+        mimeType: result.mimeType,
+      });
+    } catch (err) {
+      console.error(`[documents] view route error doc=${documentId}:`, err);
+      return res.status(500).json({ error: "Failed to generate file access URL." });
+    }
+  });
+
+  /**
+   * GET /api/documents/:documentId/download
+   * Returns a short-lived (90s) signed URL with Content-Disposition: attachment
+   * so the browser triggers a Save dialog rather than an in-tab preview.
+   *
+   * Security model identical to /view above.
+   */
+  app.get("/api/documents/:documentId/download", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { documentId } = req.params;
+    try {
+      const result = await createDocumentSignedUrl(documentId, user.id, "download");
+      if (!result) {
+        return res.status(404).json({
+          error: "File not available. The original may not have been stored, or it may have been removed.",
+        });
+      }
+      return res.json({
+        signedUrl: result.signedUrl,
+        expiresInSeconds: result.expiresInSeconds,
+        fileName: result.fileName,
+        mimeType: result.mimeType,
+      });
+    } catch (err) {
+      console.error(`[documents] download route error doc=${documentId}:`, err);
+      return res.status(500).json({ error: "Failed to generate download URL." });
     }
   });
 

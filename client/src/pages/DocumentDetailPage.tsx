@@ -11,14 +11,17 @@
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { useState } from "react";
 import {
   ArrowLeft, FileText, Calendar, Hash, Building2,
   User, Gavel, MapPin, BookOpen, Sparkles, Clock, MessageSquare,
   ChevronRight, AlertCircle, HelpCircle, Search,
+  Eye, Download, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
 import {
   DocObligationBadge,
   DocImplicationsSection,
@@ -38,6 +41,8 @@ interface DocumentDetail {
   analysisJson: Record<string, unknown>;
   caseId: string | null;
   createdAt: string;
+  /** True when a storage_path exists for this document — enables View/Download. */
+  hasStoragePath: boolean;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -261,6 +266,139 @@ function AskAtlasPanel({ docId, analyzed }: { docId: string; analyzed: boolean }
   );
 }
 
+/* ── Original File Access ─────────────────────────────────────────────────── */
+
+/**
+ * Calls the secure backend endpoint to get a short-lived signed URL,
+ * then opens it in a new tab (view) or navigates to it (download).
+ *
+ * The signed URL expires in 90 seconds — sufficient for the browser to
+ * initiate the request before Supabase rejects it.
+ */
+function useFileAction(docId: string) {
+  const [viewLoading, setViewLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const { toast } = useToast();
+
+  async function fetchSignedUrl(mode: "view" | "download"): Promise<string | null> {
+    const res = await fetch(`/api/documents/${docId}/${mode}`, {
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? "Unable to access the original file.");
+    }
+    const { signedUrl } = await res.json();
+    return signedUrl as string;
+  }
+
+  async function handleView() {
+    setViewLoading(true);
+    try {
+      const url = await fetchSignedUrl("view");
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      toast({
+        title: "Cannot open file",
+        description: err.message ?? "The original file is unavailable. It may not have been stored during upload.",
+        variant: "destructive",
+      });
+    } finally {
+      setViewLoading(false);
+    }
+  }
+
+  async function handleDownload() {
+    setDownloadLoading(true);
+    try {
+      const url = await fetchSignedUrl("download");
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      toast({
+        title: "Cannot download file",
+        description: err.message ?? "The original file is unavailable.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadLoading(false);
+    }
+  }
+
+  return { handleView, handleDownload, viewLoading, downloadLoading };
+}
+
+/**
+ * View/Download section for the original uploaded file.
+ * Clearly separate from Ask Atlas actions.
+ * Shows a "not available" message when storagePath is absent (null).
+ */
+function OriginalFileSection({
+  docId,
+  hasStoragePath,
+  fileName,
+}: {
+  docId: string;
+  hasStoragePath: boolean;
+  fileName: string;
+}) {
+  const { handleView, handleDownload, viewLoading, downloadLoading } = useFileAction(docId);
+
+  return (
+    <section
+      className="rounded-xl border p-5 space-y-3"
+      data-testid="doc-detail-original-file"
+    >
+      <div className="flex items-center gap-2">
+        <FileText className="w-4 h-4 text-muted-foreground" />
+        <h2 className="text-sm font-semibold">Original file</h2>
+      </div>
+
+      {hasStoragePath ? (
+        <>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Access links are generated on demand and expire within 90 seconds.
+            Your file is stored privately — no permanent public URL is created.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleView}
+              disabled={viewLoading || downloadLoading}
+              data-testid="btn-view-original"
+            >
+              {viewLoading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Eye className="w-3.5 h-3.5" />}
+              View original
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={handleDownload}
+              disabled={viewLoading || downloadLoading}
+              data-testid="btn-download-original"
+            >
+              {downloadLoading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Download className="w-3.5 h-3.5" />}
+              Download
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          The original file is not available. This may happen if the file was uploaded
+          before storage was enabled, or if the upload did not complete successfully.
+          The extracted text and analysis data above are still available.
+        </p>
+      )}
+    </section>
+  );
+}
+
 /* ── Loading Skeleton ─────────────────────────────────────────────────────── */
 
 function LoadingSkeleton() {
@@ -456,6 +594,13 @@ export default function DocumentDetailPage() {
           )}
 
           <Separator />
+
+          {/* ── Original file access (view + download) ── */}
+          <OriginalFileSection
+            docId={doc.id}
+            hasStoragePath={doc.hasStoragePath}
+            fileName={doc.fileName}
+          />
 
           {/* ── Ask Atlas panel ── */}
           <AskAtlasPanel docId={doc.id} analyzed={analyzed} />

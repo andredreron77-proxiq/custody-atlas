@@ -229,6 +229,79 @@ export async function updateDocumentType(
   }
 }
 
+/**
+ * Generate a short-lived signed URL for a document stored in Supabase Storage.
+ *
+ * Security model:
+ *   1. Ownership is enforced first via getDocumentById (filters by user_id).
+ *   2. The raw storage_path is never sent to the client.
+ *   3. Signed URLs expire in SIGNED_URL_TTL_SECONDS.
+ *   4. "download" mode sets Content-Disposition: attachment so the browser
+ *      prompts a save dialog rather than rendering in-tab.
+ *
+ * Returns null when:
+ *   - supabaseAdmin is not configured
+ *   - the document has no storagePath (pre-storage uploads)
+ *   - Supabase Storage returns an error
+ */
+const SIGNED_URL_TTL_SECONDS = 90; // short-lived: 90 seconds
+
+export type SignedUrlMode = "view" | "download";
+
+export interface SignedUrlResult {
+  signedUrl: string;
+  expiresInSeconds: number;
+  fileName: string;
+  mimeType: string;
+}
+
+export async function createDocumentSignedUrl(
+  documentId: string,
+  userId: string,
+  mode: SignedUrlMode,
+): Promise<SignedUrlResult | null> {
+  if (!supabaseAdmin) return null;
+
+  // Step 1: Ownership check — looks up document filtered by BOTH id AND user_id.
+  // If the document belongs to a different user, getDocumentById returns null.
+  const doc = await getDocumentById(documentId, userId);
+  if (!doc) {
+    console.log(`[documents] signed-url denied — doc=${documentId} user=${userId}`);
+    return null;
+  }
+
+  if (!doc.storagePath) {
+    console.log(`[documents] signed-url skipped — no storage_path doc=${documentId}`);
+    return null;
+  }
+
+  try {
+    const options = mode === "download"
+      ? { download: doc.fileName }
+      : {};
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrl(doc.storagePath, SIGNED_URL_TTL_SECONDS, options);
+
+    if (error || !data?.signedUrl) {
+      console.error(`[documents] signed-url error doc=${documentId} mode=${mode}:`, error?.message ?? "no URL returned");
+      return null;
+    }
+
+    console.log(`[documents] signed-url ok doc=${documentId} mode=${mode} ttl=${SIGNED_URL_TTL_SECONDS}s`);
+    return {
+      signedUrl: data.signedUrl,
+      expiresInSeconds: SIGNED_URL_TTL_SECONDS,
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
+    };
+  } catch (err) {
+    console.error(`[documents] signed-url exception doc=${documentId}:`, err);
+    return null;
+  }
+}
+
 export async function deleteDocument(documentId: string, userId: string): Promise<void> {
   if (!supabaseAdmin) return;
   try {
