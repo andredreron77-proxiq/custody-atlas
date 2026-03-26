@@ -40,6 +40,7 @@ import {
   parseDocAnalysis,
   hasAnalysis,
 } from "@/components/app/DocIntelPanel";
+import { apiRequestRaw } from "@/lib/queryClient";
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -440,10 +441,8 @@ function DeleteDocumentSection({
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/documents/${docId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      // apiRequestRaw attaches the Authorization: Bearer token that requireAuth needs.
+      const res = await apiRequestRaw("DELETE", `/api/documents/${docId}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Deletion failed. Please try again.");
@@ -576,10 +575,8 @@ function DocumentNotFoundState({ documentId }: { documentId: string }) {
 
   const removeMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/documents/${documentId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      // apiRequestRaw attaches the Authorization: Bearer token that requireAuth needs.
+      const res = await apiRequestRaw("DELETE", `/api/documents/${documentId}`);
       // 404 = already deleted — that's fine, still navigate away.
       if (!res.ok && res.status !== 404) {
         const body = await res.json().catch(() => ({}));

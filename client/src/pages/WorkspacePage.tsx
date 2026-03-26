@@ -662,10 +662,8 @@ function DocumentsSection({
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: string) => {
-      const res = await fetch(`/api/documents/${docId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      // apiRequestRaw attaches the Authorization: Bearer token that requireAuth needs.
+      const res = await apiRequestRaw("DELETE", `/api/documents/${docId}`);
       // 404 means record is already gone — treat as success so UI stays consistent.
       if (!res.ok && res.status !== 404) {
         const body = await res.json().catch(() => ({}));

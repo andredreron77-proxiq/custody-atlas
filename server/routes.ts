@@ -1741,15 +1741,6 @@ ${userQuestion}`;
   app.get("/api/documents/:documentId", requireAuth, async (req, res) => {
     const user = (req as any).user;
     const { documentId } = req.params;
-    // ── TEMP DIAGNOSTIC ──────────────────────────────────────────────────────
-    console.log("[diag][documents] GET", {
-      method:     req.method,
-      path:       req.path,
-      hasCookie:  !!req.headers.cookie,
-      cookieLen:  req.headers.cookie?.length ?? 0,
-      user:       user ? { id: user.id, email: user.email } : null,
-    });
-    // ─────────────────────────────────────────────────────────────────────────
     try {
       const doc = await getDocumentById(documentId, user.id);
       if (!doc) return res.status(404).json({ error: "Document not found." });
@@ -1874,15 +1865,6 @@ ${userQuestion}`;
   app.delete("/api/documents/:documentId", requireAuth, async (req, res) => {
     const user = (req as any).user;
     const { documentId } = req.params;
-    // ── TEMP DIAGNOSTIC ──────────────────────────────────────────────────────
-    console.log("[diag][documents] DELETE", {
-      method:     req.method,
-      path:       req.path,
-      hasCookie:  !!req.headers.cookie,
-      cookieLen:  req.headers.cookie?.length ?? 0,
-      user:       user ? { id: user.id, email: user.email } : null,
-    });
-    // ─────────────────────────────────────────────────────────────────────────
     try {
       const result = await deleteDocument(documentId, user.id);
       if (!result.success) {

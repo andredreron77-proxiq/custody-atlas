@@ -691,10 +691,8 @@ function DocumentsPanel({
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: string) => {
-      const res = await fetch(`/api/documents/${docId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      // apiRequestRaw attaches the Authorization: Bearer token that requireAuth needs.
+      const res = await apiRequestRaw("DELETE", `/api/documents/${docId}`);
       // 404 = already gone; still succeed so list stays clean.
       if (!res.ok && res.status !== 404) {
         const body = await res.json().catch(() => ({}));
