@@ -11,12 +11,11 @@
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { useState } from "react";
 import {
   ArrowLeft, FileText, Calendar, Hash, Building2,
   User, Gavel, MapPin, BookOpen, Sparkles, Clock, MessageSquare,
   ChevronRight, AlertCircle, HelpCircle, Search,
-  Eye, Download, Loader2, Trash2,
+  Upload, Loader2, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +52,7 @@ interface DocumentDetail {
   analysisJson: Record<string, unknown>;
   caseId: string | null;
   createdAt: string;
-  /** True when a storage_path exists for this document — enables View/Download. */
+  /** Reflects whether a storage_path exists in the backend — not used in UI rendering. */
   hasStoragePath: boolean;
 }
 
@@ -278,135 +277,43 @@ function AskAtlasPanel({ docId, analyzed }: { docId: string; analyzed: boolean }
   );
 }
 
-/* ── Original File Access ─────────────────────────────────────────────────── */
+/* ── Analysis Retention Note ──────────────────────────────────────────────── */
 
 /**
- * Calls the secure backend endpoint to get a short-lived signed URL,
- * then opens it in a new tab (view) or navigates to it (download).
- *
- * The signed URL expires in 90 seconds — sufficient for the browser to
- * initiate the request before Supabase rejects it.
+ * Custody Atlas is an intelligence-only system — original files are never
+ * retained after upload. This card communicates that model clearly and
+ * positively, without any error or "missing file" language.
  */
-function useFileAction(docId: string) {
-  const [viewLoading, setViewLoading] = useState(false);
-  const [downloadLoading, setDownloadLoading] = useState(false);
-  const { toast } = useToast();
-
-  async function fetchSignedUrl(mode: "view" | "download"): Promise<string | null> {
-    const res = await fetch(`/api/documents/${docId}/${mode}`, {
-      credentials: "include",
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error ?? "Unable to access the original file.");
-    }
-    const { signedUrl } = await res.json();
-    return signedUrl as string;
-  }
-
-  async function handleView() {
-    setViewLoading(true);
-    try {
-      const url = await fetchSignedUrl("view");
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-    } catch (err: any) {
-      toast({
-        title: "Cannot open file",
-        description: err.message ?? "The original file is unavailable. It may not have been stored during upload.",
-        variant: "destructive",
-      });
-    } finally {
-      setViewLoading(false);
-    }
-  }
-
-  async function handleDownload() {
-    setDownloadLoading(true);
-    try {
-      const url = await fetchSignedUrl("download");
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-    } catch (err: any) {
-      toast({
-        title: "Cannot download file",
-        description: err.message ?? "The original file is unavailable.",
-        variant: "destructive",
-      });
-    } finally {
-      setDownloadLoading(false);
-    }
-  }
-
-  return { handleView, handleDownload, viewLoading, downloadLoading };
-}
-
-/**
- * View/Download section for the original uploaded file.
- * Clearly separate from Ask Atlas actions.
- * Shows a "not available" message when storagePath is absent (null).
- */
-function OriginalFileSection({
-  docId,
-  hasStoragePath,
-  fileName,
-}: {
-  docId: string;
-  hasStoragePath: boolean;
-  fileName: string;
-}) {
-  const { handleView, handleDownload, viewLoading, downloadLoading } = useFileAction(docId);
+function AnalysisRetentionNote({ fileName }: { fileName: string }) {
+  const [, navigate] = useLocation();
 
   return (
     <section
       className="rounded-xl border p-5 space-y-3"
-      data-testid="doc-detail-original-file"
+      data-testid="doc-detail-analysis-retention"
     >
       <div className="flex items-center gap-2">
-        <FileText className="w-4 h-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold">Original file</h2>
+        <Sparkles className="w-4 h-4 text-primary/70" />
+        <h2 className="text-sm font-semibold">Analysis retained</h2>
       </div>
-
-      {hasStoragePath ? (
-        <>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Access links are generated on demand and expire within 90 seconds.
-            Your file is stored privately — no permanent public URL is created.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={handleView}
-              disabled={viewLoading || downloadLoading}
-              data-testid="btn-view-original"
-            >
-              {viewLoading
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <Eye className="w-3.5 h-3.5" />}
-              View original
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={handleDownload}
-              disabled={viewLoading || downloadLoading}
-              data-testid="btn-download-original"
-            >
-              {downloadLoading
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <Download className="w-3.5 h-3.5" />}
-              Download
-            </Button>
-          </div>
-        </>
-      ) : (
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          The original file is not available. This may happen if the file was uploaded
-          before storage was enabled, or if the upload did not complete successfully.
-          The extracted text and analysis data above are still available.
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Original files are not stored after analysis — your document was processed,
+        key information was extracted, and the source file was discarded. Everything
+        above reflects the full intelligence captured from{" "}
+        <span className="font-medium text-foreground">{fileName}</span>.
+      </p>
+      <div className="pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2 text-xs text-muted-foreground hover:text-foreground h-7 px-2"
+          onClick={() => navigate("/workspace")}
+          data-testid="btn-analyze-another"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          Analyze another document
+        </Button>
+      </div>
     </section>
   );
 }
@@ -418,7 +325,7 @@ function OriginalFileSection({
  *
  * Behavior:
  *   1. User clicks "Delete document" → AlertDialog opens.
- *   2. Dialog shows a clear warning: original file + all extracted data will be removed.
+ *   2. Dialog shows a clear warning: all extracted intelligence and data will be removed.
  *   3. On "Delete permanently" → calls DELETE /api/documents/:id.
  *   4. On success → invalidates document caches, navigates back (case dashboard or workspace).
  *   5. On failure → shows error toast; dialog closes so the user can retry.
@@ -474,7 +381,7 @@ function DeleteDocumentSection({
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-destructive/80">Delete this document</h2>
           <p className="text-xs text-muted-foreground leading-relaxed max-w-sm">
-            Permanently removes the original file and all extracted analysis data.
+            Permanently removes all extracted intelligence, analysis, and insights for this document.
             This cannot be undone.
           </p>
         </div>
@@ -501,9 +408,8 @@ function DeleteDocumentSection({
                     This will permanently remove <span className="font-medium text-foreground">{fileName}</span> from your account, including:
                   </p>
                   <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>The original uploaded file</li>
                     <li>All extracted facts, dates, and case information</li>
-                    <li>The AI analysis and implications</li>
+                    <li>The AI analysis and insights</li>
                     <li>The document text used in Ask Atlas sessions</li>
                   </ul>
                   <p className="text-xs font-medium text-destructive/80">
@@ -600,8 +506,7 @@ function DocumentNotFoundState({ documentId }: { documentId: string }) {
       <div className="space-y-1.5">
         <p className="text-sm font-semibold">This document is no longer available</p>
         <p className="text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
-          The file may have been removed from storage, or you may not have access to it.
-          You can safely remove the entry from your workspace.
+          This document's analysis could not be found. You can safely remove the entry from your workspace.
         </p>
       </div>
       <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -797,12 +702,8 @@ export default function DocumentDetailPage() {
 
           <Separator />
 
-          {/* ── Original file access (view + download) ── */}
-          <OriginalFileSection
-            docId={doc.id}
-            hasStoragePath={doc.hasStoragePath}
-            fileName={doc.fileName}
-          />
+          {/* ── Analysis retention note (intelligence-only model) ── */}
+          <AnalysisRetentionNote fileName={doc.fileName} />
 
           {/* ── Ask Atlas panel ── */}
           <AskAtlasPanel docId={doc.id} analyzed={analyzed} />

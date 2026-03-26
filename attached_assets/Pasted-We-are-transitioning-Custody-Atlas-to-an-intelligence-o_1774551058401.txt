@@ -1,0 +1,119 @@
+We are transitioning Custody Atlas to an **intelligence-only document system**.
+
+We do NOT retain original uploaded files. We only store:
+
+* extracted text
+* analysisJson (summary, key_dates, extracted_facts, implications, etc.)
+* document metadata
+
+Goal:
+Align the entire UI and UX to reflect this model clearly and eliminate any implication that original files are stored or expected.
+
+---
+
+### 1. Document Detail Page (PRIMARY UPDATE)
+
+Update the DocumentDetailPage to explicitly communicate the model:
+
+* If `hasStoragePath === false`:
+
+  * Show a calm, informative message (not an error):
+
+    "Original file not retained
+    This document has been analyzed and key information has been extracted. You can still review insights, dates, and guidance."
+
+* Remove or hide:
+
+  * View file buttons
+  * Download buttons
+  * Any “file missing” or “unavailable” error language
+
+* Replace with:
+
+  * “View analysis”
+  * “Review insights”
+
+* (Optional enhancement)
+  Add:
+  "Need to review the original file? Upload it again."
+
+---
+
+### 2. Remove File-Based Language Across UI
+
+Search the entire client for language like:
+
+* "File missing"
+* "Download"
+* "View file"
+* "Original document unavailable"
+
+Replace with intelligence-based language:
+
+* "View analysis"
+* "Review document insights"
+* "Document analyzed"
+
+Do NOT introduce any wording that implies something is broken.
+
+---
+
+### 3. Workspace + Case Dashboard Cleanup
+
+Ensure document rows:
+
+* Do NOT reference file availability at all
+* Only show:
+
+  * analyzed state
+  * facts (hearing date, court, case number)
+  * key dates
+  * quick actions
+
+Remove any conditional rendering tied to:
+
+* hasStoragePath
+* storagePath
+
+---
+
+### 4. Maintain Backend Behavior
+
+Do NOT change:
+
+* upload flow
+* storagePath behavior (it should remain null)
+* security model
+* deletion logic
+
+This is a UI/UX alignment task only.
+
+---
+
+### 5. Consistency Check
+
+Verify:
+
+* No UI element implies files are stored
+* No warnings appear for normal documents
+* All documents (new or old) render cleanly
+* DocumentDetailPage still uses analysisJson fully
+
+---
+
+### 6. Output
+
+Show:
+
+* Updated DocumentDetailPage messaging
+* Any components modified
+* Before/after examples of key UI text changes
+* Confirmation that no file-based warnings remain
+
+---
+
+Principle:
+We are NOT a document storage system.
+We are a legal intelligence system.
+
+All UI must reinforce this.
