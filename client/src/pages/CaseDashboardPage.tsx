@@ -23,6 +23,7 @@ import {
   ChevronRight, CheckCheck, Zap, ExternalLink, FileText, AlertTriangle,
   File, ChevronDown, ChevronUp, History, Info, Scale,
 } from "lucide-react";
+import { DocFactChips, DocKeyDatesRow, DocQuickActions } from "@/components/app/DocIntelPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +98,7 @@ interface DocumentRow {
   docType: string;
   pageCount: number;
   createdAt: string;
+  analysisJson: Record<string, unknown>;
 }
 
 /* ── Urgency styling ──────────────────────────────────────────────────────── */
@@ -634,36 +636,53 @@ function DocumentsPanel({
             const askDocHref = `${askHref}&document=${encodeURIComponent(doc.id)}&q=${encodeURIComponent(
               `Tell me about the ${typeLabel.toLowerCase()} I uploaded: ${doc.fileName}`,
             )}`;
+            const analysis = doc.analysisJson ?? {};
 
             return (
               <div
                 key={doc.id}
-                className="flex items-center gap-3 px-4 py-2.5 group hover:bg-muted/20 transition-colors"
+                className="px-4 py-3 hover:bg-muted/20 transition-colors"
                 data-testid={`row-document-${doc.id}`}
               >
-                <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium truncate">{doc.fileName}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {typeLabel}
-                    {" · "}
-                    {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
-                    {" · "}
-                    {shortDate(doc.createdAt)}
-                  </p>
+                {/* Row 1: filename + Ask button */}
+                <div className="flex items-start gap-2">
+                  <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium truncate">{doc.fileName}</p>
+                      <Link href={askDocHref}>
+                        <a
+                          className="flex-shrink-0"
+                          data-testid={`link-ask-about-doc-${doc.id}`}
+                          title="Ask Atlas about this document"
+                        >
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1 text-primary/70 hover:text-primary">
+                            <Zap className="w-3 h-3" />
+                            Ask
+                          </Button>
+                        </a>
+                      </Link>
+                    </div>
+
+                    {/* Row 2: type · pages · date */}
+                    <p className="text-[10px] text-muted-foreground">
+                      {typeLabel}
+                      {" · "}
+                      {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
+                      {" · "}
+                      {shortDate(doc.createdAt)}
+                    </p>
+
+                    {/* Row 3: extracted fact chips (court, case#, hearing date) */}
+                    <DocFactChips analysisJson={analysis} />
+
+                    {/* Row 4: key dates preview */}
+                    <DocKeyDatesRow analysisJson={analysis} maxDates={2} />
+
+                    {/* Row 5: quick action buttons */}
+                    <DocQuickActions analysisJson={analysis} askBasePath={askHref} docId={doc.id} />
+                  </div>
                 </div>
-                <Link href={askDocHref}>
-                  <a
-                    className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    data-testid={`link-ask-about-doc-${doc.id}`}
-                    title="Ask Atlas about this document"
-                  >
-                    <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1 text-primary/70 hover:text-primary">
-                      <Zap className="w-3 h-3" />
-                      Ask
-                    </Button>
-                  </a>
-                </Link>
               </div>
             );
           })}

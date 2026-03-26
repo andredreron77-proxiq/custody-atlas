@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { CaseSelector } from "@/components/app/CaseSelector";
+import { DocFactChips, DocKeyDatesRow, DocQuickActions } from "@/components/app/DocIntelPanel";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -632,44 +633,61 @@ function DocumentsSection({
             {groups[groupType]!.map((doc) => (
               <li
                 key={doc.id}
-                className="flex items-center gap-2 rounded-lg border p-3"
+                className="rounded-lg border p-3 space-y-2"
                 data-testid={`doc-item-${doc.id}`}
               >
-                <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex items-center gap-2 min-w-0">
+                {/* Header row: icon + filename + badge + Ask button */}
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium truncate">{doc.fileName}</span>
                     {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={getDocType(doc)}
-                      onValueChange={(val) => handleTypeChange(doc, val)}
-                    >
-                      <SelectTrigger
-                        className="h-6 text-[10px] px-2 py-0 w-auto border-dashed gap-1"
-                        data-testid={`select-doc-type-${doc.id}`}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="custody_order">Custody Order</SelectItem>
-                        <SelectItem value="communication">Communication</SelectItem>
-                        <SelectItem value="financial">Financial</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <span className="text-[11px] text-muted-foreground">
-                      {relativeTime(doc.createdAt)}
-                    </span>
-                  </div>
+                  <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
+                    <Button variant="ghost" size="sm" className="text-xs gap-1 h-7 px-2 flex-shrink-0" data-testid={`button-view-doc-${doc.id}`}>
+                      Ask
+                      <ArrowRight className="w-3 h-3" />
+                    </Button>
+                  </Link>
                 </div>
-                <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
-                  <Button variant="ghost" size="sm" className="text-xs gap-1 h-7 px-2 flex-shrink-0" data-testid={`button-view-doc-${doc.id}`}>
-                    Ask about it
-                    <ArrowRight className="w-3 h-3" />
-                  </Button>
-                </Link>
+
+                {/* Type selector + date */}
+                <div className="flex items-center gap-2 pl-6">
+                  <Select
+                    value={getDocType(doc)}
+                    onValueChange={(val) => handleTypeChange(doc, val)}
+                  >
+                    <SelectTrigger
+                      className="h-6 text-[10px] px-2 py-0 w-auto border-dashed gap-1"
+                      data-testid={`select-doc-type-${doc.id}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="custody_order">Custody Order</SelectItem>
+                      <SelectItem value="communication">Communication</SelectItem>
+                      <SelectItem value="financial">Financial</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[11px] text-muted-foreground">
+                    {relativeTime(doc.createdAt)}
+                  </span>
+                </div>
+
+                {/* Extracted fact chips — only when analysisJson has content */}
+                <DocFactChips analysisJson={doc.analysisJson} className="pl-6" />
+
+                {/* Key dates preview — 1–2 dates inline */}
+                <DocKeyDatesRow analysisJson={doc.analysisJson} maxDates={2} className="pl-6" />
+
+                {/* Quick action buttons */}
+                <DocQuickActions
+                  analysisJson={doc.analysisJson}
+                  askBasePath={askAIPath}
+                  docId={doc.id}
+                  className="pl-6"
+                />
               </li>
             ))}
           </ul>
