@@ -3,7 +3,7 @@ import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
   MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck, BookmarkCheck,
-  FileSearch, Zap, Search, CheckCheck,
+  FileSearch, Zap, Search, CheckCheck, BookmarkPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -82,6 +82,56 @@ function CautionsList({ cautions }: { cautions: string[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+function SaveAsActionButton({
+  caseId,
+  title,
+  description,
+}: {
+  caseId: string;
+  title: string;
+  description: string;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    if (saved || saving) return;
+    setSaving(true);
+    try {
+      const res = await apiRequestRaw("POST", `/api/cases/${caseId}/actions`, {
+        action_type: "chat_suggested",
+        title: title.slice(0, 120),
+        description: description.slice(0, 500),
+      });
+      if (res.ok) setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={save}
+      disabled={saving || saved}
+      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors ${
+        saved
+          ? "bg-primary/10 text-primary cursor-default"
+          : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+      data-testid="button-save-as-action"
+    >
+      {saving ? (
+        <Loader2 className="w-3 h-3 animate-spin" />
+      ) : saved ? (
+        <BookmarkCheck className="w-3 h-3" />
+      ) : (
+        <BookmarkPlus className="w-3 h-3" />
+      )}
+      {saved ? "Saved to Actions" : "Save as Action"}
+    </button>
   );
 }
 
@@ -211,11 +261,21 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
       {/* ── ACTION mode: numbered steps header ── */}
       {isAction && data.key_points.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Steps to Take
-            </span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Steps to Take
+              </span>
+            </div>
+            {/* Save as action — only visible when a case is linked */}
+            {caseId && (
+              <SaveAsActionButton
+                caseId={caseId}
+                title={data.summary.slice(0, 120)}
+                description={data.key_points.slice(0, 5).join("; ")}
+              />
+            )}
           </div>
           <ol className="space-y-1.5 list-decimal list-inside">
             {data.key_points.map((point, i) => (

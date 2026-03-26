@@ -30,7 +30,7 @@ import {
 import { saveQuestion } from "./services/questions";
 import { saveDocument, getDocuments, updateDocumentType, type DocumentType } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
-import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus } from "./services/caseActions";
+import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import {
   listTimelineEvents,
   createTimelineEvent,
@@ -2041,8 +2041,39 @@ Respond only with the JSON object. No markdown, no extra text.`;
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
-      const actions = await getCaseActions(caseId, user.id);
-      return res.json({ actions });
+
+      // Fetch all stored facts to: (a) extract hearing_date for urgency, (b) re-run generation
+      const allFacts = await getCaseFacts(caseId, user.id);
+
+      // Build flat facts dict — prefer user_confirmed for each fact_type
+      const factsByType = new Map<string, { value: string; source: string }>();
+      for (const f of allFacts) {
+        const existing = factsByType.get(f.factType);
+        if (!existing || f.source === "user_confirmed") {
+          factsByType.set(f.factType, { value: f.value, source: f.source });
+        }
+      }
+      const flatFacts: Record<string, string | null | undefined> = {};
+      for (const [type, { value }] of factsByType) flatFacts[type] = value;
+
+      // Fire-and-forget: regenerate actions from current facts (idempotent — dedup inside)
+      if (allFacts.length > 0) {
+        generateActionsFromFacts(caseId, user.id, flatFacts).catch((err) =>
+          console.error("[actions] background generation error:", err),
+        );
+      }
+
+      // Fetch actions, then enrich with urgency + sort
+      const hearingDate = flatFacts.hearing_date ?? null;
+      const rawActions = await getCaseActions(caseId, user.id);
+      const actions = enrichAndSortActions(rawActions, hearingDate as string | null);
+
+      console.log(
+        `[actions] GET case=${caseId.slice(0, 8)} hearing_date="${hearingDate ?? "none"}" ` +
+        `total=${rawActions.length} open=${actions.filter((a) => a.status === "open").length}`,
+      );
+
+      return res.json({ actions, hearingDate });
     } catch (err) {
       console.error("[cases] GET actions error:", err);
       return res.status(500).json({ error: "Failed to retrieve case actions." });
