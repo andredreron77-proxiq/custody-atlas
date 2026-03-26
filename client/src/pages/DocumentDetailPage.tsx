@@ -9,19 +9,30 @@
  */
 
 import { useParams, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useState } from "react";
 import {
   ArrowLeft, FileText, Calendar, Hash, Building2,
   User, Gavel, MapPin, BookOpen, Sparkles, Clock, MessageSquare,
   ChevronRight, AlertCircle, HelpCircle, Search,
-  Eye, Download, Loader2,
+  Eye, Download, Loader2, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   DocObligationBadge,
   DocImplicationsSection,
@@ -399,6 +410,134 @@ function OriginalFileSection({
   );
 }
 
+/* ── Delete Document ──────────────────────────────────────────────────────── */
+
+/**
+ * Confirmation dialog + delete button for the document.
+ *
+ * Behavior:
+ *   1. User clicks "Delete document" → AlertDialog opens.
+ *   2. Dialog shows a clear warning: original file + all extracted data will be removed.
+ *   3. On "Delete permanently" → calls DELETE /api/documents/:id.
+ *   4. On success → invalidates document caches, navigates back (case dashboard or workspace).
+ *   5. On failure → shows error toast; dialog closes so the user can retry.
+ *
+ * The AlertDialogAction is styled with bg-destructive so it reads as a
+ * deliberately dangerous action, clearly distinct from the Ask Atlas CTA.
+ */
+function DeleteDocumentSection({
+  docId,
+  fileName,
+  backHref,
+}: {
+  docId: string;
+  fileName: string;
+  backHref: string;
+}) {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/documents/${docId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Deletion failed. Please try again.");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      // Invalidate any document list queries so the deleted doc disappears
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
+      qc.invalidateQueries({ queryKey: ["/api/documents"] });
+      qc.removeQueries({ queryKey: ["/api/documents", docId] });
+      navigate(backHref);
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Could not delete document",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <section
+      className="rounded-xl border border-dashed border-destructive/30 p-5 space-y-3"
+      data-testid="doc-detail-delete-section"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-destructive/80">Delete this document</h2>
+          <p className="text-xs text-muted-foreground leading-relaxed max-w-sm">
+            Permanently removes the original file and all extracted analysis data.
+            This cannot be undone.
+          </p>
+        </div>
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:border-destructive/60 flex-shrink-0"
+              data-testid="btn-delete-doc-trigger"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete
+            </Button>
+          </AlertDialogTrigger>
+
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this document?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>
+                    This will permanently remove <span className="font-medium text-foreground">{fileName}</span> from your account, including:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li>The original uploaded file</li>
+                    <li>All extracted facts, dates, and case information</li>
+                    <li>The AI analysis and implications</li>
+                    <li>The document text used in Ask Atlas sessions</li>
+                  </ul>
+                  <p className="text-xs font-medium text-destructive/80">
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="btn-delete-cancel">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                data-testid="btn-delete-confirm"
+              >
+                {deleteMutation.isPending ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Deleting…
+                  </span>
+                ) : (
+                  "Delete permanently"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </section>
+  );
+}
+
 /* ── Loading Skeleton ─────────────────────────────────────────────────────── */
 
 function LoadingSkeleton() {
@@ -604,6 +743,13 @@ export default function DocumentDetailPage() {
 
           {/* ── Ask Atlas panel ── */}
           <AskAtlasPanel docId={doc.id} analyzed={analyzed} />
+
+          {/* ── Delete document (destructive zone, clearly separated) ── */}
+          <DeleteDocumentSection
+            docId={doc.id}
+            fileName={doc.fileName}
+            backHref={backHref}
+          />
 
         </>
       )}

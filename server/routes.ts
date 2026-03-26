@@ -28,7 +28,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, createDocumentSignedUrl, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, createDocumentSignedUrl, deleteDocument, type DocumentType, type SavedDocument } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import {
@@ -1836,6 +1836,40 @@ ${userQuestion}`;
     } catch (err) {
       console.error("[documents] PATCH type error:", err);
       return res.status(500).json({ error: "Failed to update document type." });
+    }
+  });
+
+  /**
+   * DELETE /api/documents/:documentId
+   *
+   * Hard-deletes a document: removes the original file from Supabase Storage
+   * and then deletes the DB row (including analysis_json and extracted_text).
+   *
+   * Security:
+   *   - requireAuth: session required; unauthenticated requests rejected
+   *   - deleteDocument(): ownership enforced with WHERE user_id = :userId
+   *   - Cross-user deletion impossible: returns 404 for documents owned by others
+   *
+   * Responses:
+   *   200  { deleted: true, storageRemoved: boolean }
+   *   404  document not found or not owned by this user
+   *   500  unexpected server error
+   */
+  app.delete("/api/documents/:documentId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { documentId } = req.params;
+    try {
+      const result = await deleteDocument(documentId, user.id);
+      if (!result.success) {
+        if (result.reason === "not_found") {
+          return res.status(404).json({ error: "Document not found." });
+        }
+        return res.status(500).json({ error: "Failed to delete document. Please try again." });
+      }
+      return res.json({ deleted: true, storageRemoved: result.storageRemoved });
+    } catch (err) {
+      console.error(`[documents] DELETE route error doc=${documentId}:`, err);
+      return res.status(500).json({ error: "Failed to delete document." });
     }
   });
 

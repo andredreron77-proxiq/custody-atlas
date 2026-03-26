@@ -302,26 +302,83 @@ export async function createDocumentSignedUrl(
   }
 }
 
-export async function deleteDocument(documentId: string, userId: string): Promise<void> {
-  if (!supabaseAdmin) return;
+export type DeleteDocumentResult =
+  | { success: true; storageRemoved: boolean }
+  | { success: false; reason: "not_found" | "not_owner" | "error" };
+
+/**
+ * Hard-delete a document: removes the file from Storage then deletes the DB row.
+ *
+ * Security:
+ *   - Looks up the row first with both id AND user_id filter (ownership enforced).
+ *   - Returns "not_found" when the document doesn't exist OR belongs to another user.
+ *   - The storage_path is never sent to callers — only used internally.
+ *
+ * Storage failure handling:
+ *   - If the storage file is already missing, we log and continue — the DB row
+ *     is still deleted so the document is no longer accessible.
+ *   - If the DB delete fails after storage removal, we log an error so the orphaned
+ *     storage file can be identified and cleaned up later.
+ *
+ * What is deleted:
+ *   - The original file in Supabase Storage
+ *   - The DB row (including analysis_json and extracted_text)
+ * After deletion no trace of the document remains in the system.
+ */
+export async function deleteDocument(
+  documentId: string,
+  userId: string,
+): Promise<DeleteDocumentResult> {
+  if (!supabaseAdmin) return { success: false, reason: "error" };
+
   try {
-    const { data } = await supabaseAdmin
+    // Step 1: ownership check — must match BOTH id and user_id
+    const { data, error: fetchError } = await supabaseAdmin
       .from("documents")
-      .select("storage_path")
+      .select("storage_path, user_id")
       .eq("id", documentId)
       .eq("user_id", userId)
       .single();
 
-    if (data?.storage_path) {
-      await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([data.storage_path]);
+    if (fetchError || !data) {
+      console.log(`[documents] delete denied — doc=${documentId} user=${userId} reason=not_found`);
+      return { success: false, reason: "not_found" };
     }
 
-    await supabaseAdmin
+    // Step 2: remove original file from Storage (non-fatal if already gone)
+    let storageRemoved = false;
+    if (data.storage_path) {
+      const { error: storageError } = await supabaseAdmin.storage
+        .from(STORAGE_BUCKET)
+        .remove([data.storage_path]);
+
+      if (storageError) {
+        // File may already be missing — log but do not abort; continue to DB delete.
+        console.warn(`[documents] storage remove warn doc=${documentId}:`, storageError.message);
+      } else {
+        storageRemoved = true;
+        console.log(`[documents] storage removed doc=${documentId}`);
+      }
+    } else {
+      console.log(`[documents] delete — no storage_path to remove doc=${documentId}`);
+    }
+
+    // Step 3: hard-delete the DB row (analysis + extracted text deleted with it)
+    const { error: dbError } = await supabaseAdmin
       .from("documents")
       .delete()
       .eq("id", documentId)
       .eq("user_id", userId);
+
+    if (dbError) {
+      console.error(`[documents] db delete error doc=${documentId}:`, dbError.message);
+      return { success: false, reason: "error" };
+    }
+
+    console.log(`[documents] delete ok doc=${documentId} user=${userId} storageRemoved=${storageRemoved}`);
+    return { success: true, storageRemoved };
   } catch (err) {
-    console.error("[documents] deleteDocument error:", err);
+    console.error(`[documents] deleteDocument exception doc=${documentId}:`, err);
+    return { success: false, reason: "error" };
   }
 }
