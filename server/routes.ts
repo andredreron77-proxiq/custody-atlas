@@ -31,6 +31,7 @@ import { saveQuestion } from "./services/questions";
 import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, createDocumentSignedUrl, deleteDocument, type DocumentType, type SavedDocument } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
+import { deriveCaseTimeline } from "./services/caseTimeline";
 import {
   listTimelineEvents,
   createTimelineEvent,
@@ -2335,6 +2336,38 @@ Respond only with the JSON object. No markdown, no extra text.`;
     } catch (err) {
       console.error("[cases] POST action error:", err);
       return res.status(500).json({ error: "Failed to create action." });
+    }
+  });
+
+  /**
+   * GET /api/cases/:caseId/timeline
+   *
+   * Returns a chronological list of case timeline events derived from:
+   *   - Document extracted_facts (hearing_date, filing_date, effective_date)
+   *   - Document key_dates[] arrays
+   *   - Case facts (hearing_date, filing_date stored in case_facts table)
+   *
+   * No new database table required — all data is aggregated from existing sources.
+   * Events are sorted chronologically with `isNext: true` on the first upcoming event.
+   *
+   * Ownership: case verified via getCaseById(caseId, user.id).
+   */
+  app.get("/api/cases/:caseId/timeline", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const events = await deriveCaseTimeline(caseId, user.id);
+      console.log(
+        `[timeline] case=${caseId.slice(0, 8)} events=${events.length} ` +
+        `upcoming=${events.filter(e => e.isUpcoming).length}`,
+      );
+      return res.json({ events });
+    } catch (err) {
+      console.error("[timeline] deriveCaseTimeline error:", err);
+      return res.status(500).json({ error: "Failed to derive timeline." });
     }
   });
 

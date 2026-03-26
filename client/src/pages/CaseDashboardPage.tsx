@@ -818,6 +818,196 @@ function CaseFactsSection({ facts, askHref }: { facts: CaseFactItem[]; askHref: 
 
 /* ── What Matters Now ─────────────────────────────────────────────────────── */
 
+/* ── Case Timeline ─────────────────────────────────────────────────────────
+ * Derived from: document extracted_facts + key_dates[] + case_facts table.
+ * No new DB table — pure aggregation via GET /api/cases/:caseId/timeline.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+type TimelineEventType = "hearing" | "filing" | "effective" | "key_date" | "fact";
+
+interface CaseTimelineEvent {
+  id: string;
+  dateRaw: string;
+  dateParsed: string | null;
+  label: string;
+  source: string;
+  type: TimelineEventType;
+  isPast: boolean;
+  isUpcoming: boolean;
+  isNext: boolean;
+  isOverdue: boolean;
+}
+
+function timelineIcon(type: TimelineEventType) {
+  switch (type) {
+    case "hearing":  return <Scale className="w-3.5 h-3.5" />;
+    case "filing":   return <FileText className="w-3.5 h-3.5" />;
+    case "effective": return <CircleCheck className="w-3.5 h-3.5" />;
+    case "fact":     return <Hash className="w-3.5 h-3.5" />;
+    default:         return <Calendar className="w-3.5 h-3.5" />;
+  }
+}
+
+function timelineTypeLabel(type: TimelineEventType): string {
+  switch (type) {
+    case "hearing":   return "Hearing";
+    case "filing":    return "Filing";
+    case "effective": return "Effective";
+    case "fact":      return "Case Fact";
+    default:          return "Date";
+  }
+}
+
+function CaseTimeline({ caseId }: { caseId: string }) {
+  const { data, isLoading, isError } = useQuery<{ events: CaseTimelineEvent[] }>({
+    queryKey: ["/api/cases", caseId, "timeline"],
+    queryFn: async () => {
+      const res = await fetch(`/api/cases/${caseId}/timeline`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load timeline");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const events = data?.events ?? [];
+  const hasEvents = events.length > 0;
+  const hasDatedEvents = events.some(e => e.dateParsed !== null);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border bg-card px-4 py-3 h-16 animate-pulse" />
+    );
+  }
+
+  if (isError || !hasEvents) return null;
+
+  // Only render the panel when at least one event has a parseable date
+  if (!hasDatedEvents) return null;
+
+  function formatDate(raw: string | null): string {
+    if (!raw) return "—";
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  // Limit to 12 most informative events for visual clarity
+  // Priority: next event first, then upcoming, then past (most recent first)
+  const nextEvents = events.filter(e => e.isNext);
+  const otherUpcoming = events.filter(e => e.isUpcoming && !e.isNext);
+  const pastEvents = [...events.filter(e => e.isPast)].reverse();
+  const undated = events.filter(e => e.dateParsed === null);
+  const sorted = [...nextEvents, ...otherUpcoming, ...pastEvents, ...undated].slice(0, 12);
+
+  return (
+    <div className="rounded-lg border bg-card" data-testid="case-timeline">
+      <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="flex items-center gap-2">
+          <History className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Case Timeline</span>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {events.filter(e => e.isUpcoming).length} upcoming
+        </span>
+      </div>
+
+      <div className="px-4 py-3">
+        <ol className="relative border-l border-border ml-2 space-y-0">
+          {sorted.map((ev, idx) => {
+            const isNextEv = ev.isNext;
+            const isOverdue = ev.isOverdue;
+            const isPast = ev.isPast;
+            const isLast = idx === sorted.length - 1;
+
+            const dotCls = isNextEv
+              ? "bg-blue-500 ring-2 ring-blue-200 dark:ring-blue-900"
+              : isOverdue
+                ? "bg-red-400"
+                : isPast
+                  ? "bg-muted-foreground/40"
+                  : "bg-primary/60";
+
+            const rowCls = isPast && !isNextEv
+              ? "opacity-60"
+              : "";
+
+            return (
+              <li
+                key={ev.id}
+                data-testid={`timeline-event-${ev.id}`}
+                className={`relative pl-6 ${isLast ? "pb-0" : "pb-4"} ${rowCls}`}
+              >
+                {/* Dot on the vertical line */}
+                <span
+                  className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full border border-background ${dotCls}`}
+                  aria-hidden
+                />
+
+                <div className="flex flex-col gap-0.5">
+                  {/* Date row */}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs font-medium tabular-nums ${
+                        isNextEv
+                          ? "text-blue-600 dark:text-blue-400"
+                          : isOverdue
+                            ? "text-red-500 dark:text-red-400"
+                            : "text-muted-foreground"
+                      }`}
+                      data-testid={`timeline-date-${ev.id}`}
+                    >
+                      {formatDate(ev.dateParsed)}
+                    </span>
+
+                    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      isNextEv
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                        : isOverdue
+                          ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                          : "bg-muted text-muted-foreground"
+                    }`}>
+                      {timelineIcon(ev.type)}
+                      {timelineTypeLabel(ev.type)}
+                    </span>
+
+                    {isNextEv && (
+                      <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500 text-white">
+                        Next
+                      </span>
+                    )}
+                    {isOverdue && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                        <AlertTriangle className="w-2.5 h-2.5" />
+                        Past due
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Label */}
+                  <p className="text-sm font-medium leading-snug" data-testid={`timeline-label-${ev.id}`}>
+                    {ev.label}
+                  </p>
+
+                  {/* Source */}
+                  <p className="text-xs text-muted-foreground leading-snug truncate max-w-xs">
+                    {ev.source}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+
+        {events.length > 12 && (
+          <p className="mt-3 text-xs text-muted-foreground text-center">
+            {events.length - 12} more events in documents
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Deterministic CTA priority:
  *   1. Overdue action       → "Act on overdue action"   → askHref
@@ -1135,6 +1325,9 @@ export default function CaseDashboardPage() {
           uploadHref={uploadHref}
         />
       )}
+
+      {/* ── Case Timeline — derived from docs + facts, no new table ──────── */}
+      <CaseTimeline caseId={caseId} />
 
       {/* ── Two-column grid: actions + conversations ─────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
