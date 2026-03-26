@@ -1,0 +1,85 @@
+We need to close the loop on the new case_facts system by allowing user confirmation and improving trust.
+
+Next pass: implement User-Confirmed Case Facts and basic Case Facts visibility.
+
+Scope:
+
+1. Extend case_facts to support user-confirmed values
+
+   * Add support for:
+
+     * source = "user_confirmed"
+     * confidence = "high"
+   * Do not require schema changes unless necessary — reuse existing columns if possible
+
+2. Update fact resolver priority:
+
+   1. user_confirmed case_facts (highest priority)
+   2. existing case_facts (document-derived)
+   3. documents.analysis_json
+   4. case_memory
+   5. fallback
+
+3. Add user confirmation capability in the UI:
+
+   * In FACT response banners (especially conflict state), allow:
+
+     * "Confirm this value"
+   * When clicked:
+
+     * call a new route to upsert a case_fact with:
+
+       * source = "user_confirmed"
+       * confidence = "high"
+
+4. Add backend route:
+
+   * POST /api/cases/:caseId/facts/confirm
+   * Requires authentication
+   * Validates ownership
+   * Accepts:
+
+     * fact_type
+     * value
+     * optional source_name = "user"
+
+5. Update conflict handling:
+
+   * If a user_confirmed value exists:
+
+     * resolver should prioritize it
+     * suppress conflict banner unless conflicting user_confirmed values exist
+
+6. Add minimal Case Facts visibility:
+
+   * Add a simple UI component (no full redesign):
+
+     * Show key known facts for the active case:
+
+       * court_name
+       * hearing_date
+       * case_number
+     * Show source (document vs user_confirmed)
+
+7. Keep everything additive and safe:
+
+   * Do not redesign the workspace
+   * Do not break existing Ask Atlas behavior
+   * Do not remove documents or memory logic
+
+Important:
+
+* Do not overwrite document-derived facts when confirming — insert a new row with higher authority
+* Prefer user_confirmed values as the system of record
+* Add logging for:
+
+  * confirmations
+  * resolver priority decisions
+
+At the end, show:
+
+* files changed
+* how user_confirmed facts are stored
+* how resolver prioritizes them
+* how confirmation works end-to-end
+* what remains before building a full Case Dashboard

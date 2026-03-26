@@ -29,7 +29,7 @@ import {
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
 import { saveDocument, getDocuments, updateDocumentType, type DocumentType } from "./services/documents";
-import { upsertFactsFromDocument, resolveFromCaseFacts } from "./services/caseFacts";
+import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import {
   listTimelineEvents,
   createTimelineEvent,
@@ -271,8 +271,8 @@ function detectIntent(question: string): IntentResult {
 }
 
 type FactResolverResult =
-  | { kind: "found"; fact: ResolvedFact }
-  | { kind: "conflict"; values: Array<{ value: string; sourceName: string | null; confidence: string }> };
+  | { kind: "found"; fact: ResolvedFact & { userConfirmed?: boolean } }
+  | { kind: "conflict"; values: Array<{ value: string; sourceName: string | null; confidence: string; userConfirmed?: boolean }> };
 
 /**
  * Attempt to resolve a FACT question without calling the LLM.
@@ -305,15 +305,16 @@ async function resolveFactDeterministically(
         return { kind: "conflict", values: result.values };
       }
 
-      // found — promote to ResolvedFact
+      // found — promote to ResolvedFact, preserving userConfirmed flag
       return {
         kind: "found",
         fact: {
           value: result.value,
           field,
           fieldLabel: FACT_FIELD_LABELS[field],
-          sourceDocument: result.sourceName ?? "case facts",
+          sourceDocument: result.sourceName ?? (result.userConfirmed ? "Confirmed by you" : "case facts"),
           sourceType: "extracted_facts",
+          userConfirmed: result.userConfirmed,
         },
       };
     }
@@ -356,21 +357,27 @@ async function resolveFactDeterministically(
 }
 
 /** Build a direct-fact AILegalResponse object — no LLM involved. */
-function buildFactResponse(resolved: ResolvedFact): Record<string, unknown> {
+function buildFactResponse(resolved: ResolvedFact & { userConfirmed?: boolean }): Record<string, unknown> {
+  const sourceLabel = resolved.userConfirmed ? "Confirmed by you" : resolved.sourceDocument;
   return {
     summary: `${resolved.fieldLabel}: ${resolved.value}`,
     key_points: [
       `${resolved.fieldLabel}: ${resolved.value}`,
-      `Source: "${resolved.sourceDocument}"`,
+      `Source: "${sourceLabel}"`,
     ],
     questions_to_ask_attorney: [],
     cautions: resolved.field === "court_address"
       ? ["Always verify the court address with an official source before appearing — addresses can change."]
       : [],
-    disclaimer: "This information was extracted directly from your uploaded document. Verify with the original before relying on it.",
+    disclaimer: resolved.userConfirmed
+      ? "This value was confirmed by you as the system of record."
+      : "This information was extracted directly from your uploaded document. Verify with the original before relying on it.",
     intent: "FACT",
-    factSource: resolved.sourceDocument,
+    factSource: sourceLabel,
     factField: resolved.fieldLabel,
+    factValue: resolved.value,
+    factTypeKey: resolved.field,
+    factUserConfirmed: resolved.userConfirmed ?? false,
   };
 }
 
@@ -413,20 +420,23 @@ function buildFactNotFoundResponse(
 
 /** Build a conflict FACT response when multiple contradicting values are found. */
 function buildConflictResponse(
-  conflict: { values: Array<{ value: string; sourceName: string | null; confidence: string }> },
+  conflict: { values: Array<{ value: string; sourceName: string | null; confidence: string; userConfirmed?: boolean }> },
   factFields: FactFieldKey[],
 ): Record<string, unknown> {
   const fieldLabels = factFields.map((f) => FACT_FIELD_LABELS[f]).join(" / ");
   const uniqueValues = [...new Map(conflict.values.map((v) => [v.value, v])).values()];
   const valueLines = uniqueValues.map(
-    (v, i) => `${i + 1}. "${v.value}"${v.sourceName ? ` — from "${v.sourceName}"` : ""} (${v.confidence} confidence)`,
+    (v, i) => {
+      const sourceTag = v.userConfirmed ? "confirmed by you" : v.sourceName ? `from "${v.sourceName}"` : "unknown source";
+      return `${i + 1}. "${v.value}" — ${sourceTag} (${v.confidence} confidence)`;
+    },
   );
   return {
     summary: `I found ${uniqueValues.length} conflicting values for ${fieldLabels} across your documents.`,
     key_points: [
       `${fieldLabels} appears differently in different documents:`,
       ...valueLines,
-      "You must confirm which value is correct before relying on it.",
+      "Tap \"Confirm\" next to the correct value to set it as the system of record.",
     ],
     questions_to_ask_attorney: [
       `Which ${fieldLabels} is the correct one: ${uniqueValues.map((v) => `"${v.value}"`).join(" or ")}?`,
@@ -440,6 +450,13 @@ function buildConflictResponse(
     factSource: null,
     factField: fieldLabels,
     factConflict: true,
+    factTypeKey: factFields[0] ?? null,
+    conflictOptions: uniqueValues.map((v) => ({
+      value: v.value,
+      sourceName: v.sourceName,
+      userConfirmed: v.userConfirmed ?? false,
+      factTypeKey: factFields[0] ?? null,
+    })),
   };
 }
 
@@ -1931,6 +1948,70 @@ Respond only with the JSON object. No markdown, no extra text.`;
     } catch (err) {
       console.error("[cases] GET conversations error:", err);
       return res.status(500).json({ error: "Failed to list conversations." });
+    }
+  });
+
+  /**
+   * GET /api/cases/:caseId/facts
+   * Return all stored case_facts rows for the active case.
+   * Used by CaseFactsPanel in the UI to show known facts.
+   */
+  app.get("/api/cases/:caseId/facts", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+      const facts = await getCaseFacts(caseId, user.id);
+      return res.json({ facts });
+    } catch (err) {
+      console.error("[cases] GET facts error:", err);
+      return res.status(500).json({ error: "Failed to retrieve case facts." });
+    }
+  });
+
+  /**
+   * POST /api/cases/:caseId/facts/confirm
+   * User-confirms a specific fact value, inserting a user_confirmed row at highest priority.
+   * Body: { fact_type: string; value: string; source_name?: string }
+   *
+   * Does NOT overwrite document-derived rows — adds a new row with source="user_confirmed"
+   * and confidence="high". The resolver will prefer this over all document facts.
+   */
+  app.post("/api/cases/:caseId/facts/confirm", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    const { fact_type, value, source_name } = req.body ?? {};
+
+    if (!fact_type || typeof fact_type !== "string") {
+      return res.status(400).json({ error: "fact_type is required." });
+    }
+    if (!value || typeof value !== "string") {
+      return res.status(400).json({ error: "value is required." });
+    }
+
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      await upsertCaseFact(
+        caseId,
+        user.id,
+        fact_type,
+        value.trim(),
+        "user_confirmed",
+        source_name ?? "Confirmed by user",
+        "high",
+      );
+
+      console.log(
+        `[caseFacts] User confirmed: case=${caseId.slice(0, 8)} type=${fact_type} value="${value.trim().slice(0, 60)}"`,
+      );
+
+      return res.json({ success: true, fact_type, value: value.trim(), confidence: "high" });
+    } catch (err) {
+      console.error("[cases] POST confirm fact error:", err);
+      return res.status(500).json({ error: "Failed to confirm fact." });
     }
   });
 

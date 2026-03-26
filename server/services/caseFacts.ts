@@ -4,14 +4,17 @@
  * Case Facts layer — structured facts extracted for a specific case.
  * Stored in Replit PostgreSQL (Drizzle), additive alongside Supabase documents.
  *
- * Priority in the fact resolver:
- *   1. case_facts (this table)        ← most reliable, verbatim from docs
- *   2. documents.analysis_json        ← Supabase document store
- *   3. case_memory                    ← user-saved notes
- *   4. LLM fallback
+ * Priority in resolveFromCaseFacts:
+ *   1. user_confirmed facts            ← highest authority (source = "user_confirmed")
+ *   2. document-derived case_facts     ← verbatim extraction from uploaded docs
+ *   3. documents.analysis_json         ← Supabase document store (caller-level fallback)
+ *   4. case_memory                     ← user-saved notes (caller-level fallback)
+ *   5. LLM fallback
  *
- * Conflict detection: multiple distinct values for the same (caseId + factType)
- * are allowed and surfaced to the user rather than silently picking the first.
+ * Conflict rules:
+ *   - Single user_confirmed value → use it; suppress all document conflicts.
+ *   - Multiple conflicting user_confirmed values → still surface as conflict.
+ *   - No user_confirmed → check document facts for conflicts.
  */
 
 import { db } from "../db";
@@ -164,9 +167,14 @@ export async function upsertFactsFromDocument(
 
 /**
  * Resolve a fact for a specific fact type.
+ *
+ * Priority:
+ *   1. user_confirmed rows (source === "user_confirmed") — highest authority
+ *   2. document-derived rows — ranked by confidence (high > medium > low)
+ *
  * Returns:
- *   { kind: "found", ... }    — single unambiguous value (highest confidence first)
- *   { kind: "conflict", ... } — multiple distinct values exist
+ *   { kind: "found", ... }    — single unambiguous value
+ *   { kind: "conflict", ... } — multiple distinct values that can't be resolved
  *   null                      — no facts stored for this type
  */
 export async function resolveFromCaseFacts(
@@ -174,26 +182,54 @@ export async function resolveFromCaseFacts(
   userId: string,
   factType: string,
 ): Promise<
-  | { kind: "found"; value: string; sourceName: string | null; confidence: FactConfidence }
-  | { kind: "conflict"; values: Array<{ value: string; sourceName: string | null; confidence: FactConfidence }> }
+  | { kind: "found"; value: string; sourceName: string | null; confidence: FactConfidence; userConfirmed: boolean }
+  | { kind: "conflict"; values: Array<{ value: string; sourceName: string | null; confidence: FactConfidence; userConfirmed: boolean }> }
   | null
 > {
   const rows = await getCaseFacts(caseId, userId, factType);
   if (rows.length === 0) return null;
 
-  const uniqueValues = new Set(rows.map((r) => r.value));
+  // ── Priority 1: user_confirmed rows ──────────────────────────────────────
+  const confirmedRows = rows.filter((r) => r.source === "user_confirmed");
+  if (confirmedRows.length > 0) {
+    const confirmedValues = new Set(confirmedRows.map((r) => r.value));
+    if (confirmedValues.size === 1) {
+      // Single confirmed value wins — even if document facts disagree
+      const best = confirmedRows[0];
+      console.log(
+        `[resolver] user_confirmed priority: type="${factType}" value="${best.value.slice(0, 50)}" case=${caseId.slice(0, 8)}`,
+      );
+      return { kind: "found", value: best.value, sourceName: best.sourceName, confidence: "high", userConfirmed: true };
+    }
+    // Multiple conflicting user_confirmed values — still a conflict, surface all of them
+    console.log(
+      `[resolver] user_confirmed CONFLICT: type="${factType}" ${confirmedValues.size} values case=${caseId.slice(0, 8)}`,
+    );
+    return {
+      kind: "conflict",
+      values: confirmedRows.map((r) => ({ value: r.value, sourceName: r.sourceName, confidence: r.confidence, userConfirmed: true })),
+    };
+  }
 
+  // ── Priority 2: document-derived rows ────────────────────────────────────
+  const uniqueValues = new Set(rows.map((r) => r.value));
   if (uniqueValues.size === 1) {
-    // Same value from possibly multiple sources — take the highest confidence row
+    // All documents agree — pick the highest-confidence row
     const best = rows.reduce((a, b) =>
       CONFIDENCE_RANK[a.confidence] >= CONFIDENCE_RANK[b.confidence] ? a : b,
     );
-    return { kind: "found", value: best.value, sourceName: best.sourceName, confidence: best.confidence };
+    console.log(
+      `[resolver] document fact: type="${factType}" value="${best.value.slice(0, 50)}" confidence=${best.confidence} case=${caseId.slice(0, 8)}`,
+    );
+    return { kind: "found", value: best.value, sourceName: best.sourceName, confidence: best.confidence, userConfirmed: false };
   }
 
-  // Conflict: multiple distinct values
+  // Conflict: multiple distinct values across documents
+  console.log(
+    `[resolver] document CONFLICT: type="${factType}" ${uniqueValues.size} values case=${caseId.slice(0, 8)}`,
+  );
   return {
     kind: "conflict",
-    values: rows.map((r) => ({ value: r.value, sourceName: r.sourceName, confidence: r.confidence })),
+    values: rows.map((r) => ({ value: r.value, sourceName: r.sourceName, confidence: r.confidence, userConfirmed: false })),
   };
 }

@@ -3,7 +3,7 @@ import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
   MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck, BookmarkCheck,
-  FileSearch, Zap, Search,
+  FileSearch, Zap, Search, CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,9 +85,32 @@ function CautionsList({ cautions }: { cautions: string[] }) {
   );
 }
 
-function StructuredResponse({ data }: { data: AILegalResponse }) {
+function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: string }) {
   const isFact = data.intent === "FACT";
   const isAction = data.intent === "ACTION";
+  const [confirmingValue, setConfirmingValue] = useState<string | null>(null);
+  const [confirmedValues, setConfirmedValues] = useState<Set<string>>(new Set());
+
+  async function confirmFact(factType: string, value: string) {
+    if (!caseId || !factType) return;
+    setConfirmingValue(value);
+    try {
+      const res = await apiRequestRaw("POST", `/api/cases/${caseId}/facts/confirm`, {
+        fact_type: factType,
+        value,
+        source_name: "Confirmed by user",
+      });
+      if (res.ok) {
+        setConfirmedValues((prev) => new Set([...prev, value]));
+      }
+    } catch {
+      // silent — user can retry
+    } finally {
+      setConfirmingValue(null);
+    }
+  }
+
+  const canConfirm = !!caseId && !!data.factTypeKey;
 
   return (
     <div className="space-y-4">
@@ -109,7 +132,7 @@ function StructuredResponse({ data }: { data: AILegalResponse }) {
               ? <FileSearch className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
               : <Search className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           }
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             {data.factConflict && (
               <p className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase tracking-wide mb-0.5">
                 Conflicting Values Found
@@ -118,8 +141,63 @@ function StructuredResponse({ data }: { data: AILegalResponse }) {
             <p className="text-sm font-semibold text-foreground leading-snug">{data.summary}</p>
             {data.factSource && !data.factConflict && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                Extracted from: <span className="font-medium">{data.factSource}</span>
+                {data.factUserConfirmed
+                  ? <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium"><CheckCheck className="w-3 h-3" />You confirmed this value</span>
+                  : <>Extracted from: <span className="font-medium">{data.factSource}</span></>
+                }
               </p>
+            )}
+            {/* Confirm button — found state, only for document-derived (not already confirmed) */}
+            {data.factSource && !data.factConflict && canConfirm && !data.factUserConfirmed && data.factValue && (
+              <button
+                className={`mt-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors ${
+                  confirmedValues.has(data.factValue)
+                    ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 cursor-default"
+                    : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60"
+                }`}
+                onClick={() => !confirmedValues.has(data.factValue!) && confirmFact(
+                  data.factTypeKey ?? "",
+                  data.factValue!,
+                )}
+                disabled={confirmedValues.has(data.factValue) || confirmingValue === data.factValue}
+                data-testid="button-confirm-fact"
+              >
+                {confirmingValue === data.factValue
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : confirmedValues.has(data.factValue)
+                    ? <CheckCheck className="w-3 h-3" />
+                    : <CheckCheck className="w-3 h-3" />
+                }
+                {confirmedValues.has(data.factValue) ? "Confirmed" : "Confirm this value"}
+              </button>
+            )}
+            {/* Conflict state: per-option confirm buttons */}
+            {data.factConflict && data.conflictOptions && canConfirm && (
+              <div className="mt-2 space-y-1.5">
+                {data.conflictOptions.map((opt, i) => (
+                  <div key={i} className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                      "{opt.value}"
+                    </span>
+                    <button
+                      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded transition-colors flex-shrink-0 ${
+                        confirmedValues.has(opt.value)
+                          ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 cursor-default"
+                          : "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-900/60"
+                      }`}
+                      onClick={() => !confirmedValues.has(opt.value) && confirmFact(opt.factTypeKey ?? data.factTypeKey ?? "", opt.value)}
+                      disabled={confirmedValues.has(opt.value) || confirmingValue === opt.value}
+                      data-testid={`button-confirm-conflict-${i}`}
+                    >
+                      {confirmingValue === opt.value
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <CheckCheck className="w-3 h-3" />
+                      }
+                      {confirmedValues.has(opt.value) ? "Confirmed" : "Confirm"}
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -680,7 +758,7 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
                         </div>
                       </CardHeader>
                       <CardContent className="px-4 pb-4">
-                        <StructuredResponse data={msg.structured} />
+                        <StructuredResponse data={msg.structured} caseId={caseId} />
                       </CardContent>
                     </Card>
 

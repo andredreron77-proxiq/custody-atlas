@@ -173,6 +173,19 @@ export const aiLegalResponseSchema = z.object({
   factField: z.string().nullable().optional(),
   /** True when multiple conflicting values were found for the same fact type */
   factConflict: z.boolean().optional(),
+  /** Raw resolved value for the "Confirm this value" button (FACT found state) */
+  factValue: z.string().nullable().optional(),
+  /** Whether the resolved fact was user-confirmed (vs document-derived) */
+  factUserConfirmed: z.boolean().optional(),
+  /** Raw DB key for the fact type (e.g. "court_name") — used by confirm button */
+  factTypeKey: z.string().nullable().optional(),
+  /** Raw options list for the conflict confirm buttons */
+  conflictOptions: z.array(z.object({
+    value: z.string(),
+    sourceName: z.string().nullable(),
+    userConfirmed: z.boolean().optional(),
+    factTypeKey: z.string().optional(),
+  })).optional(),
 });
 
 export type AILegalResponse = z.infer<typeof aiLegalResponseSchema>;

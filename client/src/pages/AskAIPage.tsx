@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { MessageSquare, MapPin, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown } from "lucide-react";
+import { MessageSquare, MapPin, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChatBox } from "@/components/app/ChatBox";
@@ -41,6 +41,62 @@ interface CaseRecord {
   status: string;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
+}
+
+interface CaseFactItem {
+  id: number;
+  factType: string;
+  value: string;
+  source: string;
+  sourceName: string | null;
+  confidence: string;
+}
+
+const KEY_FACT_TYPES: Array<{ key: string; label: string; icon: typeof Hash }> = [
+  { key: "court_name",    label: "Court",         icon: Building2 },
+  { key: "case_number",   label: "Case #",        icon: Hash },
+  { key: "hearing_date",  label: "Hearing Date",  icon: Calendar },
+];
+
+function CaseFactsPanel({ caseId }: { caseId: string }) {
+  const { data, isLoading } = useQuery<{ facts: CaseFactItem[] }>({
+    queryKey: ["/api/cases", caseId, "facts"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/facts`);
+      if (!res.ok) return { facts: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  if (isLoading) return null;
+
+  const facts = data?.facts ?? [];
+  // For each key type, prefer user_confirmed then highest confidence
+  const keyFacts = KEY_FACT_TYPES.map(({ key, label, icon: Icon }) => {
+    const rows = facts.filter((f) => f.factType === key);
+    if (rows.length === 0) return null;
+    const confirmed = rows.find((r) => r.source === "user_confirmed");
+    const best = confirmed ?? rows[0];
+    return { key, label, Icon, value: best.value, isConfirmed: best.source === "user_confirmed" };
+  }).filter(Boolean) as Array<{ key: string; label: string; Icon: typeof Hash; value: string; isConfirmed: boolean }>;
+
+  if (keyFacts.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border bg-card px-3 py-2.5 flex flex-wrap gap-x-4 gap-y-1.5" data-testid="case-facts-panel">
+      {keyFacts.map(({ key, label, Icon, value, isConfirmed }) => (
+        <div key={key} className="flex items-center gap-1.5 min-w-0">
+          <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+          <span className="text-xs text-muted-foreground font-medium">{label}:</span>
+          <span className="text-xs font-semibold text-foreground truncate max-w-[150px]">{value}</span>
+          {isConfirmed && (
+            <CheckCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 flex-shrink-0" aria-label="User confirmed" />
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function AskAIPage() {
@@ -287,6 +343,9 @@ export default function AskAIPage() {
           </div>
         </div>
       )}
+
+      {/* Case facts quick-view — shows court, case number, hearing date for active case */}
+      {activeCaseId && <CaseFactsPanel caseId={activeCaseId} />}
 
       {/* ChatBox — input sticky when active, conversation grows below */}
       <ChatBox
