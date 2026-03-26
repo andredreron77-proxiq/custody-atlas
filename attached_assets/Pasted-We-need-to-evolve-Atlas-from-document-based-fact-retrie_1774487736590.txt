@@ -1,0 +1,74 @@
+We need to evolve Atlas from document-based fact retrieval into a true case-level system.
+
+Next pass: implement a centralized Case Facts layer and improve fact reliability.
+
+Scope:
+
+1. Introduce `case_facts` as the primary structured fact source
+
+   * Each fact should include:
+
+     * case_id
+     * user_id
+     * fact_type (e.g., court_name, hearing_date, case_number, judge_name, court_address)
+     * value
+     * source (e.g., document_id, memory, user_confirmed)
+     * confidence (high, medium, low)
+     * created_at / updated_at
+
+2. Populate case_facts automatically during document analysis
+
+   * When structured fields are extracted (document_title, court_name, court_address, case_number, judge_name, hearing_date, filing_party, opposing_party, document_type)
+   * Upsert them into case_facts
+   * Avoid duplicates (same case_id + fact_type + value)
+
+3. Update the fact resolver to prioritize sources in this order:
+
+   1. case_facts (NEW primary source)
+   2. documents.extracted_metadata / analysis_json
+   3. case_memory
+   4. fallback to LLM
+
+4. Add conflict detection in the fact resolver
+
+   * If multiple values exist for the same fact_type:
+
+     * detect conflicting values
+     * return a structured response indicating:
+
+       * multiple values found
+       * list of sources (document names if available)
+       * do NOT silently pick the first value
+   * Surface this clearly in the response
+
+5. Improve FACT response formatting
+
+   * Include:
+
+     * direct answer
+     * source (document name, memory, or case fact origin)
+     * confidence
+     * “last updated from” if available
+   * If conflict exists:
+
+     * show both values and indicate uncertainty
+   * If not found:
+
+     * explicitly list what was checked
+
+6. Keep implementation additive and safe
+
+   * Do not break existing Ask Atlas behavior
+   * Do not remove documents.extracted_metadata yet
+   * Do not redesign UI — only extend current FACT banner if needed
+
+7. Light improvement to case_memory (optional if quick)
+
+   * When writing memory in the future, support structured entries:
+
+     * { type, value, source }
+   * Do not refactor existing memory yet
+
+Important:
+
+* Do not hallucina

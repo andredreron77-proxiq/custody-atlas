@@ -1141,6 +1141,9 @@ function PagesReviewView({
 /* ── Main page ────────────────────────────────────────────────────────────── */
 
 export default function UploadDocumentPage() {
+  // Read optional ?case= URL param so uploads can be tied to an active case.
+  const activeCaseId: string | null = new URLSearchParams(window.location.search).get("case");
+
   // Document pages being prepared for submission
   const [pages, setPages] = useState<File[]>([]);
   const [pagePreviews, setPagePreviews] = useState<string[]>([]);
@@ -1424,6 +1427,9 @@ export default function UploadDocumentPage() {
       // Let the server know how many logical pages were combined
       formData.append("pageCount", String(isPDF ? 1 : pages.length));
       formData.append("sourceType", sourceType);
+      // If a case is active (via ?case= URL param), tie this document to it
+      // so extracted facts are upserted into case_facts automatically.
+      if (activeCaseId) formData.append("caseId", activeCaseId);
 
       const headers: Record<string, string> = {};
       const token = getAccessToken();

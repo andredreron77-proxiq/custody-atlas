@@ -91,23 +91,32 @@ function StructuredResponse({ data }: { data: AILegalResponse }) {
 
   return (
     <div className="space-y-4">
-      {/* ── FACT mode: direct answer banner ── */}
+      {/* ── FACT mode: direct answer banner (3 states: found / conflict / not-found) ── */}
       {isFact && (
         <div
           className={`rounded-md p-3 flex items-start gap-2.5 ${
-            data.factSource
-              ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50"
-              : "bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50"
+            data.factConflict
+              ? "bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50"
+              : data.factSource
+                ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50"
+                : "bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50"
           }`}
           data-testid="fact-answer-banner"
         >
-          {data.factSource
-            ? <FileSearch className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-            : <Search className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          {data.factConflict
+            ? <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
+            : data.factSource
+              ? <FileSearch className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+              : <Search className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           }
           <div className="min-w-0">
+            {data.factConflict && (
+              <p className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase tracking-wide mb-0.5">
+                Conflicting Values Found
+              </p>
+            )}
             <p className="text-sm font-semibold text-foreground leading-snug">{data.summary}</p>
-            {data.factSource && (
+            {data.factSource && !data.factConflict && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 Extracted from: <span className="font-medium">{data.factSource}</span>
               </p>

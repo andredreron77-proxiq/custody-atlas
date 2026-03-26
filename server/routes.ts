@@ -29,6 +29,7 @@ import {
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
 import { saveDocument, getDocuments, updateDocumentType, type DocumentType } from "./services/documents";
+import { upsertFactsFromDocument, resolveFromCaseFacts } from "./services/caseFacts";
 import {
   listTimelineEvents,
   createTimelineEvent,
@@ -269,17 +270,56 @@ function detectIntent(question: string): IntentResult {
   return { intent: "EXPLANATION", factFields: [] };
 }
 
+type FactResolverResult =
+  | { kind: "found"; fact: ResolvedFact }
+  | { kind: "conflict"; values: Array<{ value: string; sourceName: string | null; confidence: string }> };
+
 /**
  * Attempt to resolve a FACT question without calling the LLM.
- * Priority: extracted_facts from documents → case_memory entries.
- * Returns null if no matching fact is found — caller should fall through to LLM.
+ *
+ * Priority order:
+ *   1. case_facts table (Drizzle/PG)  — conflict detection enabled
+ *   2. documents.analysis_json        — Supabase extracted_facts
+ *   3. case_memory                    — user-saved notes
+ *
+ * Returns:
+ *   { kind: "found", fact }      — single resolved value, return directly
+ *   { kind: "conflict", values } — multiple contradicting values found
+ *   null                         — nothing found, fall through to LLM
  */
-function resolveFactDeterministically(
+async function resolveFactDeterministically(
   factFields: FactFieldKey[],
   documents: Array<{ fileName: string; docType: string; analysisJson: Record<string, unknown> }>,
   caseMemories: Array<{ content: string; memoryType: string }>,
-): ResolvedFact | null {
-  // 1. Extracted document facts — verbatim from document text, most reliable
+  caseId?: string,
+  userId?: string,
+): Promise<FactResolverResult | null> {
+  // 1. case_facts table — primary source, conflict-aware
+  if (caseId && userId) {
+    for (const field of factFields) {
+      const result = await resolveFromCaseFacts(caseId, userId, field);
+      if (!result) continue;
+
+      if (result.kind === "conflict") {
+        console.log(`[resolver] Conflict detected for field="${field}" in case ${caseId.slice(0, 8)}: ${result.values.length} values`);
+        return { kind: "conflict", values: result.values };
+      }
+
+      // found — promote to ResolvedFact
+      return {
+        kind: "found",
+        fact: {
+          value: result.value,
+          field,
+          fieldLabel: FACT_FIELD_LABELS[field],
+          sourceDocument: result.sourceName ?? "case facts",
+          sourceType: "extracted_facts",
+        },
+      };
+    }
+  }
+
+  // 2. Extracted document facts — verbatim from document analysis_json
   for (const doc of documents.slice(0, 5)) {
     for (const field of factFields) {
       let value: string | null = null;
@@ -291,17 +331,23 @@ function resolveFactDeterministically(
         if (ef?.[field]) value = String(ef[field]);
       }
       if (value) {
-        return { value, field, fieldLabel: FACT_FIELD_LABELS[field], sourceDocument: doc.fileName, sourceType: "extracted_facts" };
+        return {
+          kind: "found",
+          fact: { value, field, fieldLabel: FACT_FIELD_LABELS[field], sourceDocument: doc.fileName, sourceType: "extracted_facts" },
+        };
       }
     }
   }
 
-  // 2. Case memory — user-saved facts from prior sessions
+  // 3. Case memory — user-saved notes (keyword heuristic)
   for (const mem of caseMemories) {
     for (const field of factFields) {
       const label = FACT_FIELD_LABELS[field].toLowerCase();
       if (mem.content.toLowerCase().includes(label)) {
-        return { value: mem.content, field, fieldLabel: FACT_FIELD_LABELS[field], sourceDocument: `case memory (${mem.memoryType})`, sourceType: "case_memory" };
+        return {
+          kind: "found",
+          fact: { value: mem.content, field, fieldLabel: FACT_FIELD_LABELS[field], sourceDocument: `case memory (${mem.memoryType})`, sourceType: "case_memory" },
+        };
       }
     }
   }
@@ -362,6 +408,38 @@ function buildFactNotFoundResponse(
     intent: "FACT",
     factSource: null,
     factField: fieldLabels,
+  };
+}
+
+/** Build a conflict FACT response when multiple contradicting values are found. */
+function buildConflictResponse(
+  conflict: { values: Array<{ value: string; sourceName: string | null; confidence: string }> },
+  factFields: FactFieldKey[],
+): Record<string, unknown> {
+  const fieldLabels = factFields.map((f) => FACT_FIELD_LABELS[f]).join(" / ");
+  const uniqueValues = [...new Map(conflict.values.map((v) => [v.value, v])).values()];
+  const valueLines = uniqueValues.map(
+    (v, i) => `${i + 1}. "${v.value}"${v.sourceName ? ` — from "${v.sourceName}"` : ""} (${v.confidence} confidence)`,
+  );
+  return {
+    summary: `I found ${uniqueValues.length} conflicting values for ${fieldLabels} across your documents.`,
+    key_points: [
+      `${fieldLabels} appears differently in different documents:`,
+      ...valueLines,
+      "You must confirm which value is correct before relying on it.",
+    ],
+    questions_to_ask_attorney: [
+      `Which ${fieldLabels} is the correct one: ${uniqueValues.map((v) => `"${v.value}"`).join(" or ")}?`,
+    ],
+    cautions: [
+      "Do not assume either value is correct — documents may be superseded, amended, or mislabeled.",
+      "Contact the court clerk or your attorney to confirm the authoritative value.",
+    ],
+    disclaimer: "This information was extracted from your uploaded documents. Always verify with the original documents and your attorney.",
+    intent: "FACT",
+    factSource: null,
+    factField: fieldLabels,
+    factConflict: true,
   };
 }
 
@@ -678,11 +756,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       if (intent === "FACT" && userId) {
         intentUserDocs = await getDocuments(userId);
-        const resolved = resolveFactDeterministically(factFields, intentUserDocs, resolvedCaseMemories);
+        const resolverResult = await resolveFactDeterministically(
+          factFields, intentUserDocs, resolvedCaseMemories, caseId, userId,
+        );
 
-        if (resolved) {
-          console.log(`[ask] FACT resolved deterministically: ${resolved.field}="${resolved.value.slice(0, 60)}" from "${resolved.sourceDocument}"`);
-          const factResponse = buildFactResponse(resolved);
+        if (resolverResult) {
+          let earlyResponse: Record<string, unknown>;
+
+          if (resolverResult.kind === "found") {
+            console.log(`[ask] FACT resolved deterministically: field="${resolverResult.fact.field}" value="${resolverResult.fact.value.slice(0, 60)}" from "${resolverResult.fact.sourceDocument}"`);
+            earlyResponse = buildFactResponse(resolverResult.fact);
+          } else {
+            // conflict
+            console.log(`[ask] FACT conflict detected for fields=[${factFields.join(",")}]: ${resolverResult.values.length} distinct values`);
+            earlyResponse = buildConflictResponse(resolverResult, factFields);
+          }
 
           await trackQuestion(req);
           if (userId) {
@@ -690,18 +778,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               jurisdictionState: jurisdiction.state,
               jurisdictionCounty: jurisdiction.county,
               questionText: userQuestion,
-              responseJson: factResponse,
+              responseJson: earlyResponse,
             }).catch(() => {});
           }
           if (activeConversationId) {
             Promise.all([
               appendConversationMessage(activeConversationId, "user", userQuestion),
-              appendConversationMessage(activeConversationId, "assistant", factResponse.summary as string, factResponse),
+              appendConversationMessage(activeConversationId, "assistant", earlyResponse.summary as string, earlyResponse),
             ]).catch((err) => console.error("[ask] Failed to persist deterministic fact messages:", err));
           }
 
           return res.json({
-            ...factResponse,
+            ...earlyResponse,
             ...(activeConversationId ? { conversationId: activeConversationId } : {}),
           });
         }
@@ -1067,21 +1155,35 @@ CRITICAL RULES:
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
-      // Append the extracted text so the client can use it for follow-up Q&A
-      // without requiring the user to re-upload the file.
+      // Save document + optionally populate case_facts if a caseId was provided.
       await trackDocument(req);
       const docUserId = (req as any).user?.id as string | undefined;
+      const docCaseId: string | undefined = req.body?.caseId || undefined;
+
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
+        const documentName = req.file.originalname || "document";
+
+        // Await the save so we have the document ID for case_facts population.
         saveDocument(docUserId, {
-          fileName: req.file.originalname || "document",
+          fileName: documentName,
           storagePath: null,
           mimeType: req.file.mimetype,
           pageCount,
           analysisJson: validated.data as Record<string, unknown>,
           extractedText: truncatedText,
+        }).then((savedDoc) => {
+          // If the request was tied to a case, upsert extracted_facts into case_facts (fire-and-forget).
+          if (docCaseId && savedDoc && validated.data.extracted_facts) {
+            upsertFactsFromDocument(
+              docCaseId, docUserId!, savedDoc.id, documentName,
+              validated.data.extracted_facts as Record<string, string | null>,
+              validated.data.document_type,
+            ).catch((err) => console.error("[analyze-document] upsertFactsFromDocument error:", err));
+          }
         }).catch(() => {});
       }
+
       return res.json({ ...validated.data, extractedText: truncatedText });
     } catch (err: any) {
       console.error("Document analysis error:", err);

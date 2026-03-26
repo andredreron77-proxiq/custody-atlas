@@ -171,6 +171,8 @@ export const aiLegalResponseSchema = z.object({
   factSource: z.string().nullable().optional(),
   /** For FACT responses: human-readable field name that was resolved */
   factField: z.string().nullable().optional(),
+  /** True when multiple conflicting values were found for the same fact type */
+  factConflict: z.boolean().optional(),
 });
 
 export type AILegalResponse = z.infer<typeof aiLegalResponseSchema>;
@@ -249,6 +251,35 @@ export const documentQAResponseSchema = z.object({
 });
 
 export type DocumentQAResponse = z.infer<typeof documentQAResponseSchema>;
+
+/* ── Case Facts (Drizzle / Replit PostgreSQL) ─────────────────────────────── */
+
+/**
+ * case_facts — structured facts extracted for a specific case.
+ *
+ * Primary fact source for the FACT resolver.  Populated automatically
+ * when a document is analysed against a case and from user-confirmed facts.
+ *
+ * fact_type values: document_title | document_type | court_name | court_address
+ *                   case_number | judge_name | hearing_date | filing_party | opposing_party
+ * confidence values: high (verbatim from doc) | medium (inferred) | low (from memory)
+ */
+export const caseFacts = pgTable("case_facts", {
+  id:           serial("id").primaryKey(),
+  caseId:       text("case_id").notNull(),
+  userId:       text("user_id").notNull(),
+  factType:     text("fact_type").notNull(),
+  value:        text("value").notNull(),
+  source:       text("source").notNull(),       // document_id | "memory" | "user_confirmed"
+  sourceName:   text("source_name"),            // human-readable label (file name, etc.)
+  confidence:   text("confidence").notNull().default("medium"),
+  createdAt:    timestamp("created_at").defaultNow(),
+  updatedAt:    timestamp("updated_at").defaultNow(),
+});
+
+export const insertCaseFactSchema = createInsertSchema(caseFacts).omit({ id: true, createdAt: true, updatedAt: true });
+export type CaseFact = typeof caseFacts.$inferSelect;
+export type InsertCaseFact = typeof insertCaseFactSchema._type;
 
 /* ── Public Questions (Drizzle / Replit PostgreSQL) ───────────────────────── */
 
