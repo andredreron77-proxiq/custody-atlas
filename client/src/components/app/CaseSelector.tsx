@@ -13,11 +13,12 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FolderOpen, Plus, ChevronRight, Loader2, FolderX,
-  MessageSquare, MoreHorizontal, MapPin,
+  MessageSquare, MoreHorizontal, MapPin, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -228,6 +229,19 @@ function CaseRow({ caseRecord }: { caseRecord: CaseRecord }) {
           )}
         />
       </button>
+      {/* "Open" button — navigates to the case dashboard */}
+      <div className="px-3 pb-2 flex justify-end">
+        <Link href={`/case/${caseRecord.id}`}>
+          <a
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            data-testid={`link-open-case-${caseRecord.id}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            Open case
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </Link>
+      </div>
 
       {expanded && (
         <div className="border-t px-1 pb-2 pt-1" data-testid={`case-conversations-${caseRecord.id}`}>

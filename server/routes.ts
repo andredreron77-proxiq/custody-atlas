@@ -1943,6 +1943,23 @@ Respond only with the JSON object. No markdown, no extra text.`;
   });
 
   /**
+   * GET /api/cases/:caseId
+   * Single case detail — returns the case record owned by the caller.
+   */
+  app.get("/api/cases/:caseId", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+      return res.json({ case: caseRecord });
+    } catch (err) {
+      console.error("[cases] GET :caseId error:", err);
+      return res.status(500).json({ error: "Failed to load case." });
+    }
+  });
+
+  /**
    * GET /api/cases/:caseId/conversations
    * List all conversations for the specified case (must be owned by the caller).
    */

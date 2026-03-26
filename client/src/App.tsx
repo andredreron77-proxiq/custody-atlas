@@ -25,6 +25,7 @@ import PublicQAPage from "@/pages/PublicQAPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import RedeemCodePage from "@/pages/RedeemCodePage";
 import AdminPage from "@/pages/admin/AdminPage";
+import CaseDashboardPage from "@/pages/CaseDashboardPage";
 import NotFound from "@/pages/not-found";
 import type { ComponentType } from "react";
 
@@ -100,6 +101,9 @@ function Router() {
       </Route>
       <Route path="/workspace">
         {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
+      </Route>
+      <Route path="/case/:caseId">
+        {() => <ProtectedRoute component={CaseDashboardPage} feature="workspace" />}
       </Route>
 
       <Route component={NotFound} />
