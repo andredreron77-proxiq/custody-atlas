@@ -114,22 +114,29 @@ function HeroSection() {
         <div className="max-w-3xl mx-auto text-center">
           <Eyebrow>
             <Shield className="w-3 h-3" />
-            AI-powered custody guidance
+            AI-Powered Custody Guidance
           </Eyebrow>
 
+          {/* Brand name — visually dominant */}
           <h1
-            className="font-serif text-4xl sm:text-5xl lg:text-[3.5rem] font-semibold leading-[1.15] mb-5"
+            className="font-serif text-5xl sm:text-6xl lg:text-7xl font-semibold leading-none tracking-tight mb-4"
             style={{ color: NAVY }}
           >
-            Understand custody law<br className="hidden sm:block" /> where you live
+            Custody Atlas
           </h1>
 
-          <p className="text-slate-500 text-lg leading-relaxed mb-3 max-w-2xl mx-auto">
-            Make confident custody decisions for your family.
+          {/* Value proposition — secondary headline */}
+          <p
+            className="font-serif text-xl sm:text-2xl font-medium leading-snug mb-6 max-w-2xl mx-auto"
+            style={{ color: "#334155" }}
+          >
+            Understand custody law where you live
           </p>
-          <p className="text-slate-400 text-base leading-relaxed mb-10 max-w-xl mx-auto">
-            Analyze agreements, understand legal terms, and get guidance
-            tailored to your state.
+
+          {/* Supporting copy */}
+          <p className="text-slate-400 text-base leading-relaxed mb-10 max-w-lg mx-auto">
+            Make confident custody decisions with AI-powered,
+            state-specific guidance.
           </p>
 
           {/* CTAs */}
