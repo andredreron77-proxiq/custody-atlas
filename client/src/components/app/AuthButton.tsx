@@ -5,7 +5,7 @@
  *  - Google OAuth is the primary action (top, visually prominent)
  *  - Email/password is secondary, below a divider
  *  - Single sign-in/create-account toggle — no tabs
- *  - Product-branded header: Scale icon + name + subtitle
+ *  - Product-branded header: logo image + name + subtitle
  *  - Trust strip: private, not used for AI, saves progress
  *  - Return path: stored in sessionStorage before Google OAuth
  *    so users land back where they started
@@ -14,9 +14,10 @@
 
 import { useState, useEffect } from "react";
 import {
-  LogOut, Mail, Loader2, ArrowLeft, Send, Scale,
+  LogOut, Mail, Loader2, ArrowLeft, Send,
   ShieldCheck, BrainCircuit, BookmarkCheck,
 } from "lucide-react";
+import logoSrc from "@assets/Custody_Atlas_Logo_v3_1774631111605.png";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -93,13 +94,15 @@ function TrustStrip() {
 /* ── Product header shown inside the dialog ──────────────────────────────── */
 function DialogBrand({ subtitle }: { subtitle: string }) {
   return (
-    <div className="flex flex-col items-center text-center gap-2 pt-2 pb-1">
-      <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-        <Scale className="w-5 h-5 text-primary" />
-      </div>
+    <div className="flex flex-col items-center text-center gap-2.5 pt-2 pb-1">
+      <img
+        src={logoSrc}
+        alt="Custody Atlas"
+        className="h-14 w-14 object-contain"
+      />
       <div className="space-y-0.5">
         <p className="text-base font-semibold tracking-tight">Custody Atlas</p>
-        <p className="text-xs text-muted-foreground leading-snug max-w-[220px]">{subtitle}</p>
+        <p className="text-xs text-muted-foreground leading-snug max-w-[230px]">{subtitle}</p>
       </div>
     </div>
   );
