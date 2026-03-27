@@ -92,7 +92,7 @@ export function JurisdictionContextHeader(props: JurisdictionContextHeaderProps)
   if (props.mode === "comparison") {
     return (
       <div
-        className="flex items-center gap-3 rounded-xl border bg-white dark:bg-card shadow-sm px-4 py-3"
+        className="flex items-center gap-3 rounded-xl border bg-card shadow-xs px-4 py-3"
         data-testid="jurisdiction-context-header"
         aria-label={`Comparing custody laws: ${props.stateA} vs ${props.stateB}`}
       >
@@ -138,7 +138,7 @@ export function JurisdictionContextHeader(props: JurisdictionContextHeaderProps)
 
     return (
       <div
-        className="flex items-center gap-3 rounded-xl border bg-white dark:bg-card shadow-sm px-4 py-3"
+        className="flex items-center gap-3 rounded-xl border bg-card shadow-xs px-4 py-3"
         data-testid="jurisdiction-context-header"
         aria-label="Document analysis context"
       >
@@ -208,7 +208,7 @@ export function JurisdictionContextHeader(props: JurisdictionContextHeaderProps)
 
   return (
     <div
-      className="flex items-center gap-3 rounded-xl border bg-white dark:bg-card shadow-sm px-4 py-3"
+      className="flex items-center gap-3 rounded-xl border bg-card shadow-xs px-4 py-3"
       data-testid="jurisdiction-context-header"
       aria-label={`Jurisdiction: ${locationText}`}
     >

@@ -9,7 +9,7 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
-  --background: 210 40% 97%;
+  --background: 220 9% 98%;
   --foreground: 222 47% 11%;
   --border: 220 13% 88%;
   --card: 0 0% 100%;
@@ -31,7 +31,7 @@
   --secondary: 220 14% 92%;
   --secondary-foreground: 222 47% 11%;
   --muted: 220 14% 94%;
-  --muted-foreground: 215 20% 30%;
+  --muted-foreground: 215 16% 47%;
   --accent: 217 17% 93%;
   --accent-foreground: 222 47% 11%;
   --destructive: 0 84% 60%;

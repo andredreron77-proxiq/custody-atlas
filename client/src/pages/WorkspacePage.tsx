@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
+import { SectionLabel } from "@/components/app/PageShell";
 import { CaseSelector } from "@/components/app/CaseSelector";
 import {
   DocFactChips, DocKeyDatesRow, DocObligationBadge,
@@ -354,7 +355,7 @@ function TimelineSection({ events, isLoading }: {
     <Card className="shadow-sm border md:col-span-2" data-testid="card-timeline">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+          <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
             <CalendarDays className="w-3.5 h-3.5 text-primary" />
             Case Timeline
           </CardTitle>
@@ -507,7 +508,7 @@ function CaseSummarySection() {
     <Card id="case-summary" className="shadow-sm border md:col-span-2" data-testid="card-case-summary">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+          <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-primary" />
             Case Summary
           </CardTitle>
@@ -937,27 +938,34 @@ export default function WorkspacePage() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6" data-testid="page-workspace">
       {/* Page header */}
-      <div>
-        <div className="flex items-center gap-2.5 mb-1">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-            <LayoutDashboard className="w-4 h-4 text-primary" />
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+            Workspace
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1
+              className="font-serif text-2xl md:text-3xl font-semibold text-foreground leading-tight"
+              data-testid="heading-workspace"
+            >
+              Case Workspace
+            </h1>
+            {isProUser && (
+              <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium" data-testid="badge-workspace-plan-pro">
+                <Zap className="w-3 h-3" />
+                Pro
+              </Badge>
+            )}
+            {isFreeUser && (
+              <Badge variant="outline" className="text-xs font-medium" data-testid="badge-workspace-plan-free">
+                Free plan
+              </Badge>
+            )}
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-workspace">Case Workspace</h1>
-          {isProUser && (
-            <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium ml-1" data-testid="badge-workspace-plan-pro">
-              <Zap className="w-3 h-3" />
-              Pro
-            </Badge>
-          )}
-          {isFreeUser && (
-            <Badge variant="outline" className="text-xs font-medium ml-1" data-testid="badge-workspace-plan-free">
-              Free plan
-            </Badge>
-          )}
+          <p className="text-muted-foreground text-sm mt-1.5">
+            Organize your custody activity, track key dates, and understand your situation.
+          </p>
         </div>
-        <p className="text-muted-foreground text-sm ml-10">
-          Organize your custody activity, track key dates, and understand your situation.
-        </p>
       </div>
 
       {/* Jurisdiction context banner */}
@@ -989,7 +997,7 @@ export default function WorkspacePage() {
       {/* Cases */}
       <Card className="shadow-sm border" data-testid="card-cases">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+          <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
             <LayoutDashboard className="w-3.5 h-3.5 text-primary" />
             My Cases
           </CardTitle>
@@ -1005,7 +1013,7 @@ export default function WorkspacePage() {
         {/* ── A: Jurisdiction Card ─────────────────────────────────── */}
         <Card className="shadow-sm border" data-testid="card-jurisdiction">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-primary" />
               Jurisdiction
             </CardTitle>
@@ -1066,7 +1074,7 @@ export default function WorkspacePage() {
         {/* ── B: Quick Actions Card ──────────────────────────────── */}
         <Card className="shadow-sm border" data-testid="card-quick-actions">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
               <ChevronRight className="w-3.5 h-3.5 text-primary" />
               Quick Actions
             </CardTitle>
@@ -1107,7 +1115,7 @@ export default function WorkspacePage() {
         <Card className="shadow-sm border" data-testid="card-recent-documents">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-primary" />
                 Documents
               </CardTitle>
@@ -1132,7 +1140,7 @@ export default function WorkspacePage() {
         <Card className="shadow-sm border" data-testid="card-recent-conversations">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5 text-primary" />
                 Recent Conversations
               </CardTitle>
@@ -1236,7 +1244,7 @@ export default function WorkspacePage() {
         {/* ── G: Custody Map Card ────────────────────────────────── */}
         <Card className="shadow-sm border bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-950/20 dark:to-slate-900/20" data-testid="card-custody-map">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
               <Map className="w-3.5 h-3.5 text-primary" />
               Custody Map
             </CardTitle>
@@ -1268,7 +1276,7 @@ export default function WorkspacePage() {
         {/* ── H: Privacy & Trust Card ────────────────────────────── */}
         <Card className="shadow-sm border" data-testid="card-privacy-trust">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+            <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-primary" />
               Privacy &amp; Trust
             </CardTitle>

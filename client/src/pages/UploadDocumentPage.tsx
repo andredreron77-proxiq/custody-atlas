@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
+import { PageHeader } from "@/components/app/PageShell";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { TTSControls } from "@/components/app/TTSControls";
@@ -1488,13 +1489,11 @@ export default function UploadDocumentPage() {
         changeLocationHref="/location"
       />
 
-      <div>
-        <h1 className="text-2xl font-bold mb-1">Analyze a Custody Document</h1>
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          Upload a custody order, parenting plan, or court notice.
-          Our AI will extract the key information and explain it in plain English.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Document Analysis"
+        title="Analyze a Custody Document"
+        subtitle="Upload a custody order, parenting plan, or court notice. Our AI will extract key information and explain it in plain English."
+      />
 
       {/* Privacy notice */}
       <div className="rounded-lg border bg-card p-4 flex gap-3 items-start" data-testid="card-privacy-notice">

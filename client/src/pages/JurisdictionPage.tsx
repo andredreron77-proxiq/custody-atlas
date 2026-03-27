@@ -260,7 +260,10 @@ export default function JurisdictionPage() {
       />
 
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold mb-1" data-testid="heading-jurisdiction">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+          {isStateOnly ? "State Law Overview" : "Jurisdiction"}
+        </p>
+        <h1 className="font-serif text-2xl md:text-3xl font-semibold text-foreground leading-tight mb-1" data-testid="heading-jurisdiction">
           {isStateOnly ? `${state} Custody Law` : `Child Custody Laws — ${state}`}
         </h1>
         <p className="text-muted-foreground text-sm">

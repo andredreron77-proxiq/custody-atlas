@@ -7,6 +7,7 @@ import { ChatBox } from "@/components/app/ChatBox";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
+import { PageShell, PageHeader } from "@/components/app/PageShell";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import type { ChatMessage, Jurisdiction } from "@shared/schema";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
@@ -557,18 +558,13 @@ export default function AskAIPage() {
   /* ── Location picker (no jurisdiction yet) ───────────────────────────── */
   if (!jurisdiction || showLocationPicker) {
     return (
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
-        <div className="text-center mb-10">
-          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <MessageSquare className="w-7 h-7 text-primary" />
-          </div>
-          <h1 className="text-2xl md:text-3xl font-bold mb-2" data-testid="heading-ask-ai">
-            Ask Atlas
-          </h1>
-          <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-            Share your location so we can provide information specific to your state's custody laws.
-          </p>
-        </div>
+      <PageShell className="max-w-2xl">
+        <PageHeader
+          eyebrow="Ask Atlas"
+          title="What custody question can we help you with?"
+          subtitle="Share your location and we'll provide guidance specific to your state's custody laws."
+          center
+        />
 
         <LocationSelector onJurisdictionFound={handleJurisdictionFound} />
 
@@ -582,7 +578,7 @@ export default function AskAIPage() {
             <span>Custody Atlas provides general legal information, not legal advice.</span>
           </div>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
