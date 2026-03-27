@@ -154,10 +154,11 @@ function HeroSection() {
             <Link href="/custody-map">
               <Button
                 size="lg"
-                variant="ghost"
-                className="h-11 px-5 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                variant="outline"
+                className="h-11 px-6 text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400 hover:text-slate-900 transition-colors"
                 data-testid="button-hero-secondary"
               >
+                <Map className="w-4 h-4" />
                 Explore Custody Map
               </Button>
             </Link>

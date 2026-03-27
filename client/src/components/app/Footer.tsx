@@ -33,6 +33,24 @@ const STATE_PAGES: { name: string; slug: string }[] = [
   { name: "Washington", slug: "washington" },
 ];
 
+/** Slim legal bar shown on utility/legal pages (Privacy, Terms, etc.). */
+export function MinimalFooter() {
+  return (
+    <footer className="border-t border-border/50 py-3 px-4 mt-auto">
+      <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          © {new Date().getFullYear()} Custody Atlas — for informational purposes only, not legal advice.
+        </p>
+        <div className="flex items-center gap-4">
+          <Link href="/privacy" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</Link>
+          <Link href="/terms" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</Link>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+/** Full marketing footer — shown on public-facing pages only. */
 export function Footer() {
   return (
     <footer className="bg-[#0f172a] text-slate-300 mt-auto">

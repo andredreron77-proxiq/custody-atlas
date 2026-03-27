@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/components/app/Header";
-import { Footer } from "@/components/app/Footer";
+import { Footer, MinimalFooter } from "@/components/app/Footer";
 import { AuthRequiredCard } from "@/components/app/AuthRequiredCard";
 import { OnboardingModal } from "@/components/app/OnboardingModal";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -29,6 +29,41 @@ import CaseDashboardPage from "@/pages/CaseDashboardPage";
 import DocumentDetailPage from "@/pages/DocumentDetailPage";
 import NotFound from "@/pages/not-found";
 import type { ComponentType } from "react";
+
+/**
+ * Routes that show NO footer (in-app product pages).
+ * Authenticated-only pages where a heavy marketing footer is out of place.
+ */
+const NO_FOOTER_PREFIXES = [
+  "/ask",
+  "/workspace",
+  "/upload-document",
+  "/case/",
+  "/document/",
+  "/admin",
+  "/reset-password",
+  "/redeem",
+];
+
+/**
+ * Routes that show only the minimal legal footer strip.
+ * Utility / legal pages that don't need the full marketing footer.
+ */
+const MINIMAL_FOOTER_PATHS = ["/privacy", "/terms", "/location"];
+
+/** Renders the right footer for the current route. */
+function AppFooter() {
+  const [location] = useLocation();
+  const path = location.split("?")[0];
+
+  if (NO_FOOTER_PREFIXES.some((p) => path === p || path.startsWith(p))) {
+    return null;
+  }
+  if (MINIMAL_FOOTER_PATHS.includes(path)) {
+    return <MinimalFooter />;
+  }
+  return <Footer />;
+}
 
 /** Scroll the window to the top on every route change. */
 function ScrollToTop() {
@@ -125,7 +160,7 @@ function App() {
           <main className="flex-1 flex flex-col min-h-0">
             <Router />
           </main>
-          <Footer />
+          <AppFooter />
         </div>
         <OnboardingModal />
         <Toaster />
