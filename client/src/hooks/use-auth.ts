@@ -77,6 +77,17 @@ export function useCurrentUser(): UseAuthResult {
         setAccessToken(session?.access_token ?? null);
         if (session?.user) {
           setUser(buildUser(session.user));
+
+          // After a Google OAuth round-trip (SIGNED_IN fires on return),
+          // navigate back to the page the user was on before they clicked "Continue with Google".
+          if (event === "SIGNED_IN") {
+            const returnPath = sessionStorage.getItem("custody-atlas:return-path");
+            if (returnPath) {
+              sessionStorage.removeItem("custody-atlas:return-path");
+              // Use replace to avoid adding the OAuth callback to browser history.
+              window.location.replace(returnPath);
+            }
+          }
         } else {
           setUser(null);
         }
