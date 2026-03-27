@@ -94,11 +94,9 @@ export function Header() {
                   `}
                   data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
                 >
-                  <span className={label === "Analyze Document" ? "hidden lg:inline" : ""}>
-                    {label}
-                  </span>
+                  <span>{label === "Analyze Document" ? "Analyze" : label}</span>
                   {gated && (
-                    <Lock className="w-2.5 h-2.5 text-slate-600 flex-shrink-0" aria-label="Sign-in required" />
+                    <Lock className="w-2.5 h-2.5 text-slate-500/50 flex-shrink-0" aria-label="Sign-in required" />
                   )}
                   {active && (
                     <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-white/40 rounded-full" />

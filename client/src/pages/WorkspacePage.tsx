@@ -262,9 +262,9 @@ function NextBestStepPanel({ scenario, ctaHref }: { scenario: StepScenario; ctaH
     <div data-testid="panel-next-best-step">
       <div className="flex items-center gap-1.5 mb-2">
         <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Recommended Next Step</span>
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Recommended Next Step</span>
       </div>
-      <div className="relative rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background dark:from-primary/10 dark:via-background dark:to-background px-5 py-5 shadow-sm">
+      <div className="relative rounded-xl border bg-card px-5 py-5 shadow-xs">
         <button
           onClick={() => setDismissed(true)}
           className="absolute top-3 right-3 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/50 hover:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"

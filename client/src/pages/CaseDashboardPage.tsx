@@ -1860,11 +1860,8 @@ export default function CaseDashboardPage() {
         </Link>
 
         <div className="flex-1 min-w-0 flex items-center gap-2 sm:ml-2">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <FolderOpen className="w-4 h-4 text-primary" />
-          </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-bold truncate leading-tight" data-testid="heading-case-title">
+            <h1 className="font-serif text-xl font-semibold truncate leading-tight" data-testid="heading-case-title">
               {caseRecord.title}
             </h1>
             <div className="flex items-center gap-2 flex-wrap">

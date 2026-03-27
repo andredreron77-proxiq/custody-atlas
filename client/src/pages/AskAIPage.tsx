@@ -651,7 +651,7 @@ export default function AskAIPage() {
       {/* ── Case context — 3-state rendering ─────────────────────────────── */}
       {user && askPageState === "no_case" && (
         /* no_case: compact decision block */
-        <div className="rounded-lg border border-dashed bg-muted/10 px-3.5 py-3 flex flex-col sm:flex-row sm:items-center gap-2.5" data-testid="case-context-bar">
+        <div className="rounded-lg border border-border bg-muted/20 px-3.5 py-3 flex flex-col sm:flex-row sm:items-center gap-2.5" data-testid="case-context-bar">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <FolderOpen className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
             <span className="text-xs text-muted-foreground">

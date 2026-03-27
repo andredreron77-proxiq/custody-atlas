@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
+import { PageHeader } from "@/components/app/PageShell";
 import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
@@ -179,7 +180,7 @@ function StateInfoPanel({
 
   return (
     <div
-      className="bg-white dark:bg-card border rounded-xl shadow-sm overflow-hidden flex flex-col"
+      className="bg-card border rounded-xl shadow-xs overflow-hidden flex flex-col"
       data-testid="panel-state-info"
     >
 
@@ -224,11 +225,11 @@ function StateInfoPanel({
         {/* ── Empty state ─────────────────────────────────────────────── */}
         {!selectedState && (
           <div className="p-6 flex flex-col items-center justify-center text-center gap-5 min-h-[360px]">
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-              <Scale className="w-7 h-7 text-primary" />
+            <div className="w-14 h-14 rounded-2xl border border-border bg-background flex items-center justify-center shadow-xs">
+              <Scale className="w-6 h-6 text-muted-foreground/50" />
             </div>
             <div>
-              <p className="font-semibold text-base mb-1.5" data-testid="text-panel-empty-heading">
+              <p className="font-serif font-semibold text-base mb-1.5" data-testid="text-panel-empty-heading">
                 Select a state on the map
               </p>
               <p className="text-sm text-muted-foreground leading-relaxed">
@@ -236,7 +237,7 @@ function StateInfoPanel({
               </p>
             </div>
             <div className="w-full space-y-2.5">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
                 Quick access
               </p>
               <div className="flex flex-wrap gap-1.5 justify-center">
@@ -903,49 +904,46 @@ export default function CustodyMapPage() {
   const showComparisonPanel = mode === "compare" && stateA && stateB;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold mb-1" data-testid="heading-custody-map">
-            Custody Law Map
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {mode === "explore"
-              ? "Explore how custody laws differ across states. Click any state to see a summary."
-              : "Select two states on the map — or use the dropdowns — to compare custody laws side by side."}
-          </p>
-        </div>
-
-        {/* Mode toggle */}
-        <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit flex-shrink-0" role="tablist" aria-label="Map mode">
-          <button
-            role="tab"
-            aria-selected={mode === "explore"}
-            onClick={() => switchMode("explore")}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mode === "explore" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-explore"
-          >
-            <MapIcon className="w-3.5 h-3.5" />
-            Explore
-          </button>
-          <button
-            role="tab"
-            aria-selected={mode === "compare"}
-            onClick={() => switchMode("compare")}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mode === "compare" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-compare"
-          >
-            <GitCompare className="w-3.5 h-3.5" />
-            Compare States
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Custody Map"
+        title="Custody Law Map"
+        subtitle={
+          mode === "explore"
+            ? "Explore how custody laws differ across states. Click any state to see a summary."
+            : "Select two states on the map — or use the dropdowns — to compare custody laws side by side."
+        }
+        right={
+          <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit" role="tablist" aria-label="Map mode">
+            <button
+              role="tab"
+              aria-selected={mode === "explore"}
+              onClick={() => switchMode("explore")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                mode === "explore" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid="tab-explore"
+            >
+              <MapIcon className="w-3.5 h-3.5" />
+              Explore
+            </button>
+            <button
+              role="tab"
+              aria-selected={mode === "compare"}
+              onClick={() => switchMode("compare")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                mode === "compare" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid="tab-compare"
+            >
+              <GitCompare className="w-3.5 h-3.5" />
+              Compare States
+            </button>
+          </div>
+        }
+      />
 
       {/* ── Context header (shown when a state or pair is active) ────── */}
       {mode === "compare" && stateA && stateB && (
@@ -1097,7 +1095,7 @@ export default function CustodyMapPage() {
       }`}>
 
         {/* Map card */}
-        <Card className="overflow-hidden shadow-md" data-testid="card-map">
+        <Card className="overflow-hidden shadow-sm" data-testid="card-map">
           <CardContent className="p-0">
             {/* Hover preview bar */}
             {hoveredState ? (
@@ -1188,7 +1186,7 @@ export default function CustodyMapPage() {
 
           {/* COMPARE: comparison panel */}
           {mode === "compare" && showComparisonPanel && (
-            <Card className="shadow-md" data-testid="card-compare-panel">
+            <Card className="shadow-sm" data-testid="card-compare-panel">
               <CardContent className="p-5 max-h-[80vh] overflow-y-auto">
                 <ComparisonPanel
                   stateA={stateA!}
