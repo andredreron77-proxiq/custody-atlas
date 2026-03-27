@@ -8,6 +8,10 @@ import { UsageIndicator } from "./UsageIndicator";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { getQueryFn } from "@/lib/queryClient";
 
+// Desktop nav omits "Home" — the logo lockup serves that purpose.
+// All items remain in the mobile drawer for full discoverability.
+const DESKTOP_NAV_LABELS = new Set(["Workspace", "Custody Map", "Ask Atlas", "Analyze Document"]);
+
 interface NavItem {
   label: string;
   href: string;
@@ -73,9 +77,9 @@ export function Header() {
             </span>
           </Link>
 
-          {/* Desktop navigation */}
-          <nav className="hidden md:flex items-center gap-0.5 ml-2" aria-label="Main navigation">
-            {NAV_ITEMS.map(({ label, href, icon: Icon, exact, gated }) => {
+          {/* Desktop navigation — Home excluded (logo is the home link) */}
+          <nav className="hidden md:flex items-center gap-1 ml-4" aria-label="Main navigation">
+            {NAV_ITEMS.filter(({ label }) => DESKTOP_NAV_LABELS.has(label)).map(({ label, href, icon: Icon, exact, gated }) => {
               const active = isActive(href, exact);
               return (
                 <Link
@@ -125,17 +129,8 @@ export function Header() {
             )}
           </nav>
 
-          {/* Desktop: getting started + usage indicator + auth button */}
-          <div className="hidden md:flex items-center gap-3 ml-auto">
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent("custody-atlas:open-onboarding"))}
-              className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-xs px-2 py-1.5 rounded-md hover:bg-white/8"
-              data-testid="button-getting-started"
-              title="Getting Started"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">Getting Started</span>
-            </button>
+          {/* Desktop: usage indicator + auth button */}
+          <div className="hidden md:flex items-center gap-4 ml-auto">
             <UsageIndicator />
             <AuthButton />
           </div>
