@@ -49,7 +49,7 @@ export function AuthRequiredCard({ feature }: AuthRequiredCardProps) {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center px-4 py-16">
+    <div className="flex-1 flex items-center justify-center px-4 py-16 animate-fade-in">
       <div className="w-full max-w-sm flex flex-col items-center text-center gap-6">
 
         {/* Icon mark */}

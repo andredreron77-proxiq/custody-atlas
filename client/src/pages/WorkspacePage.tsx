@@ -92,7 +92,7 @@ const DOC_TYPE_COLORS: Record<DocType, string> = {
   custody_order: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/50",
   communication: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50",
   financial: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50",
-  other: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-700/50",
+  other: "bg-muted text-foreground/60 border-border dark:bg-muted/40 dark:text-muted-foreground dark:border-border/50",
 };
 
 /* ── Shared sub-components ────────────────────────────────────────────────── */

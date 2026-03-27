@@ -52,7 +52,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Enforcement": "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
   "Parental Rights": "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
   "Domestic Violence": "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
-  "Third-Party Custody": "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  "Third-Party Custody": "bg-muted text-foreground/70 dark:bg-muted dark:text-muted-foreground",
 };
 
 function CategoryBadge({ category }: { category: string }) {

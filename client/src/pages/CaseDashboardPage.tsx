@@ -259,7 +259,7 @@ function CollapsibleSection({
             : <ChevronDown className="w-3.5 h-3.5" />}
         </span>
       </button>
-      {open && <div className="mt-2">{children}</div>}
+      {open && <div className="mt-2 animate-fade-in">{children}</div>}
     </div>
   );
 }

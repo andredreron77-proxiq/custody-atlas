@@ -14,6 +14,42 @@ The application aims to be a comprehensive resource for understanding child cust
 
 Preferred communication style: Simple, everyday language.
 
+## Design System
+
+### Tokens (index.css + tailwind.config.ts)
+- **Primary**: navy `222 47% 11%` (light) / blue `217 91% 60%` (dark)
+- **Gold accent**: `--gold: 38 56% 43%` (light) / `38 60% 55%` (dark) — Tailwind: `bg-gold`, `text-gold`
+- **Border radius**: `rounded-lg` = 12px, `rounded-md` = 8px, `rounded-sm` = 4px
+- **Shadows**: `shadow-sm` on cards, `shadow-xs` on icon marks/badges — no elevation on non-interactive cards
+- **Semantic status colors**: amber=county procedures, blue=document scope indicator, green=confirmations, red=destructive
+
+### Motion
+- `animate-fade-in` (220ms ease, 5px translateY) — applied to PageShell, PageShellWide, AuthRequiredCard, LawSectionCard expand content, CollapsibleSection open content
+- `animate-fade-in-fast` (140ms, opacity only), `animate-slide-down` (180ms) available globally
+- Respects `prefers-reduced-motion`
+- All interactive elements use `transition-colors` via the `hover-elevate` / `active-elevate` system or explicit classes
+
+### Layout Primitives (PageShell.tsx)
+- `PageShell` — max-w-4xl centred wrapper with entrance animation
+- `PageShellWide` — max-w-5xl for data-dense pages
+- `PageHeader` — eyebrow + serif h1 + subtitle + optional right slot
+- `SectionLabel` — 11px uppercase tracking label
+- `Divider` — subtle hr
+- `EmptyState` — icon + title + description + optional action; consistent zero-data treatment
+- `InfoRow` — labelled key/value row for detail panels
+
+### Typography
+- Page titles: `font-serif text-2xl md:text-3xl font-semibold` via PageHeader
+- Card section titles: `text-sm font-semibold` (override CardTitle default of `text-base`)
+- Section labels: `text-[11px] font-semibold uppercase tracking-widest text-muted-foreground`
+- Body: `text-sm leading-relaxed text-muted-foreground`
+- Lead sentences (LawSectionCard): `text-sm font-medium text-foreground`
+
+### No Hardcoded Colors in App Pages
+- All slate/gray utility classes replaced with `text-foreground`, `text-muted-foreground`, `bg-background`, `bg-muted`
+- Semantic status colors (amber for county, blue for doc scope, green/red) are intentional
+- Header/Footer/AuthButton use slate for on-dark-navy contrast — also intentional
+
 ## System Architecture
 
 ### Frontend (React + TypeScript)

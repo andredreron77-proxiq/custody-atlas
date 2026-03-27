@@ -87,7 +87,7 @@ export function LawSectionCard({
       </CardHeader>
 
       {expanded && (
-        <CardContent className="px-5 pb-5 pt-0">
+        <CardContent className="px-5 pb-5 pt-0 animate-fade-in">
           <div className="h-px bg-border mb-4" />
 
           {rest.length === 0 ? (

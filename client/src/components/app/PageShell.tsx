@@ -7,6 +7,8 @@
  *   PageHeader     — consistent title / subtitle / eyebrow / right-slot block
  *   SectionLabel   — small uppercase tracking label used above card/section groups
  *   Divider        — subtle horizontal rule
+ *   EmptyState     — consistent empty / zero-data treatment
+ *   InfoRow        — labelled key/value row used inside detail panels
  *
  * Why this exists:
  *   Before this file, every page invented its own max-width, padding, and
@@ -15,6 +17,7 @@
  */
 
 import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
 
 interface ShellProps {
   children: React.ReactNode;
@@ -23,7 +26,7 @@ interface ShellProps {
 
 export function PageShell({ children, className }: ShellProps) {
   return (
-    <div className={cn("max-w-4xl mx-auto px-4 sm:px-6 py-8 md:py-12", className)}>
+    <div className={cn("max-w-4xl mx-auto px-4 sm:px-6 py-8 md:py-12 animate-fade-in", className)}>
       {children}
     </div>
   );
@@ -31,7 +34,7 @@ export function PageShell({ children, className }: ShellProps) {
 
 export function PageShellWide({ children, className }: ShellProps) {
   return (
-    <div className={cn("max-w-5xl mx-auto px-4 sm:px-6 py-8 md:py-10", className)}>
+    <div className={cn("max-w-5xl mx-auto px-4 sm:px-6 py-8 md:py-10 animate-fade-in", className)}>
       {children}
     </div>
   );
@@ -115,4 +118,50 @@ export function SectionLabel({
 
 export function Divider({ className }: { className?: string }) {
   return <hr className={cn("border-t border-border", className)} aria-hidden />;
+}
+
+/* ── EmptyState ────────────────────────────────────────────────────────────── */
+
+interface EmptyStateProps {
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  className?: string;
+}
+
+export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
+  return (
+    <div className={cn("flex flex-col items-center justify-center text-center py-10 gap-4 animate-fade-in", className)}>
+      <div className="w-12 h-12 rounded-xl border border-border bg-background flex items-center justify-center shadow-xs">
+        <Icon className="w-5 h-5 text-muted-foreground/50" />
+      </div>
+      <div className="space-y-1.5">
+        <p className="font-semibold text-sm text-foreground">{title}</p>
+        {description && (
+          <p className="text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">{description}</p>
+        )}
+      </div>
+      {action && <div>{action}</div>}
+    </div>
+  );
+}
+
+/* ── InfoRow ───────────────────────────────────────────────────────────────── */
+
+interface InfoRowProps {
+  label: string;
+  value: React.ReactNode;
+  icon?: LucideIcon;
+  className?: string;
+}
+
+export function InfoRow({ label, value, icon: Icon, className }: InfoRowProps) {
+  return (
+    <div className={cn("flex items-start gap-2.5 text-sm", className)}>
+      {Icon && <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />}
+      <span className="text-muted-foreground flex-shrink-0 w-28 text-xs">{label}</span>
+      <span className="text-foreground font-medium text-xs leading-relaxed">{value}</span>
+    </div>
+  );
 }
