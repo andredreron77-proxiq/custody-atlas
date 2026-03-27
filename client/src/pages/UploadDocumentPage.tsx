@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import {
   Upload, FileText, Image, AlertTriangle, CheckCircle2,
   Loader2, Scale, HelpCircle, Calendar, FileSearch,
-  ArrowLeft, X, ChevronRight, Lock, MessageSquare,
+  ArrowLeft, ArrowRight, X, ChevronRight, Lock, MessageSquare,
   MapPin, Send, BookOpen, TriangleAlert, ShieldAlert,
   Camera, RotateCcw, Check, Plus, ArrowUp, ArrowDown,
   ScanLine, GripVertical, Bot, User,
