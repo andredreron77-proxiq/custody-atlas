@@ -72,10 +72,8 @@ export function LawSectionCard({
         }}
       >
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Icon className={`w-4 h-4 ${accentColor}`} />
-            </div>
+          <div className="flex items-center gap-3">
+            <Icon className={`w-4 h-4 flex-shrink-0 ${accentColor}`} />
             <span className="font-semibold text-sm">{title}</span>
           </div>
           {expanded ? (

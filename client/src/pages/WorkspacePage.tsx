@@ -936,7 +936,7 @@ export default function WorkspacePage() {
   })();
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6" data-testid="page-workspace">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6 animate-fade-in" data-testid="page-workspace">
       {/* Page header */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">

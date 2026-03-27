@@ -462,7 +462,7 @@ function ActionsPanel({ caseId }: { caseId: string }) {
           return (
             <div
               key={action.id}
-              className={cn("px-4 py-3 flex items-start gap-3", style.border)}
+              className={cn("px-4 py-3 flex items-start gap-3 hover:bg-muted/20 transition-colors", style.border)}
               data-testid={`dashboard-action-item-${action.id}`}
             >
               <div className="min-w-0 flex-1">
@@ -527,7 +527,7 @@ function ActionsPanel({ caseId }: { caseId: string }) {
               {doneActions.map((action) => (
                 <div
                   key={action.id}
-                  className="px-4 py-2.5 flex items-start gap-3 opacity-60"
+                  className="px-4 py-2.5 flex items-start gap-3 opacity-50 hover:opacity-70 transition-opacity"
                   data-testid={`dashboard-action-done-${action.id}`}
                 >
                   <CircleCheck className={cn(
@@ -583,14 +583,10 @@ function ConversationsPanel({
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-conversations-panel">
-      <div className="px-4 py-2.5 flex items-center justify-between gap-2 border-b">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-primary/70" />
-          <span className="text-sm font-semibold text-foreground">Conversations</span>
-        </div>
+      <div className="px-4 py-2 flex items-center justify-end border-b border-border/60">
         <Link href={newChatHref}>
           <a
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             data-testid="link-new-conversation"
           >
             New chat
@@ -715,14 +711,10 @@ function DocumentsPanel({
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-documents-panel">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b">
-        <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4 text-primary/70" />
-          <span className="text-sm font-semibold">Documents</span>
-          {!isLoading && documents.length > 0 && (
-            <span className="text-xs text-muted-foreground">({documents.length})</span>
-          )}
-        </div>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border/60">
+        {!isLoading && documents.length > 0 ? (
+          <span className="text-xs text-muted-foreground">{documents.length} document{documents.length !== 1 ? "s" : ""}</span>
+        ) : <span />}
         <Link href={uploadHref}>
           <a data-testid="link-upload-document-panel">
             <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-[11px] text-muted-foreground hover:text-foreground">
@@ -1845,7 +1837,7 @@ export default function CaseDashboardPage() {
   const isActive = caseRecord.status === "active";
 
   return (
-    <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4" data-testid="case-dashboard-page">
+    <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4 animate-fade-in" data-testid="case-dashboard-page">
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">

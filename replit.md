@@ -23,11 +23,17 @@ Preferred communication style: Simple, everyday language.
 - **Shadows**: `shadow-sm` on cards, `shadow-xs` on icon marks/badges — no elevation on non-interactive cards
 - **Semantic status colors**: amber=county procedures, blue=document scope indicator, green=confirmations, red=destructive
 
-### Motion
-- `animate-fade-in` (220ms ease, 5px translateY) — applied to PageShell, PageShellWide, AuthRequiredCard, LawSectionCard expand content, CollapsibleSection open content
+### Motion & Interaction
+- `animate-fade-in` (220ms ease, 5px translateY) — applied to PageShell, PageShellWide, AuthRequiredCard, and the main content containers of JurisdictionPage, WorkspacePage, CaseDashboardPage, AskAIPage (for pages that don't use PageShell directly)
 - `animate-fade-in-fast` (140ms, opacity only), `animate-slide-down` (180ms) available globally
 - Respects `prefers-reduced-motion`
-- All interactive elements use `transition-colors` via the `hover-elevate` / `active-elevate` system or explicit classes
+- All interactive list rows use `hover:bg-muted/20 transition-colors` — action items in ActionsPanel, conversation rows, history rows
+- Completed action history rows use `hover:opacity-70 transition-opacity` for subtle interaction feedback
+
+### Component Simplification (Premium Polish Pass)
+- `LawSectionCard` icon treatment: Plain icon with `accentColor` only — no icon-box wrapper (`bg-primary/10 w-8 h-8 rounded-md` removed). Reduces visual noise on JurisdictionPage.
+- Dashboard panel headers inside `CollapsibleSection`: Redundant title text removed. `ConversationsPanel` header shows only "New chat" link; `DocumentsPanel` header shows only document count + "Upload" action. CollapsibleSection already renders the section title above.
+- Panel header borders use `border-border/60` (softer) for subtler visual separation
 
 ### Layout Primitives (PageShell.tsx)
 - `PageShell` — max-w-4xl centred wrapper with entrance animation

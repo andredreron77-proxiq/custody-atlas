@@ -601,7 +601,7 @@ export default function AskAIPage() {
 
   /* ── Main Ask AI layout ───────────────────────────────────────────────── */
   return (
-    <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4">
+    <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4 animate-fade-in">
 
       {/* Breadcrumb */}
       <Breadcrumb
