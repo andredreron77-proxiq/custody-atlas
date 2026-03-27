@@ -1,0 +1,802 @@
+FILE: app/page.tsx
+import { Navigation } from "@/components/navigation"
+import { HeroSection } from "@/components/landing/hero-section"
+import { FeaturesSection } from "@/components/landing/features-section"
+import { TrustSection } from "@/components/landing/trust-section"
+import { CTASection } from "@/components/landing/cta-section"
+import { Footer } from "@/components/footer"
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Navigation />
+      <main className="flex-1">
+        <HeroSection />
+        <FeaturesSection />
+        <TrustSection />
+        <CTASection />
+      </main>
+      <Footer />
+    </div>
+  )
+}
+
+
+
+FILE: components/navigation.tsx
+"use client"
+
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import { Menu, Shield, User, LogIn } from "lucide-react"
+import { useState } from "react"
+
+const navItems = [
+  { href: "/", label: "Home" },
+  { href: "/workspace", label: "Workspace", protected: true },
+  { href: "/custody-map", label: "Custody Map" },
+  { href: "/ask-atlas", label: "Ask Atlas" },
+  { href: "/analyze", label: "Analyze" },
+]
+
+export function Logo({ className }: { className?: string }) {
+  return (
+    <Link href="/" className={cn("flex items-center gap-2.5", className)}>
+      <div className="flex items-center justify-center w-8 h-8 bg-navy rounded-lg">
+        <Shield className="w-4 h-4 text-white" />
+      </div>
+      <span className="font-serif text-lg font-semibold text-foreground">
+        Custody Atlas
+      </span>
+    </Link>
+  )
+}
+
+export function Navigation() {
+  const pathname = usePathname()
+  const [isOpen, setIsOpen] = useState(false)
+  const isAuthenticated = false
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="container flex h-14 items-center justify-between">
+        <Logo />
+
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-1">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "px-3 py-1.5 text-sm font-medium transition-colors rounded-md",
+                pathname === item.href
+                  ? "text-foreground bg-secondary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Desktop Auth */}
+        <div className="hidden md:flex items-center gap-2">
+          {isAuthenticated ? (
+            <Button variant="ghost" size="sm" className="gap-2">
+              <User className="w-4 h-4" />
+              Profile
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/login" className="gap-2">
+                  <LogIn className="w-4 h-4" />
+                  Sign In
+                </Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/signup">Get Started</Link>
+              </Button>
+            </>
+          )}
+        </div>
+
+        {/* Mobile Menu */}
+        <Sheet open={isOpen} onOpenChange={setIsOpen}>
+          <SheetTrigger asChild className="md:hidden">
+            <Button variant="ghost" size="icon" className="h-9 w-9">
+              <Menu className="w-5 h-5" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-72">
+            <div className="flex flex-col gap-6 mt-6">
+              <Logo />
+              <nav className="flex flex-col gap-1">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setIsOpen(false)}
+                    className={cn(
+                      "px-4 py-2.5 text-sm font-medium rounded-lg transition-colors",
+                      pathname === item.href
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+              <div className="flex flex-col gap-2 pt-4 border-t">
+                {isAuthenticated ? (
+                  <Button variant="outline" className="w-full">
+                    Profile
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" className="w-full" asChild>
+                      <Link href="/login">Sign In</Link>
+                    </Button>
+                    <Button className="w-full" asChild>
+                      <Link href="/signup">Get Started</Link>
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </header>
+  )
+}
+
+
+
+FILE: components/footer.tsx
+import Link from "next/link"
+import { Logo } from "@/components/navigation"
+
+const footerLinks = {
+  product: [
+    { label: "Features", href: "/#features" },
+    { label: "Custody Map", href: "/custody-map" },
+    { label: "Ask Atlas", href: "/ask-atlas" },
+    { label: "Document Analysis", href: "/analyze" },
+    { label: "Pricing", href: "/pricing" },
+  ],
+  resources: [
+    { label: "Help Center", href: "/help" },
+    { label: "Blog", href: "/blog" },
+    { label: "Custody Basics", href: "/learn" },
+    { label: "State Guides", href: "/guides" },
+  ],
+  legal: [
+    { label: "Privacy Policy", href: "/privacy" },
+    { label: "Terms of Service", href: "/terms" },
+    { label: "Cookie Policy", href: "/cookies" },
+  ],
+  company: [
+    { label: "About Us", href: "/about" },
+    { label: "Contact", href: "/contact" },
+    { label: "Careers", href: "/careers" },
+  ],
+}
+
+export function Footer() {
+  return (
+    <footer className="bg-navy-dark text-white/80">
+      <div className="container py-12">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
+          {/* Brand Column */}
+          <div className="col-span-2 md:col-span-1">
+            <Logo className="mb-3 [&_span]:text-white [&_div]:bg-white/10" />
+            <p className="text-xs text-white/50 mt-3 leading-relaxed">
+              AI-powered custody law guidance. Understand your rights 
+              and make informed decisions.
+            </p>
+          </div>
+
+          {/* Links */}
+          <div>
+            <h4 className="text-xs font-medium text-white/70 uppercase tracking-wide mb-3">Product</h4>
+            <ul className="space-y-2">
+              {footerLinks.product.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-white/50 hover:text-white transition-colors"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-medium text-white/70 uppercase tracking-wide mb-3">Resources</h4>
+            <ul className="space-y-2">
+              {footerLinks.resources.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-white/50 hover:text-white transition-colors"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-medium text-white/70 uppercase tracking-wide mb-3">Legal</h4>
+            <ul className="space-y-2">
+              {footerLinks.legal.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-white/50 hover:text-white transition-colors"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-medium text-white/70 uppercase tracking-wide mb-3">Company</h4>
+            <ul className="space-y-2">
+              {footerLinks.company.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-white/50 hover:text-white transition-colors"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Disclaimer */}
+        <div className="mt-10 pt-6 border-t border-white/10">
+          <p className="text-[11px] text-white/30 max-w-3xl leading-relaxed">
+            <strong className="text-white/40">Legal Disclaimer:</strong> Custody Atlas provides general information 
+            and AI-powered analysis for educational purposes only. This is not legal advice. 
+            Always consult with a licensed attorney for advice specific to your situation.
+          </p>
+        </div>
+
+        {/* Copyright */}
+        <div className="mt-6 pt-6 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-3">
+          <p className="text-xs text-white/40">
+            &copy; {new Date().getFullYear()} Custody Atlas. All rights reserved.
+          </p>
+          <div className="flex items-center gap-5">
+            <Link href="#" className="text-xs text-white/40 hover:text-white transition-colors">
+              Twitter
+            </Link>
+            <Link href="#" className="text-xs text-white/40 hover:text-white transition-colors">
+              LinkedIn
+            </Link>
+            <Link href="#" className="text-xs text-white/40 hover:text-white transition-colors">
+              Facebook
+            </Link>
+          </div>
+        </div>
+      </div>
+    </footer>
+  )
+}
+
+
+
+FILE: components/landing/hero-section.tsx
+"use client"
+
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { ArrowRight, Shield, FileText, MessageSquare } from "lucide-react"
+
+export function HeroSection() {
+  return (
+    <section className="relative overflow-hidden bg-navy pt-24 pb-20 lg:pt-32 lg:pb-28">
+      {/* Subtle background pattern */}
+      <div className="absolute inset-0 opacity-[0.03]">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)`,
+          backgroundSize: '32px 32px'
+        }} />
+      </div>
+
+      <div className="container relative z-10">
+        <div className="max-w-3xl mx-auto text-center">
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 text-sm text-white/70 mb-8">
+            <Shield className="w-3.5 h-3.5" />
+            <span>AI-Powered Custody Guidance</span>
+          </div>
+
+          {/* Headline */}
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-serif font-semibold text-white leading-tight mb-6 text-balance">
+            Understand custody law where you live
+          </h1>
+
+          {/* Subtext */}
+          <p className="text-base md:text-lg text-white/60 max-w-2xl mx-auto mb-10 leading-relaxed text-pretty">
+            Navigate custody decisions with clarity. Our AI analyzes your documents, 
+            explains complex legal terms, and provides state-specific insights.
+          </p>
+
+          {/* CTAs */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Button
+              size="lg"
+              className="bg-white hover:bg-white/90 text-navy font-medium px-6 h-11"
+              asChild
+            >
+              <Link href="/signup">
+                Get Started Free
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Link>
+            </Button>
+            <Button
+              size="lg"
+              variant="ghost"
+              className="text-white/80 hover:text-white hover:bg-white/10 h-11 px-6"
+              asChild
+            >
+              <Link href="/custody-map">
+                Explore Custody Map
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* Product Preview */}
+        <div className="mt-16 lg:mt-20 max-w-4xl mx-auto">
+          <div className="rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+            {/* Browser chrome */}
+            <div className="bg-navy-dark px-4 py-3 flex items-center gap-2 border-b border-white/10">
+              <div className="flex gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+              </div>
+              <div className="flex-1 ml-4">
+                <div className="bg-white/10 rounded h-5 max-w-xs" />
+              </div>
+            </div>
+            
+            {/* App preview */}
+            <div className="bg-background p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <QuickActionPreview
+                  icon={FileText}
+                  title="Upload Document"
+                  description="Analyze custody agreements"
+                />
+                <QuickActionPreview
+                  icon={MessageSquare}
+                  title="Ask Atlas"
+                  description="Get instant legal answers"
+                />
+                <QuickActionPreview
+                  icon={Shield}
+                  title="View Your Cases"
+                  description="Track your progress"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Trust indicators */}
+        <div className="mt-12 flex flex-wrap items-center justify-center gap-8 text-sm text-white/40">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            <span>50 states covered</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            <span>Documents encrypted</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4" />
+            <span>24/7 AI assistance</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function QuickActionPreview({ 
+  icon: Icon, 
+  title, 
+  description 
+}: { 
+  icon: React.ElementType
+  title: string
+  description: string 
+}) {
+  return (
+    <div className="p-5 rounded-lg bg-secondary border border-border">
+      <div className="w-9 h-9 rounded-lg bg-navy/10 flex items-center justify-center mb-3">
+        <Icon className="w-4.5 h-4.5 text-navy" />
+      </div>
+      <h3 className="font-medium text-foreground text-sm mb-1">{title}</h3>
+      <p className="text-xs text-muted-foreground">{description}</p>
+    </div>
+  )
+}
+
+
+
+FILE: components/landing/features-section.tsx
+import { FileSearch, MessageSquareText, MapPin, ShieldCheck, Clock, Users } from "lucide-react"
+
+const features = [
+  {
+    icon: FileSearch,
+    title: "Document Analysis",
+    description: "Upload custody agreements and court orders. Get plain-language summaries, risk identification, and clause-by-clause breakdowns.",
+  },
+  {
+    icon: MessageSquareText,
+    title: "Ask Atlas AI",
+    description: "Ask questions in plain English. Get clear explanations of legal concepts tailored to your situation.",
+  },
+  {
+    icon: MapPin,
+    title: "State-Specific Insights",
+    description: "Custody laws vary by state. Our interactive map shows you exactly what applies where you live.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Private & Secure",
+    description: "Your documents are encrypted and never shared. You control what gets stored.",
+  },
+  {
+    icon: Clock,
+    title: "Available 24/7",
+    description: "Get guidance when you need it, not just during business hours. No appointments required.",
+  },
+  {
+    icon: Users,
+    title: "Built for Parents",
+    description: "Designed for the emotional weight of custody decisions. Every feature reduces stress, not adds to it.",
+  },
+]
+
+export function FeaturesSection() {
+  return (
+    <section className="py-20 bg-background">
+      <div className="container">
+        <div className="text-center max-w-2xl mx-auto mb-14">
+          <h2 className="text-2xl md:text-3xl font-serif font-semibold text-foreground mb-3 text-balance">
+            Everything you need to navigate custody
+          </h2>
+          <p className="text-muted-foreground">
+            AI-powered tools designed specifically for parents facing custody challenges.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 max-w-5xl mx-auto">
+          {features.map((feature, index) => (
+            <div
+              key={index}
+              className="p-6 rounded-xl bg-card border border-border hover:border-foreground/20 transition-colors"
+            >
+              <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center mb-4">
+                <feature.icon className="w-5 h-5 text-foreground" />
+              </div>
+              <h3 className="font-medium text-foreground mb-2">
+                {feature.title}
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {feature.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+
+
+FILE: components/landing/trust-section.tsx
+import { Quote } from "lucide-react"
+
+const testimonials = [
+  {
+    quote: "After months of confusion, Atlas helped me understand exactly what my custody agreement meant. I finally felt prepared for my court date.",
+    author: "Sarah M.",
+    role: "Mother of 2, Georgia",
+  },
+  {
+    quote: "The document analysis feature found clauses in my agreement I didn&apos;t even know to look for. It saved me thousands in attorney fees.",
+    author: "Michael T.",
+    role: "Father of 1, Texas",
+  },
+  {
+    quote: "Being able to ask questions at 2am when I couldn&apos;t sleep, and actually get helpful answers — that meant everything to me.",
+    author: "Jennifer R.",
+    role: "Mother of 3, California",
+  },
+]
+
+export function TrustSection() {
+  return (
+    <section className="py-20 bg-secondary/50">
+      <div className="container">
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <h2 className="text-2xl md:text-3xl font-serif font-semibold text-foreground mb-3 text-balance">
+            Trusted by parents nationwide
+          </h2>
+          <p className="text-muted-foreground">
+            Thousands of parents have used Custody Atlas to understand their rights 
+            and make informed decisions.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto">
+          {testimonials.map((testimonial, index) => (
+            <div
+              key={index}
+              className="p-6 rounded-xl bg-card border border-border"
+            >
+              <Quote className="w-8 h-8 text-muted-foreground/20 mb-3" />
+              <p className="text-sm text-foreground leading-relaxed mb-5">
+                {testimonial.quote}
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-navy flex items-center justify-center text-white text-xs font-medium">
+                  {testimonial.author.split(" ")[0][0]}
+                  {testimonial.author.split(" ")[1][0]}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-foreground">{testimonial.author}</div>
+                  <div className="text-xs text-muted-foreground">{testimonial.role}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+
+
+FILE: components/landing/cta-section.tsx
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { ArrowRight, Shield } from "lucide-react"
+
+export function CTASection() {
+  return (
+    <section className="py-20 bg-navy">
+      <div className="container">
+        <div className="max-w-2xl mx-auto text-center">
+          <h2 className="text-2xl md:text-3xl font-serif font-semibold text-white mb-4 text-balance">
+            Ready to understand your custody situation?
+          </h2>
+
+          <p className="text-white/60 mb-8 max-w-lg mx-auto">
+            Join thousands of parents making informed custody decisions 
+            with AI-powered insights. No credit card required.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Button
+              size="lg"
+              className="bg-white hover:bg-white/90 text-navy font-medium px-6 h-11"
+              asChild
+            >
+              <Link href="/signup">
+                Get Started Free
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Link>
+            </Button>
+            <Button
+              size="lg"
+              variant="ghost"
+              className="text-white/80 hover:text-white hover:bg-white/10 h-11 px-6"
+              asChild
+            >
+              <Link href="/ask-atlas">
+                Try Ask Atlas
+              </Link>
+            </Button>
+          </div>
+
+          <p className="mt-6 text-xs text-white/40 flex items-center justify-center gap-1.5">
+            <Shield className="w-3.5 h-3.5" />
+            Your data is encrypted and never shared
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+
+
+FILE: components/ui/button.tsx
+import * as React from 'react'
+import { Slot } from '@radix-ui/react-slot'
+import { cva, type VariantProps } from 'class-variance-authority'
+
+import { cn } from '@/lib/utils'
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        destructive:
+          'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
+        outline:
+          'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50',
+        secondary:
+          'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+        ghost:
+          'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
+        link: 'text-primary underline-offset-4 hover:underline',
+      },
+      size: {
+        default: 'h-9 px-4 py-2 has-[>svg]:px-3',
+        sm: 'h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5',
+        lg: 'h-10 rounded-md px-6 has-[>svg]:px-4',
+        icon: 'size-9',
+        'icon-sm': 'size-8',
+        'icon-lg': 'size-10',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  },
+)
+
+function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  ...props
+}: React.ComponentProps<'button'> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot : 'button'
+
+  return (
+    <Comp
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+
+
+
+FILE: components/ui/card.tsx
+import * as React from 'react'
+
+import { cn } from '@/lib/utils'
+
+function Card({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card"
+      className={cn(
+        'bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card-header"
+      className={cn(
+        '@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card-title"
+      className={cn('leading-none font-semibold', className)}
+      {...props}
+    />
+  )
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn('text-muted-foreground text-sm', className)}
+      {...props}
+    />
+  )
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn(
+        'col-start-2 row-span-2 row-start-1 self-start justify-self-end',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card-content"
+      className={cn('px-6', className)}
+      {...props}
+    />
+  )
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn('flex items-center px-6 [.border-t]:pt-6', className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+}
+
+
