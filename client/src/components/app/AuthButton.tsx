@@ -17,7 +17,7 @@ import {
   LogOut, Mail, Loader2, ArrowLeft, Send,
   ShieldCheck, BrainCircuit, BookmarkCheck,
 } from "lucide-react";
-import logoSrc from "@assets/Custody_Atlas_Logo_v3_1774631111605.png";
+import { LogoMark } from "./LogoMark";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -95,11 +95,9 @@ function TrustStrip() {
 function DialogBrand({ subtitle }: { subtitle: string }) {
   return (
     <div className="flex flex-col items-center text-center gap-2.5 pt-2 pb-1">
-      <img
-        src={logoSrc}
-        alt="Custody Atlas"
-        className="h-14 w-14 object-contain"
-      />
+      <div className="w-14 h-14 rounded-2xl bg-[#0f172a] flex items-center justify-center shadow-sm">
+        <LogoMark size={42} variant="onDark" />
+      </div>
       <div className="space-y-0.5">
         <p className="text-base font-semibold tracking-tight">Custody Atlas</p>
         <p className="text-xs text-muted-foreground leading-snug max-w-[230px]">{subtitle}</p>

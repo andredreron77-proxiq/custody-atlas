@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock, ShieldCheck, HelpCircle } from "lucide-react";
-import logoSrc from "@assets/Custody_Atlas_Logo_v3_1774631111605.png";
+import { LogoMark } from "./LogoMark";
 import { useQuery } from "@tanstack/react-query";
 import { AuthButton } from "./AuthButton";
 import { UsageIndicator } from "./UsageIndicator";
@@ -67,11 +67,7 @@ export function Header() {
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Custody Atlas home">
-            <img
-              src={logoSrc}
-              alt="Custody Atlas"
-              className="h-8 w-8 object-contain flex-shrink-0 opacity-90"
-            />
+            <LogoMark size={32} variant="onDark" />
             <span className="hidden sm:block font-semibold text-white text-sm tracking-tight">
               Custody Atlas
             </span>
