@@ -1,0 +1,128 @@
+🔷 1. NAVIGATION
+
+Left:
+
+Logo (refined — see section below)
+
+Custody Atlas (clean, medium weight)
+
+Right:
+
+Home
+
+Workspace 🔒
+
+Custody Map
+
+Ask Atlas 🔒
+
+Analyze Document 🔒
+
+Sign In (primary action button style, subtle)
+
+🔷 2. HERO SECTION
+Eyebrow (small, soft badge)
+
+AI-powered custody guidance
+
+Headline
+
+Understand custody law where you live
+
+Subheadline
+
+Make confident custody decisions for your family.
+Analyze agreements, understand legal terms, and get guidance tailored to your state.
+
+CTA Row
+
+[ Get Started Free ] (primary)
+[ Explore Custody Map ] (secondary, ghost style)
+
+Trust Row (light, subtle)
+
+✔ State-specific insights
+✔ Secure document analysis
+✔ Plain-English explanations
+
+🔷 3. CREDIBILITY STRIP
+
+Soft background band:
+
+Designed for real parents navigating custody
+
+Built to simplify complex legal decisions
+
+Private, secure, and easy to use
+
+🔷 4. CORE FEATURES (OUTCOME-BASED)
+Section Title
+
+Everything you need to navigate custody with clarity
+
+Card 1
+
+Understand your custody agreement
+Upload documents and get clear explanations of key terms, risks, and implications.
+
+Card 2
+
+Ask questions and get real answers
+Get instant, plain-English responses to your custody questions.
+
+Card 3
+
+See how laws differ by state
+Explore custody laws where you live and understand what applies to your situation.
+
+Card 4
+
+Track your case and decisions
+Keep everything organized in one place as you move through the process.
+
+🔷 5. HOW IT WORKS
+Title
+
+Simple, guided, and built for clarity
+
+Steps
+
+Upload your document or ask a question
+
+Get clear, structured insights instantly
+
+Make informed decisions with confidence
+
+🔷 6. DIFFERENTIATION SECTION
+Title
+
+Built for clarity, not complexity
+
+No legal jargon overload
+
+No guesswork about your rights
+
+No need to navigate this alone
+
+🔷 7. FINAL CTA
+Headline
+
+Start understanding your custody options today
+
+Subtext
+
+Get clarity, confidence, and guidance — all in one place.
+
+CTA
+
+[ Get Started Free ]
+
+🔷 8. FOOTER
+
+Custody Atlas
+
+Privacy
+
+Terms
+
+Disclaimer (important for legal tone)

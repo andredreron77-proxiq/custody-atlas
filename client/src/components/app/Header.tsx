@@ -66,27 +66,19 @@ export function Header() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 group" aria-label="Custody Atlas home">
+          <Link href="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Custody Atlas home">
             <img
               src={logoSrc}
               alt="Custody Atlas"
-              className="h-9 w-9 object-contain flex-shrink-0"
+              className="h-8 w-8 object-contain flex-shrink-0 opacity-90"
             />
-            <div className="hidden sm:block">
-              <span className="font-bold text-white text-sm tracking-tight leading-none block">
-                Custody Atlas
-              </span>
-              <span className="text-blue-300/80 text-[11px] leading-none block mt-0.5">
-                Understand custody law where you live.
-              </span>
-            </div>
-            <span className="sm:hidden font-bold text-white text-sm tracking-tight">
+            <span className="hidden sm:block font-semibold text-white text-sm tracking-tight">
               Custody Atlas
             </span>
           </Link>
 
           {/* Desktop navigation */}
-          <nav className="hidden md:flex items-center gap-0.5" aria-label="Main navigation">
+          <nav className="hidden md:flex items-center gap-0.5 ml-2" aria-label="Main navigation">
             {NAV_ITEMS.map(({ label, href, icon: Icon, exact, gated }) => {
               const active = isActive(href, exact);
               return (
@@ -94,23 +86,22 @@ export function Header() {
                   key={href}
                   href={href}
                   className={`
-                    relative flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors
+                    relative flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors
                     ${active
                       ? "text-white bg-white/10"
-                      : "text-slate-300 hover:text-white hover:bg-white/8"
+                      : "text-slate-400 hover:text-white hover:bg-white/8"
                     }
                   `}
                   data-testid={`nav-${label.toLowerCase().replace(/\s+/g, "-")}`}
                 >
-                  <Icon className="w-3.5 h-3.5 flex-shrink-0" />
                   <span className={label === "Analyze Document" ? "hidden lg:inline" : ""}>
                     {label}
                   </span>
                   {gated && (
-                    <Lock className="w-2.5 h-2.5 text-slate-500 flex-shrink-0" aria-label="Sign-in required" />
+                    <Lock className="w-2.5 h-2.5 text-slate-600 flex-shrink-0" aria-label="Sign-in required" />
                   )}
                   {active && (
-                    <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-400 rounded-full" />
+                    <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-white/40 rounded-full" />
                   )}
                 </Link>
               );
