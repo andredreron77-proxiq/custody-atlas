@@ -94,10 +94,8 @@ function TrustStrip() {
 /* ── Product header shown inside the dialog ──────────────────────────────── */
 function DialogBrand({ subtitle }: { subtitle: string }) {
   return (
-    <div className="flex flex-col items-center text-center gap-2.5 pt-2 pb-1">
-      <div className="w-14 h-14 rounded-2xl bg-[#0f172a] flex items-center justify-center shadow-sm">
-        <LogoMark size={42} variant="onDark" />
-      </div>
+    <div className="flex flex-col items-center text-center gap-2 pt-2 pb-1">
+      <LogoMark size={36} variant="color" />
       <div className="space-y-0.5">
         <p className="text-base font-semibold tracking-tight">Custody Atlas</p>
         <p className="text-xs text-muted-foreground leading-snug max-w-[230px]">{subtitle}</p>

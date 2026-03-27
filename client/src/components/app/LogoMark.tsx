@@ -35,9 +35,9 @@ const SHIELD = {
 };
 
 const BEAM = {
-  color:  "#b5922f",   // muted gold
-  onDark: "#b5922f",
-  mono:   "#334155",   // slate-700
+  color:  "#b5922f",              // muted gold — on white, full saturation reads cleanly
+  onDark: "rgba(181,146,47,0.7)", // same gold, 70% opacity — integrates without competing
+  mono:   "#334155",              // slate-700
 };
 
 const SCALES = {

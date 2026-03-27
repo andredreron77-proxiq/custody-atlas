@@ -66,9 +66,9 @@ export function Header() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Custody Atlas home">
-            <LogoMark size={32} variant="onDark" />
-            <span className="hidden sm:block font-semibold text-white text-sm tracking-tight">
+          <Link href="/" className="flex items-center gap-2.5 flex-shrink-0" aria-label="Custody Atlas home">
+            <LogoMark size={26} variant="onDark" />
+            <span className="hidden sm:block font-semibold text-white tracking-tight" style={{ fontSize: "15px" }}>
               Custody Atlas
             </span>
           </Link>
