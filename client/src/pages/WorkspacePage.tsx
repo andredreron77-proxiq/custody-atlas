@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Link } from "wouter";
 import {
   LayoutDashboard, MapPin, MessageSquare, FileSearch, Map,
-  GitCompare, ShieldCheck, Lock, FileText, ArrowRight,
-  ChevronRight, BookOpen, Scale, Lightbulb, X,
+  GitCompare, ShieldCheck, FileText, ArrowRight,
+  BookOpen, Scale, Lightbulb, X,
   Clock, Play, Loader2, CalendarDays, PlusCircle, Trash2,
   Sparkles, ChevronDown, Tag, TriangleAlert, Zap,
 } from "lucide-react";
@@ -352,11 +352,11 @@ function TimelineSection({ events, isLoading }: {
   });
 
   return (
-    <Card className="shadow-sm border md:col-span-2" data-testid="card-timeline">
+    <Card className="border border-border/60 bg-muted/20 shadow-none" data-testid="card-timeline">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <CalendarDays className="w-3.5 h-3.5 text-primary" />
+            <CalendarDays className="w-3.5 h-3.5 text-primary/70" />
             Case Timeline
           </CardTitle>
           {!showForm && (
@@ -505,11 +505,11 @@ function CaseSummarySection() {
   });
 
   return (
-    <Card id="case-summary" className="shadow-sm border md:col-span-2" data-testid="card-case-summary">
+    <Card id="case-summary" className="border border-border/60 bg-muted/20 shadow-none" data-testid="card-case-summary">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <Sparkles className="w-3.5 h-3.5 text-primary/70" />
             Case Summary
           </CardTitle>
           {summary && (
@@ -652,8 +652,10 @@ function DocumentsSection({
   const qc = useQueryClient();
   const { toast } = useToast();
   const [localTypes, setLocalTypes] = useState<Record<string, DocType>>({});
-  // Track which doc is pending delete confirmation (null = dialog closed).
   const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const MAX_VISIBLE = 4;
 
   const typeMutation = useMutation({
     mutationFn: ({ docId, docType }: { docId: string; docType: DocType }) =>
@@ -720,7 +722,20 @@ function DocumentsSection({
     groups[t]!.push(doc);
   }
   const groupOrder: DocType[] = ["custody_order", "communication", "financial", "other"];
-  const activeGroups = groupOrder.filter((t) => groups[t]?.length);
+
+  // Flatten in group order, then cap
+  const orderedDocs = groupOrder.flatMap((t) => groups[t] ?? []);
+  const visibleDocs = showAll ? orderedDocs : orderedDocs.slice(0, MAX_VISIBLE);
+  const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
+
+  // Re-group only the visible slice
+  const visibleGroups: Partial<Record<DocType, WorkspaceDocument[]>> = {};
+  for (const doc of visibleDocs) {
+    const t = getDocType(doc);
+    if (!visibleGroups[t]) visibleGroups[t] = [];
+    visibleGroups[t]!.push(doc);
+  }
+  const activeGroups = groupOrder.filter((t) => visibleGroups[t]?.length);
 
   return (
     <div className="space-y-4" data-testid="list-documents-grouped">
@@ -731,7 +746,7 @@ function DocumentsSection({
             <span className="text-[10px] text-muted-foreground">{groups[groupType]!.length}</span>
           </div>
           <ul className="space-y-2">
-            {groups[groupType]!.map((doc) => (
+            {visibleGroups[groupType]!.map((doc) => (
               <li
                 key={doc.id}
                 className="rounded-lg border p-3 space-y-2"
@@ -813,6 +828,27 @@ function DocumentsSection({
           </ul>
         </div>
       ))}
+
+      {/* View all / collapse */}
+      {!showAll && hiddenCount > 0 && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/50 rounded-lg py-2 hover:bg-muted/30 transition-colors"
+          data-testid="button-show-all-docs"
+        >
+          <FileText className="w-3.5 h-3.5" />
+          View all {orderedDocs.length} documents
+        </button>
+      )}
+      {showAll && orderedDocs.length > MAX_VISIBLE && (
+        <button
+          onClick={() => setShowAll(false)}
+          className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+          data-testid="button-collapse-docs"
+        >
+          Show fewer
+        </button>
+      )}
 
       {/* ── Shared delete confirmation dialog ────────────────────────────── */}
       <AlertDialog
@@ -994,36 +1030,204 @@ export default function WorkspacePage() {
         />
       )}
 
-      {/* Cases */}
-      <Card className="shadow-sm border" data-testid="card-cases">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <LayoutDashboard className="w-3.5 h-3.5 text-primary" />
-            My Cases
-          </CardTitle>
+      {/* ── PRIMARY: My Cases ───────────────────────────────────────── */}
+      <Card className="shadow-sm border bg-card" data-testid="card-cases">
+        <CardHeader className="pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <LayoutDashboard className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm font-semibold text-foreground">My Cases</CardTitle>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Your active cases and legal matters
+            </p>
+          </div>
         </CardHeader>
         <CardContent>
           <CaseSelector />
         </CardContent>
       </Card>
 
-      {/* Dashboard grid */}
+      {/* ── PRIMARY: Quick Actions ──────────────────────────────────── */}
+      <Card className="shadow-sm border bg-card" data-testid="card-quick-actions">
+        <CardHeader className="pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm font-semibold text-foreground">Quick Actions</CardTitle>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              What would you like to do?
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className={`grid gap-3 ${workspaceState === "active_workspace" ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"}`}>
+            {(workspaceState === "active_workspace"
+              ? [
+                  { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
+                  { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
+                ]
+              : [
+                  { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
+                  { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
+                  { href: "/custody-map", icon: Map, bg: "bg-violet-100 dark:bg-violet-950/40", color: "text-violet-600 dark:text-violet-400", label: "Explore custody map", testId: "quick-action-explore-map" },
+                  { href: "/custody-map?mode=compare", icon: GitCompare, bg: "bg-amber-100 dark:bg-amber-950/40", color: "text-amber-600 dark:text-amber-400", label: "Compare states", testId: "quick-action-compare-states" },
+                ]
+            ).map(({ href, icon: Icon, bg, color, label, testId }) => (
+              <Link key={testId} href={href}>
+                <button
+                  className="w-full flex flex-col items-start gap-2 rounded-lg border bg-card p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left group"
+                  data-testid={testId}
+                >
+                  <div className={`w-7 h-7 rounded-md ${bg} flex items-center justify-center`}>
+                    <Icon className={`w-3.5 h-3.5 ${color}`} />
+                  </div>
+                  <span className="text-xs font-medium leading-snug group-hover:text-primary transition-colors">{label}</span>
+                </button>
+              </Link>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── SECONDARY: Documents (3/5) + Conversations (2/5) ─────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+
+        {/* Documents */}
+        <Card className="md:col-span-3 border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="card-recent-documents">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-primary/70" />
+                Documents
+              </CardTitle>
+              <Link href="/upload-document">
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 px-2.5" data-testid="button-upload-new-doc">
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  Upload
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <DocumentsSection
+              documents={documents}
+              isLoading={isLoadingWorkspace && !!user}
+              askAIPath={askAIPath}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Conversations */}
+        <Card className="md:col-span-2 border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="card-recent-conversations">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-primary/70" />
+                Conversations
+              </CardTitle>
+              {user && (
+                <span className="text-[10px] text-muted-foreground/60 leading-none">auto-saved</span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!user ? (
+              <EmptyState
+                icon={MessageSquare}
+                message="Sign in to save and resume conversations"
+                ctaLabel="Ask Atlas"
+                ctaHref={askAIPath}
+                testId="empty-conversations-unauth"
+              />
+            ) : isLoadingWorkspace ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : threads.length > 0 ? (
+              <div className="space-y-2">
+                <ul className="space-y-1.5" data-testid="list-recent-conversations">
+                  {threads.slice(0, 3).map((thread) => {
+                    const params = new URLSearchParams({ thread: thread.id });
+                    if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
+                    if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
+                    return (
+                      <li
+                        key={thread.id}
+                        className="flex items-start justify-between gap-2 rounded-lg border bg-card p-2.5 hover:bg-muted/30 transition-colors"
+                        data-testid={`conversation-item-${thread.id}`}
+                      >
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <p className="text-xs font-medium text-foreground leading-snug line-clamp-2">
+                            {thread.title ?? "Custody Conversation"}
+                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {thread.jurisdictionState && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                <MapPin className="w-2 h-2" />{thread.jurisdictionState}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                              <Clock className="w-2 h-2" />{relativeTime(thread.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+                        <Link href={`/ask?${params.toString()}`}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-shrink-0 text-[10px] gap-1 h-6 px-2"
+                            data-testid={`button-resume-${thread.id}`}
+                          >
+                            <Play className="w-2 h-2" />
+                            Resume
+                          </Button>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {threads.length > 3 && (
+                  <Link href={askAIPath}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-1.5 h-7 text-xs mt-1"
+                      data-testid="button-show-all-conversations"
+                    >
+                      View all {threads.length} conversations
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <EmptyState
+                icon={MessageSquare}
+                message="Your conversations will appear here after you ask your first question"
+                ctaLabel="Ask Atlas"
+                ctaHref={askAIPath}
+                testId="empty-recent-conversations"
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── SECONDARY: Jurisdiction + Map ────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* ── A: Jurisdiction Card ─────────────────────────────────── */}
-        <Card className="shadow-sm border" data-testid="card-jurisdiction">
+        {/* Jurisdiction */}
+        <Card className="border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="card-jurisdiction">
           <CardHeader className="pb-3">
             <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-primary" />
+              <MapPin className="w-3.5 h-3.5 text-primary/70" />
               Jurisdiction
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             {jurisdiction ? (
               <>
-                {/* In new_user state, show the full location block for orientation.
-                    In active_workspace, JurisdictionContextHeader above already shows
-                    state/county — compact to just the two action buttons. */}
                 {workspaceState === "new_user" && (
                   <div>
                     <p className="text-xl font-bold text-foreground" data-testid="text-workspace-state">{jurisdiction.state}</p>
@@ -1071,186 +1275,15 @@ export default function WorkspacePage() {
           </CardContent>
         </Card>
 
-        {/* ── B: Quick Actions Card ──────────────────────────────── */}
-        <Card className="shadow-sm border" data-testid="card-quick-actions">
+        {/* Custody Map */}
+        <Card className="border border-border/60 shadow-none bg-gradient-to-br from-blue-50/60 to-slate-50/60 dark:from-blue-950/15 dark:to-slate-900/15" data-testid="card-custody-map">
           <CardHeader className="pb-3">
             <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-              <ChevronRight className="w-3.5 h-3.5 text-primary" />
-              Quick Actions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* active_workspace: 2-tile row — Ask + Upload (Map/Compare live in Map card below).
-                new_user: all 4 tiles for broader orientation. */}
-            <div className="grid grid-cols-2 gap-2">
-              {(workspaceState === "active_workspace"
-                ? [
-                    { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
-                    { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
-                  ]
-                : [
-                    { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
-                    { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
-                    { href: "/custody-map", icon: Map, bg: "bg-violet-100 dark:bg-violet-950/40", color: "text-violet-600 dark:text-violet-400", label: "Explore custody map", testId: "quick-action-explore-map" },
-                    { href: "/custody-map?mode=compare", icon: GitCompare, bg: "bg-amber-100 dark:bg-amber-950/40", color: "text-amber-600 dark:text-amber-400", label: "Compare states", testId: "quick-action-compare-states" },
-                  ]
-              ).map(({ href, icon: Icon, bg, color, label, testId }) => (
-                <Link key={testId} href={href}>
-                  <button
-                    className="w-full flex flex-col items-start gap-2 rounded-lg border bg-card p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left group"
-                    data-testid={testId}
-                  >
-                    <div className={`w-7 h-7 rounded-md ${bg} flex items-center justify-center`}>
-                      <Icon className={`w-3.5 h-3.5 ${color}`} />
-                    </div>
-                    <span className="text-xs font-medium leading-snug group-hover:text-primary transition-colors">{label}</span>
-                  </button>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ── C: Documents Card — grouped by type ─────────────────── */}
-        <Card className="shadow-sm border" data-testid="card-recent-documents">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-primary" />
-                Documents
-              </CardTitle>
-              <Link href="/upload-document">
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5 px-2" data-testid="button-upload-new-doc">
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  Upload
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <DocumentsSection
-              documents={documents}
-              isLoading={isLoadingWorkspace && !!user}
-              askAIPath={askAIPath}
-            />
-          </CardContent>
-        </Card>
-
-        {/* ── D: Recent Conversations Card ──────────────────────── */}
-        <Card className="shadow-sm border" data-testid="card-recent-conversations">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-primary" />
-                Recent Conversations
-              </CardTitle>
-              {user && (
-                <span className="text-[10px] text-muted-foreground leading-none">auto-saved</span>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {!user ? (
-              <EmptyState
-                icon={MessageSquare}
-                message="Sign in to save and resume conversations"
-                ctaLabel="Ask Atlas"
-                ctaHref={askAIPath}
-                testId="empty-conversations-unauth"
-              />
-            ) : isLoadingWorkspace ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-              </div>
-            ) : threads.length > 0 ? (
-              <div className="space-y-2">
-                <ul className="space-y-2" data-testid="list-recent-conversations">
-                  {threads.slice(0, 3).map((thread) => {
-                    const params = new URLSearchParams({ thread: thread.id });
-                    if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
-                    if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
-                    return (
-                      <li
-                        key={thread.id}
-                        className="flex items-start justify-between gap-3 rounded-lg border p-3 hover:bg-muted/30 transition-colors"
-                        data-testid={`conversation-item-${thread.id}`}
-                      >
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">
-                            {thread.title ?? "Custody Conversation"}
-                          </p>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {thread.jurisdictionState && (
-                              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
-                              </span>
-                            )}
-                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <Clock className="w-2.5 h-2.5" />{relativeTime(thread.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-                        <Link href={`/ask?${params.toString()}`}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-shrink-0 text-xs gap-1 h-7 px-2.5"
-                            data-testid={`button-resume-${thread.id}`}
-                          >
-                            <Play className="w-2.5 h-2.5" />
-                            Resume
-                          </Button>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {threads.length > 3 && (
-                  <Link href={askAIPath}>
-                    <button
-                      className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-                      data-testid="button-show-all-conversations"
-                    >
-                      +{threads.length - 3} more conversations
-                    </button>
-                  </Link>
-                )}
-              </div>
-            ) : (
-              <EmptyState
-                icon={MessageSquare}
-                message="Your conversations will appear here after you ask your first question"
-                ctaLabel="Ask Atlas"
-                ctaHref={askAIPath}
-                testId="empty-recent-conversations"
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ── E: Case Timeline (full width) ───────────────────────── */}
-        {user && (
-          <TimelineSection
-            events={timelineEvents}
-            isLoading={isLoadingWorkspace && !!user}
-          />
-        )}
-
-        {/* ── F: Case Summary (full width) ────────────────────────── */}
-        {user && (
-          <CaseSummarySection />
-        )}
-
-        {/* ── G: Custody Map Card ────────────────────────────────── */}
-        <Card className="shadow-sm border bg-gradient-to-br from-blue-50 to-slate-50 dark:from-blue-950/20 dark:to-slate-900/20" data-testid="card-custody-map">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-              <Map className="w-3.5 h-3.5 text-primary" />
+              <Map className="w-3.5 h-3.5 text-primary/70" />
               Custody Map
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Description only shown in new_user — returning users already know the map. */}
             {workspaceState === "new_user" && (
               <p className="text-sm text-muted-foreground leading-relaxed mb-3">
                 Explore custody laws across the United States and compare key legal differences between states.
@@ -1272,43 +1305,34 @@ export default function WorkspacePage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* ── H: Privacy & Trust Card ────────────────────────────── */}
-        <Card className="shadow-sm border" data-testid="card-privacy-trust">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-              Privacy &amp; Trust
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="space-y-2.5">
-              {[
-                { icon: FileText, label: "Secure document analysis", desc: "Documents are processed securely and never retained." },
-                { icon: Lock, label: "Private AI guidance", desc: "Your questions are confidential and never shared." },
-                { icon: Scale, label: "You control your uploads", desc: "Upload and delete documents on your own terms." },
-              ].map(({ icon: Icon, label, desc }) => (
-                <li key={label} className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-md bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Icon className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">{label}</p>
-                    <p className="text-xs text-muted-foreground leading-snug">{desc}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <Link href="/privacy">
-              <Button variant="outline" size="sm" className="gap-1.5 w-full" data-testid="button-view-privacy">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                View Privacy Policy
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-
       </div>
+
+      {/* ── SECONDARY: Timeline (full width) ─────────────────────────── */}
+      {user && (
+        <TimelineSection
+          events={timelineEvents}
+          isLoading={isLoadingWorkspace && !!user}
+        />
+      )}
+
+      {/* ── SECONDARY: Case Summary (full width) ─────────────────────── */}
+      {user && <CaseSummarySection />}
+
+      {/* ── TERTIARY: Privacy strip ───────────────────────────────────── */}
+      <div className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4" data-testid="card-privacy-trust">
+        <div className="flex items-center gap-2 min-w-0">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+          <p className="text-xs text-muted-foreground leading-snug">
+            Documents are analyzed privately and never retained. Your questions are confidential.
+          </p>
+        </div>
+        <Link href="/privacy">
+          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
+            Privacy Policy
+          </Button>
+        </Link>
+      </div>
+
     </div>
   );
 }

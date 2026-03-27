@@ -583,14 +583,13 @@ function ConversationsPanel({
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-conversations-panel">
-      <div className="px-4 py-2 flex items-center justify-end border-b border-border/60">
+      <div className="px-3 py-2 flex items-center justify-end border-b border-border/60">
         <Link href={newChatHref}>
-          <a
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            data-testid="link-new-conversation"
-          >
-            New chat
-            <ChevronRight className="w-3 h-3" />
+          <a data-testid="link-new-conversation">
+            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs gap-1">
+              <MessageSquare className="w-3 h-3" />
+              New chat
+            </Button>
           </a>
         </Link>
       </div>
@@ -711,13 +710,13 @@ function DocumentsPanel({
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-documents-panel">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border/60">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
         {!isLoading && documents.length > 0 ? (
           <span className="text-xs text-muted-foreground">{documents.length} document{documents.length !== 1 ? "s" : ""}</span>
         ) : <span />}
         <Link href={uploadHref}>
           <a data-testid="link-upload-document-panel">
-            <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+            <Button variant="outline" size="sm" className="h-7 px-2.5 gap-1 text-xs">
               <Upload className="w-3 h-3" />
               Upload
             </Button>

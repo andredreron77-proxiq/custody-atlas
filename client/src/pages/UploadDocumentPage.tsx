@@ -1495,27 +1495,13 @@ export default function UploadDocumentPage() {
         subtitle="Upload a custody order, parenting plan, or court notice. Our AI will extract key information and explain it in plain English."
       />
 
-      {/* Privacy notice */}
-      <div className="rounded-lg border bg-card p-4 flex gap-3 items-start" data-testid="card-privacy-notice">
-        <div className="w-8 h-8 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold mb-1.5">Secure Document Analysis</p>
-          <ul className="space-y-1">
-            {[
-              "Your files are analyzed privately and not shared with other users.",
-              "Documents are used only to generate explanations and insights.",
-              "Files are automatically deleted from our servers after analysis.",
-              "You may close this page at any time to discard your upload.",
-            ].map((point) => (
-              <li key={point} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <span>{point}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {/* Privacy notice — informational strip */}
+      <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 flex items-center gap-3" data-testid="card-privacy-notice">
+        <Lock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+        <p className="text-xs text-muted-foreground leading-snug flex-1">
+          <span className="font-medium text-foreground/80">Analyzed privately.</span>
+          {" "}Files are never shared with other users and are deleted from our servers after analysis.
+        </p>
       </div>
 
       {/* ── Upload card ──────────────────────────────────────────────── */}
