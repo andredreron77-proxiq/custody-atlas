@@ -18,7 +18,7 @@
 
 import { useParams, Link } from "wouter";
 import {
-  ArrowLeft, FolderOpen, MessageSquare, Upload, MapPin, Building2,
+  ArrowLeft, ArrowRight, FolderOpen, MessageSquare, Upload, MapPin, Building2,
   Hash, Calendar, User2, ClipboardList, Loader2, CircleCheck, X,
   ChevronRight, CheckCheck, Zap, ExternalLink, FileText, AlertTriangle,
   File, ChevronDown, ChevronUp, History, Info, Scale, Trash2,
@@ -462,16 +462,16 @@ function ActionsPanel({ caseId }: { caseId: string }) {
           return (
             <div
               key={action.id}
-              className={cn("px-4 py-3 flex items-start gap-3 hover:bg-muted/20 transition-colors", style.border)}
+              className={cn("px-4 py-3.5 flex items-start gap-3 hover:bg-muted/30 transition-all duration-150", style.border)}
               data-testid={`dashboard-action-item-${action.id}`}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-start gap-2 flex-wrap">
-                  <p className="text-sm font-medium text-foreground leading-snug flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground leading-snug flex-1 min-w-0">
                     {action.title}
                   </p>
                   {label && (
-                    <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0", style.badge)}>
+                    <span className={cn("text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0", style.badge)}>
                       {label}
                     </span>
                   )}
@@ -535,10 +535,10 @@ function ActionsPanel({ caseId }: { caseId: string }) {
                     action.status === "completed" ? "text-emerald-500" : "text-muted-foreground",
                   )} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-foreground line-through decoration-muted-foreground/40">
+                    <p className="text-sm font-medium text-foreground line-through decoration-muted-foreground/40">
                       {action.title}
                     </p>
-                    <p className="text-[10px] text-muted-foreground capitalize">
+                    <p className="text-xs text-muted-foreground capitalize">
                       {action.status} · {relativeTime(action.createdAt)}
                     </p>
                   </div>
@@ -633,22 +633,22 @@ function ConversationsPanel({
           return (
             <Link key={conv.id} href={href}>
               <a
-                className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors group"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-all duration-150 group"
                 data-testid={`link-conversation-${conv.id}`}
               >
-                <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <MessageSquare className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors leading-snug">
+                  <p className="text-sm font-medium truncate text-foreground group-hover:text-primary transition-colors leading-snug">
                     {conv.title ?? "Untitled conversation"}
                   </p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] text-muted-foreground/60 bg-muted/60 rounded px-1 py-px capitalize">
+                    <span className="text-xs text-muted-foreground/60 bg-muted/60 rounded px-1.5 py-px capitalize">
                       {typeLabel}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">{dateStr}</span>
+                    <span className="text-xs text-muted-foreground">{dateStr}</span>
                   </div>
                 </div>
-                <ExternalLink className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/50 flex-shrink-0 mt-1 transition-colors" />
+                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
               </a>
             </Link>
           );
@@ -761,21 +761,21 @@ function DocumentsPanel({
             return (
               <div
                 key={doc.id}
-                className="px-4 py-3 hover:bg-muted/20 transition-colors"
+                className="px-4 py-3.5 hover:bg-muted/30 transition-all duration-150 group"
                 data-testid={`row-document-${doc.id}`}
               >
                 {/* Row 1: filename + Ask button */}
                 <div className="flex items-start gap-2">
-                  <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+                  <FileText className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-medium truncate">{doc.fileName}</p>
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      <p className="text-sm font-semibold truncate text-foreground">{doc.fileName}</p>
+                      <div className="flex items-center gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
                         <Link href={`/document/${doc.id}`}>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+                            className="h-6 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
                             data-testid={`btn-review-doc-${doc.id}`}
                           >
                             Review
@@ -787,7 +787,7 @@ function DocumentsPanel({
                             data-testid={`link-ask-about-doc-${doc.id}`}
                             title="Ask Atlas about this document"
                           >
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1 text-primary/70 hover:text-primary">
+                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1 text-primary/70 hover:text-primary">
                               <Zap className="w-3 h-3" />
                               Ask
                             </Button>
@@ -809,7 +809,7 @@ function DocumentsPanel({
                     </div>
 
                     {/* Row 2: type · pages · date */}
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {typeLabel}
                       {" · "}
                       {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
@@ -925,7 +925,7 @@ function CaseFactsSection({ facts, askHref, hideAskAtlas = false }: { facts: Cas
           return (
             <div
               key={f.id}
-              className="grid grid-cols-[1fr_auto] sm:grid-cols-[180px_1fr_auto] items-start gap-x-3 gap-y-0.5 px-4 py-2.5"
+              className="grid grid-cols-[1fr_auto] sm:grid-cols-[180px_1fr_auto] items-start gap-x-3 gap-y-0.5 px-4 py-3 hover:bg-muted/20 transition-colors"
               data-testid={`fact-row-${f.id}`}
             >
               {/* Fact type label */}
@@ -936,8 +936,8 @@ function CaseFactsSection({ facts, askHref, hideAskAtlas = false }: { facts: Cas
               {/* Value + mobile label */}
               <div className="min-w-0">
                 <p className="text-xs sm:hidden text-muted-foreground mb-0.5">{label}</p>
-                <p className="text-xs font-semibold text-foreground break-words">{f.value}</p>
-                <p className={cn("text-[10px]", src.color)}>
+                <p className="text-sm font-semibold text-foreground break-words">{f.value}</p>
+                <p className={cn("text-xs", src.color)}>
                   {f.sourceName ? `${src.label} · ${f.sourceName}` : src.label}
                 </p>
               </div>

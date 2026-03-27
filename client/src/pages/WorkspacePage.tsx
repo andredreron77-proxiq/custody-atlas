@@ -4,7 +4,7 @@ import {
   LayoutDashboard, MapPin, MessageSquare, FileSearch, Map,
   GitCompare, ShieldCheck, FileText, ArrowRight,
   BookOpen, Scale, Lightbulb, X,
-  Clock, Play, Loader2, CalendarDays, PlusCircle, Trash2,
+  Clock, Loader2, CalendarDays, PlusCircle, Trash2,
   Sparkles, ChevronDown, Tag, TriangleAlert, Zap,
 } from "lucide-react";
 import { fetchUsageState } from "@/services/usageService";
@@ -749,17 +749,17 @@ function DocumentsSection({
             {visibleGroups[groupType]!.map((doc) => (
               <li
                 key={doc.id}
-                className="rounded-lg border p-3 space-y-2"
+                className="rounded-lg border p-3.5 space-y-2.5 hover:bg-muted/20 hover:border-border transition-all duration-150 group"
                 data-testid={`doc-item-${doc.id}`}
               >
                 {/* Header row: icon + filename + badge + Review/Ask/Delete buttons */}
                 <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                  <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground/60" />
                   <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium truncate">{doc.fileName}</span>
+                    <span className="text-sm font-semibold truncate text-foreground">{doc.fileName}</span>
                     {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
                     <Link href={`/document/${doc.id}`}>
                       <Button
                         variant="ghost"
@@ -792,7 +792,7 @@ function DocumentsSection({
                 </div>
 
                 {/* Type selector + date */}
-                <div className="flex items-center gap-2 pl-6">
+                <div className="flex items-center gap-2.5 pl-6">
                   <Select
                     value={getDocType(doc)}
                     onValueChange={(val) => handleTypeChange(doc, val)}
@@ -810,7 +810,7 @@ function DocumentsSection({
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {relativeTime(doc.createdAt)}
                   </span>
                 </div>
@@ -1077,13 +1077,13 @@ export default function WorkspacePage() {
             ).map(({ href, icon: Icon, bg, color, label, testId }) => (
               <Link key={testId} href={href}>
                 <button
-                  className="w-full flex flex-col items-start gap-2 rounded-lg border bg-card p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left group"
+                  className="w-full flex flex-col items-start gap-2.5 rounded-lg border bg-card p-4 hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
                   data-testid={testId}
                 >
-                  <div className={`w-7 h-7 rounded-md ${bg} flex items-center justify-center`}>
-                    <Icon className={`w-3.5 h-3.5 ${color}`} />
+                  <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
+                    <Icon className={`w-4 h-4 ${color}`} />
                   </div>
-                  <span className="text-xs font-medium leading-snug group-hover:text-primary transition-colors">{label}</span>
+                  <span className="text-xs font-semibold leading-snug text-foreground group-hover:text-primary transition-colors">{label}</span>
                 </button>
               </Link>
             ))}
@@ -1153,38 +1153,30 @@ export default function WorkspacePage() {
                     if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
                     if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
                     return (
-                      <li
-                        key={thread.id}
-                        className="flex items-start justify-between gap-2 rounded-lg border bg-card p-2.5 hover:bg-muted/30 transition-colors"
-                        data-testid={`conversation-item-${thread.id}`}
-                      >
-                        <div className="flex-1 min-w-0 space-y-0.5">
-                          <p className="text-xs font-medium text-foreground leading-snug line-clamp-2">
-                            {thread.title ?? "Custody Conversation"}
-                          </p>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {thread.jurisdictionState && (
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                <MapPin className="w-2 h-2" />{thread.jurisdictionState}
+                      <Link key={thread.id} href={`/ask?${params.toString()}`}>
+                        <li
+                          className="flex items-center gap-3 rounded-lg border bg-card px-3 py-3 hover:border-primary/30 hover:bg-primary/[0.03] transition-all duration-150 cursor-pointer group"
+                          data-testid={`conversation-item-${thread.id}`}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground leading-snug line-clamp-1 group-hover:text-primary transition-colors">
+                              {thread.title ?? "Custody Conversation"}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {thread.jurisdictionState && (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
+                                </span>
+                              )}
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Clock className="w-2.5 h-2.5" />{relativeTime(thread.createdAt)}
                               </span>
-                            )}
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                              <Clock className="w-2 h-2" />{relativeTime(thread.createdAt)}
-                            </span>
+                            </div>
                           </div>
-                        </div>
-                        <Link href={`/ask?${params.toString()}`}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-shrink-0 text-[10px] gap-1 h-6 px-2"
-                            data-testid={`button-resume-${thread.id}`}
-                          >
-                            <Play className="w-2 h-2" />
-                            Resume
-                          </Button>
-                        </Link>
-                      </li>
+                          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
+                        </li>
+                      </Link>
                     );
                   })}
                 </ul>
