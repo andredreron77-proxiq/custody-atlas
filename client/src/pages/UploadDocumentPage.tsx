@@ -14,8 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
-import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
-import { PageHeader } from "@/components/app/PageShell";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { TTSControls } from "@/components/app/TTSControls";
@@ -1451,193 +1449,193 @@ export default function UploadDocumentPage() {
   /* ── Render ──────────────────────────────────────────────────────────── */
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 space-y-8">
 
-      {/* ── 1. Header zone ──────────────────────────────────────────── */}
-
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      {/* ── 1. Compact header ───────────────────────────────────────── */}
+      <div>
         <Link href="/">
-          <span className="hover:text-foreground cursor-pointer flex items-center gap-1">
+          <span
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer mb-6"
+            data-testid="link-back-home"
+          >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Home
+            Back
           </span>
         </Link>
-        <span>/</span>
-        <span className="text-foreground font-medium">Analyze Document</span>
+        <h1 className="font-serif text-2xl md:text-[28px] font-semibold text-foreground leading-tight" data-testid="heading-upload-page">
+          Analyze a Document
+        </h1>
+        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+          Upload a custody order or court notice. Our AI will extract key facts and explain them in plain English.
+        </p>
       </div>
 
-      <PageHeader
-        eyebrow="Document Analysis"
-        title="Analyze a Custody Document"
-        subtitle="Upload a custody order, parenting plan, or court notice. Our AI will extract key information and explain it in plain English."
-      />
-
-      {/* ── 2. Context bar ──────────────────────────────────────────── */}
-      <JurisdictionContextHeader
-        mode="document"
-        state={jurisdiction?.state}
-        county={jurisdiction?.county}
-        documentName={pages[0]?.name ?? undefined}
-        changeLocationHref="/location"
-      />
-
-      {/* ── 3. Primary action zone ──────────────────────────────────── */}
-      <Card
-        className="shadow-sm border-primary/20 bg-card"
-        data-testid="card-upload"
+      {/* ── 2. Context bar (jurisdiction + privacy) ──────────────────── */}
+      <div
+        className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border border-border/50 bg-muted/40"
+        data-testid="card-context-bar"
       >
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">
-            {showCameraPreview
-              ? "Preview Photo"
-              : showReview
-              ? "Ready to Analyze"
-              : "Add Document"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-
-          {/* Hidden file inputs — one per input mode */}
-          <input
-            ref={pdfInputRef}
-            type="file"
-            accept=".pdf"
-            onChange={handlePdfInput}
-            className="hidden"
-            data-testid="input-file-pdf"
-          />
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageInput}
-            className="hidden"
-            data-testid="input-file-image"
-          />
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleCameraInput}
-            className="hidden"
-            data-testid="input-camera"
-          />
-          <input
-            ref={addImageInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageInput}
-            className="hidden"
-            data-testid="input-add-image"
-          />
-          <input
-            ref={addCameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleCameraInput}
-            className="hidden"
-            data-testid="input-add-camera"
-          />
-
-          {/* Selector (no file yet) */}
-          {showSelector && (
-            <UploadSelector
-              onPdf={() => pdfInputRef.current?.click()}
-              onCamera={() => cameraInputRef.current?.click()}
-              onImage={() => imageInputRef.current?.click()}
-              isDragOver={dragOver}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-            />
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <MapPin className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
+          {jurisdiction ? (
+            <span className="text-sm text-foreground font-medium truncate" data-testid="text-jurisdiction-label">
+              {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground" data-testid="text-no-jurisdiction">
+              No location set
+            </span>
           )}
-
-          {/* Camera preview (pending confirmation) */}
-          {showCameraPreview && pendingPhoto && (
-            <CameraPreviewView
-              url={pendingPhoto.url}
-              pageNumber={pendingPageNumber}
-              canAddMore={cameraCanAddMore}
-              onRetake={retakePhoto}
-              onConfirmAndContinue={confirmPhotoAndContinue}
-              onConfirmAndAddAnother={confirmPhotoAndAddAnother}
-            />
-          )}
-
-          {/* Pages review (before submission) */}
-          {showReview && (
-            <PagesReviewView
-              pages={pages}
-              previews={pagePreviews}
-              isPDF={isPDF}
-              sourceType={sourceType}
-              isAnalyzing={isAnalyzing}
-              analyzeDisabled={docLimitReached}
-              onAddCamera={() => addCameraInputRef.current?.click()}
-              onAddImage={() => addImageInputRef.current?.click()}
-              onMoveUp={(i) => movePage(i, i - 1)}
-              onMoveDown={(i) => movePage(i, i + 1)}
-              onRemovePage={removePage}
-              onClear={clearAll}
-              onAnalyze={analyzeDocument}
-            />
-          )}
-
-          {/* Upgrade prompt when doc limit reached */}
-          {docLimitReached && (
-            <UpgradePromptCard type="document" className="mt-2" />
-          )}
-
-          {/* Error display */}
-          {error && (
-            <div
-              className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5"
-              data-testid="text-error"
+          <Link href="/location">
+            <button
+              className="text-xs text-primary/70 hover:text-primary transition-colors flex-shrink-0 ml-0.5"
+              data-testid="button-change-location-upload"
             >
-              <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
+              Change
+            </button>
+          </Link>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0" data-testid="card-privacy-notice">
+          <Lock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-xs text-muted-foreground">Analyzed privately</span>
+        </div>
+      </div>
 
-          {/* Privacy notice — contextual footer of the upload zone */}
+      {/* ── 3. Upload zone (open, no Card wrapper) ───────────────────── */}
+      <div data-testid="card-upload">
+
+        {/* Hidden file inputs — one per input mode */}
+        <input
+          ref={pdfInputRef}
+          type="file"
+          accept=".pdf"
+          onChange={handlePdfInput}
+          className="hidden"
+          data-testid="input-file-pdf"
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageInput}
+          className="hidden"
+          data-testid="input-file-image"
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleCameraInput}
+          className="hidden"
+          data-testid="input-camera"
+        />
+        <input
+          ref={addImageInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageInput}
+          className="hidden"
+          data-testid="input-add-image"
+        />
+        <input
+          ref={addCameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleCameraInput}
+          className="hidden"
+          data-testid="input-add-camera"
+        />
+
+        {/* Selector (no file yet) */}
+        {showSelector && (
+          <UploadSelector
+            onPdf={() => pdfInputRef.current?.click()}
+            onCamera={() => cameraInputRef.current?.click()}
+            onImage={() => imageInputRef.current?.click()}
+            isDragOver={dragOver}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          />
+        )}
+
+        {/* Camera preview (pending confirmation) */}
+        {showCameraPreview && pendingPhoto && (
+          <CameraPreviewView
+            url={pendingPhoto.url}
+            pageNumber={pendingPageNumber}
+            canAddMore={cameraCanAddMore}
+            onRetake={retakePhoto}
+            onConfirmAndContinue={confirmPhotoAndContinue}
+            onConfirmAndAddAnother={confirmPhotoAndAddAnother}
+          />
+        )}
+
+        {/* Pages review (before submission) */}
+        {showReview && (
+          <PagesReviewView
+            pages={pages}
+            previews={pagePreviews}
+            isPDF={isPDF}
+            sourceType={sourceType}
+            isAnalyzing={isAnalyzing}
+            analyzeDisabled={docLimitReached}
+            onAddCamera={() => addCameraInputRef.current?.click()}
+            onAddImage={() => addImageInputRef.current?.click()}
+            onMoveUp={(i) => movePage(i, i - 1)}
+            onMoveDown={(i) => movePage(i, i + 1)}
+            onRemovePage={removePage}
+            onClear={clearAll}
+            onAnalyze={analyzeDocument}
+          />
+        )}
+
+        {/* Upgrade prompt when doc limit reached */}
+        {docLimitReached && (
+          <UpgradePromptCard type="document" className="mt-4" />
+        )}
+
+        {/* Error display */}
+        {error && (
           <div
-            className="flex items-center gap-2 pt-3 border-t border-border/40"
-            data-testid="card-privacy-notice"
+            className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 mt-4"
+            data-testid="text-error"
           >
-            <Lock className="w-3 h-3 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-            <p className="text-xs text-muted-foreground leading-snug">
-              <span className="font-medium text-foreground/70">Analyzed privately.</span>
-              {" "}Files are never shared with other users and are deleted from our servers after analysis.
-            </p>
+            <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-destructive">{error}</p>
           </div>
+        )}
 
-        </CardContent>
-      </Card>
+      </div>
 
-      {/* ── 4. Analysis results zone ────────────────────────────────── */}
+      {/* ── 4. Analysis results zone (distinct container) ────────────── */}
       {(isAnalyzing || result) && (
-        <div className="space-y-6">
+        <div className="rounded-2xl border border-border/60 bg-muted/30 overflow-hidden" data-testid="section-analysis-results">
 
-          {/* Divider — visually separates input from output */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-border" />
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              <FileSearch className="w-3 h-3" />
-              <span>Analysis Results</span>
+          {/* Zone header */}
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-border/50 bg-muted/40">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <FileSearch className="w-3.5 h-3.5 text-primary" />
             </div>
-            <div className="flex-1 h-px bg-border" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Analysis Results</p>
+              {result && !isAnalyzing && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {result.document_type}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Loading state */}
           {isAnalyzing && (
-            <div className="flex flex-col items-center gap-4 text-center py-10" data-testid="text-analyzing">
+            <div className="flex flex-col items-center gap-4 text-center py-12 px-6" data-testid="text-analyzing">
               <Loader2 className="w-9 h-9 animate-spin text-primary" />
               <div>
                 <p className="font-semibold mb-1">Analyzing your document…</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   Extracting text and generating your plain-English explanation.
                   This usually takes 15–30 seconds.
                 </p>
@@ -1645,43 +1643,39 @@ export default function UploadDocumentPage() {
             </div>
           )}
 
-          {/* Analysis result */}
+          {/* Analysis result + Q&A */}
           {result && !isAnalyzing && (
-            <Card className="shadow-none border-border/70" data-testid="card-result">
-              <CardContent className="pt-6">
-                <AnalysisResultCard result={result} />
-              </CardContent>
-            </Card>
-          )}
+            <div className="px-6 py-6 space-y-6">
+              <AnalysisResultCard result={result} />
 
-          {/* Child Support Impact Card */}
-          {result && !isAnalyzing && (() => {
-            const haystack = [
-              result.document_type,
-              result.summary,
-              ...result.important_terms,
-              ...result.possible_implications,
-            ].join(" ").toLowerCase();
-            const mentionsSupport =
-              haystack.includes("child support") ||
-              haystack.includes("support order") ||
-              haystack.includes("support payment") ||
-              haystack.includes("support obligation") ||
-              haystack.includes("support modification") ||
-              haystack.includes("financial support");
-            if (!mentionsSupport) return null;
-            return (
-              <ChildSupportImpactCard
-                state={jurisdiction?.state}
-                county={jurisdiction?.county}
-                country={jurisdiction?.country ?? "United States"}
-              />
-            );
-          })()}
+              {/* Child Support Impact Card (conditional) */}
+              {(() => {
+                const haystack = [
+                  result.document_type,
+                  result.summary,
+                  ...result.important_terms,
+                  ...result.possible_implications,
+                ].join(" ").toLowerCase();
+                const mentionsSupport =
+                  haystack.includes("child support") ||
+                  haystack.includes("support order") ||
+                  haystack.includes("support payment") ||
+                  haystack.includes("support obligation") ||
+                  haystack.includes("support modification") ||
+                  haystack.includes("financial support");
+                if (!mentionsSupport) return null;
+                return (
+                  <ChildSupportImpactCard
+                    state={jurisdiction?.state}
+                    county={jurisdiction?.county}
+                    country={jurisdiction?.country ?? "United States"}
+                  />
+                );
+              })()}
 
-          {/* Document Q&A */}
-          {result && !isAnalyzing && (
-            <DocumentQASection result={result} jurisdiction={jurisdiction} />
+              {/* Document Q&A */}
+              <DocumentQASection result={result} jurisdiction={jurisdiction} />
+            </div>
           )}
 
         </div>

@@ -151,51 +151,148 @@ function resolveWorkspaceState({
   return hasQuestions || hasDocuments ? "active_workspace" : "new_user";
 }
 
-/* ── Activity summary banner (active_workspace only) ──────────────────────────
- * Replaces NextBestStepPanel for returning users.
- * One compact line of context + one focused CTA.
+/* ── What Matters Now Panel ───────────────────────────────────────────────────
+ * PRIMARY panel — the first thing users see.
+ * new_user:        guided NextBestStepPanel + supporting action rows
+ * active_workspace: context header + full-width primary action rows
  * ─────────────────────────────────────────────────────────────────────────── */
 
-function ActivitySummaryBanner({
-  threadCount,
-  documentCount,
+function WhatMattersNowPanel({
+  workspaceState,
+  scenario,
+  ctaHref,
+  threads,
+  documents,
   resumeHref,
-  askHref,
+  askAIPath,
 }: {
-  threadCount: number;
-  documentCount: number;
+  workspaceState: WorkspaceState;
+  scenario: StepScenario;
+  ctaHref: string;
+  threads: WorkspaceThread[];
+  documents: WorkspaceDocument[];
   resumeHref: string;
-  askHref: string;
+  askAIPath: string;
 }) {
-  const parts: string[] = [];
-  if (threadCount > 0)
-    parts.push(`${threadCount} conversation${threadCount !== 1 ? "s" : ""}`);
-  if (documentCount > 0)
-    parts.push(`${documentCount} document${documentCount !== 1 ? "s" : ""}`);
+  const primaryActions = [
+    {
+      href: askAIPath,
+      icon: MessageSquare,
+      iconBg: "bg-blue-50 dark:bg-blue-950/40",
+      iconColor: "text-blue-600 dark:text-blue-400",
+      title: "Ask Atlas",
+      description: "Get answers to your custody questions",
+      testId: "wmn-ask-atlas",
+    },
+    {
+      href: "/upload-document",
+      icon: FileSearch,
+      iconBg: "bg-emerald-50 dark:bg-emerald-950/40",
+      iconColor: "text-emerald-600 dark:text-emerald-400",
+      title: "Analyze a Document",
+      description: "Upload a custody order for instant analysis",
+      testId: "wmn-analyze-doc",
+    },
+  ];
 
-  const primaryHref = threadCount > 0 ? resumeHref : askHref;
-  const primaryLabel = threadCount > 0 ? "Resume last conversation" : "Ask Atlas";
+  const explorationActions = [
+    {
+      href: "/custody-map",
+      icon: Map,
+      iconBg: "bg-violet-50 dark:bg-violet-950/40",
+      iconColor: "text-violet-600 dark:text-violet-400",
+      title: "Explore Custody Map",
+      description: "See how custody laws vary across the U.S.",
+      testId: "wmn-explore-map",
+    },
+    {
+      href: "/custody-map?mode=compare",
+      icon: GitCompare,
+      iconBg: "bg-amber-50 dark:bg-amber-950/40",
+      iconColor: "text-amber-600 dark:text-amber-400",
+      title: "Compare States",
+      description: "Side-by-side custody law comparison",
+      testId: "wmn-compare-states",
+    },
+  ];
+
+  function ActionRow({
+    href, icon: Icon, iconBg, iconColor, title, description, testId,
+  }: typeof primaryActions[0]) {
+    return (
+      <Link href={href}>
+        <button
+          className="w-full flex items-center gap-4 px-4 py-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
+          data-testid={testId}
+        >
+          <div className={`w-10 h-10 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0`}>
+            <Icon className={`w-5 h-5 ${iconColor}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors leading-snug">
+              {title}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{description}</p>
+          </div>
+          <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+        </button>
+      </Link>
+    );
+  }
+
+  if (workspaceState === "new_user") {
+    return (
+      <Card className="shadow-sm border bg-card overflow-hidden" data-testid="panel-what-matters-now">
+        <CardContent className="pt-6 pb-5">
+          <NextBestStepPanel scenario={scenario} ctaHref={ctaHref} />
+        </CardContent>
+        <div className="border-t bg-muted/30 dark:bg-muted/10 px-5 py-5 space-y-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground pb-0.5">
+            Or jump to
+          </p>
+          {[...primaryActions, ...explorationActions].map((action) => (
+            <ActionRow key={action.testId} {...action} />
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  const activityParts: string[] = [];
+  if (threads.length > 0) activityParts.push(`${threads.length} conversation${threads.length !== 1 ? "s" : ""}`);
+  if (documents.length > 0) activityParts.push(`${documents.length} document${documents.length !== 1 ? "s" : ""} analyzed`);
 
   return (
-    <div
-      className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-4 py-3"
-      data-testid="banner-activity-summary"
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <Sparkles className="w-3.5 h-3.5 text-primary/70 flex-shrink-0" />
-        <span className="text-sm text-muted-foreground truncate">
-          {parts.length > 0
-            ? `${parts.join(" · ")} saved`
-            : "Welcome back"}
-        </span>
+    <Card className="shadow-sm border bg-card overflow-hidden" data-testid="panel-what-matters-now">
+      <div className="px-6 pt-5 pb-4 border-b border-border/60 flex items-center justify-between gap-4 bg-muted/20 dark:bg-muted/10">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+            What Matters Now
+          </p>
+          <p className="text-sm text-foreground font-medium">
+            {activityParts.length > 0 ? activityParts.join(" · ") : "Welcome back"}
+          </p>
+        </div>
+        {threads.length > 0 && (
+          <Link href={resumeHref}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-8 text-xs flex-shrink-0"
+              data-testid="button-wmn-resume"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Resume last
+            </Button>
+          </Link>
+        )}
       </div>
-      <Link href={primaryHref}>
-        <Button size="sm" className="gap-1.5 h-7 text-xs flex-shrink-0" data-testid="button-activity-primary-cta">
-          <Zap className="w-3 h-3" />
-          {primaryLabel}
-        </Button>
-      </Link>
-    </div>
+      <CardContent className="py-5 space-y-2.5">
+        {primaryActions.map((action) => (
+          <ActionRow key={action.testId} {...action} />
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -961,7 +1058,7 @@ export default function WorkspacePage() {
     ? `/ask?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`
     : "/ask";
 
-  // Resume href for ActivitySummaryBanner — deeplinks to last conversation with jurisdiction.
+  // Resume href — deeplinks to last conversation with jurisdiction preserved.
   const resumeHref = (() => {
     const lastThread = threads[0];
     if (!lastThread) return askAIPath;
@@ -1014,82 +1111,16 @@ export default function WorkspacePage() {
         />
       )}
 
-      {/* ── Top action area — state driven ────────────────────────────────────
-           new_user       → NextBestStepPanel (guided onboarding prompt)
-           active_workspace → ActivitySummaryBanner (compact context + 1 CTA)
-           ─────────────────────────────────────────────────────────────────── */}
-      {workspaceState === "new_user" && (
-        <NextBestStepPanel scenario={scenario} ctaHref={scenarioCta} />
-      )}
-      {workspaceState === "active_workspace" && (
-        <ActivitySummaryBanner
-          threadCount={threads.length}
-          documentCount={documents.length}
-          resumeHref={resumeHref}
-          askHref={askAIPath}
-        />
-      )}
-
-      {/* ── PRIMARY: My Cases ───────────────────────────────────────── */}
-      <Card className="shadow-sm border bg-card" data-testid="card-cases">
-        <CardHeader className="pb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <LayoutDashboard className="w-4 h-4 text-primary" />
-              <CardTitle className="text-sm font-semibold text-foreground">My Cases</CardTitle>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Your active cases and legal matters
-            </p>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <CaseSelector />
-        </CardContent>
-      </Card>
-
-      {/* ── PRIMARY: Quick Actions ──────────────────────────────────── */}
-      <Card className="shadow-sm border bg-card" data-testid="card-quick-actions">
-        <CardHeader className="pb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-primary" />
-              <CardTitle className="text-sm font-semibold text-foreground">Quick Actions</CardTitle>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              What would you like to do?
-            </p>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className={`grid gap-3 ${workspaceState === "active_workspace" ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"}`}>
-            {(workspaceState === "active_workspace"
-              ? [
-                  { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
-                  { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
-                ]
-              : [
-                  { href: askAIPath, icon: MessageSquare, bg: "bg-blue-100 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400", label: "Ask a custody question", testId: "quick-action-ask-ai" },
-                  { href: "/upload-document", icon: FileSearch, bg: "bg-emerald-100 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400", label: "Analyze a document", testId: "quick-action-analyze-doc" },
-                  { href: "/custody-map", icon: Map, bg: "bg-violet-100 dark:bg-violet-950/40", color: "text-violet-600 dark:text-violet-400", label: "Explore custody map", testId: "quick-action-explore-map" },
-                  { href: "/custody-map?mode=compare", icon: GitCompare, bg: "bg-amber-100 dark:bg-amber-950/40", color: "text-amber-600 dark:text-amber-400", label: "Compare states", testId: "quick-action-compare-states" },
-                ]
-            ).map(({ href, icon: Icon, bg, color, label, testId }) => (
-              <Link key={testId} href={href}>
-                <button
-                  className="w-full flex flex-col items-start gap-2.5 rounded-lg border bg-card p-4 hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
-                  data-testid={testId}
-                >
-                  <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
-                    <Icon className={`w-4 h-4 ${color}`} />
-                  </div>
-                  <span className="text-xs font-semibold leading-snug text-foreground group-hover:text-primary transition-colors">{label}</span>
-                </button>
-              </Link>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── PRIMARY: What Matters Now ───────────────────────────────── */}
+      <WhatMattersNowPanel
+        workspaceState={workspaceState}
+        scenario={scenario}
+        ctaHref={scenarioCta}
+        threads={threads}
+        documents={documents}
+        resumeHref={resumeHref}
+        askAIPath={askAIPath}
+      />
 
       {/* ── SECONDARY: Documents (3/5) + Conversations (2/5) ─────────── */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -1206,8 +1237,21 @@ export default function WorkspacePage() {
         </Card>
       </div>
 
-      {/* ── SECONDARY: Jurisdiction + Map ────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ── TERTIARY: My Cases + Jurisdiction + Map ─────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* My Cases */}
+        <Card className="border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="card-cases">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <LayoutDashboard className="w-3.5 h-3.5 text-primary/70" />
+              My Cases
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CaseSelector />
+          </CardContent>
+        </Card>
 
         {/* Jurisdiction */}
         <Card className="border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="card-jurisdiction">
@@ -1220,30 +1264,25 @@ export default function WorkspacePage() {
           <CardContent className="space-y-3">
             {jurisdiction ? (
               <>
-                {workspaceState === "new_user" && (
-                  <div>
-                    <p className="text-xl font-bold text-foreground" data-testid="text-workspace-state">{jurisdiction.state}</p>
-                    {!isStateOnlyCounty(jurisdiction.county) && (
-                      <p className="text-sm text-muted-foreground mt-0.5" data-testid="text-workspace-county">
-                        {jurisdiction.county} County
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground leading-relaxed mt-2">
-                      Plain-English custody law guidance based on your location.
+                <div>
+                  <p className="text-base font-semibold text-foreground" data-testid="text-workspace-state">{jurisdiction.state}</p>
+                  {!isStateOnlyCounty(jurisdiction.county) && (
+                    <p className="text-xs text-muted-foreground mt-0.5" data-testid="text-workspace-county">
+                      {jurisdiction.county} County
                     </p>
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2">
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
                   {lawPagePath && (
                     <Link href={lawPagePath}>
-                      <Button size="sm" className="gap-1.5" data-testid="button-view-law-summary">
+                      <Button size="sm" variant="outline" className="w-full gap-1.5 justify-start" data-testid="button-view-law-summary">
                         <BookOpen className="w-3.5 h-3.5" />
                         View law summary
                       </Button>
                     </Link>
                   )}
                   <Link href="/location">
-                    <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-change-location-workspace">
+                    <Button size="sm" variant="ghost" className="w-full gap-1.5 justify-start text-muted-foreground" data-testid="button-change-location-workspace">
                       <MapPin className="w-3.5 h-3.5" />
                       Change location
                     </Button>
@@ -1252,14 +1291,13 @@ export default function WorkspacePage() {
               </>
             ) : (
               <div className="flex flex-col gap-3">
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Set your location to get custody law guidance specific to your state and county.
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Set your location for state-specific guidance.
                 </p>
                 <Link href="/location">
-                  <Button size="sm" className="gap-1.5" data-testid="button-set-location">
+                  <Button size="sm" className="w-full gap-1.5" data-testid="button-set-location">
                     <MapPin className="w-3.5 h-3.5" />
-                    Set my location
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    Set location
                   </Button>
                 </Link>
               </div>
@@ -1276,20 +1314,18 @@ export default function WorkspacePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {workspaceState === "new_user" && (
-              <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                Explore custody laws across the United States and compare key legal differences between states.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
+            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+              Explore custody laws across all 50 states.
+            </p>
+            <div className="flex flex-col gap-2">
               <Link href="/custody-map">
-                <Button size="sm" className="gap-1.5" data-testid="button-open-map">
+                <Button size="sm" variant="outline" className="w-full gap-1.5 justify-start" data-testid="button-open-map">
                   <Map className="w-3.5 h-3.5" />
                   Open Custody Map
                 </Button>
               </Link>
               <Link href="/custody-map?mode=compare">
-                <Button size="sm" variant="outline" className="gap-1.5" data-testid="button-compare-states-map">
+                <Button size="sm" variant="ghost" className="w-full gap-1.5 justify-start text-muted-foreground" data-testid="button-compare-states-map">
                   <GitCompare className="w-3.5 h-3.5" />
                   Compare states
                 </Button>
