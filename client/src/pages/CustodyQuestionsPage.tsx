@@ -400,13 +400,13 @@ export default function CustodyQuestionsPage() {
         </div>
         <Link href="/custody-map">
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             className="gap-1.5 flex-shrink-0"
             data-testid="button-explore-map"
           >
+            <Map className="w-3.5 h-3.5" />
             Explore Map
-            <ChevronRight className="w-3.5 h-3.5" />
           </Button>
         </Link>
       </div>

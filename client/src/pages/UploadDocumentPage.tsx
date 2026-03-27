@@ -5,7 +5,7 @@ import {
   Loader2, Scale, HelpCircle, Calendar, FileSearch,
   ArrowLeft, X, ChevronRight, Lock, MessageSquare,
   MapPin, Send, BookOpen, TriangleAlert, ShieldAlert,
-  Camera, RotateCcw, Check, Shield, Plus, ArrowUp, ArrowDown,
+  Camera, RotateCcw, Check, Plus, ArrowUp, ArrowDown,
   ScanLine, GripVertical, Bot, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -718,98 +718,82 @@ function UploadSelector({
 }) {
   return (
     <div
-      className={`space-y-3 transition-opacity ${isDragOver ? "opacity-60" : "opacity-100"}`}
+      className={`space-y-2 transition-opacity ${isDragOver ? "opacity-50" : "opacity-100"}`}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       data-testid="upload-selector"
     >
-      <p className="text-sm text-muted-foreground text-center pb-1">
-        How would you like to add your document?
+      <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground pb-1">
+        Choose how to add your document
       </p>
 
       {/* Upload PDF */}
       <button
         onClick={onPdf}
-        className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-primary/5 active:scale-[0.99] transition-all text-left group"
+        className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
         data-testid="button-upload-pdf"
       >
-        <div className="w-12 h-12 rounded-lg bg-red-50 dark:bg-red-950/30 flex items-center justify-center flex-shrink-0">
-          <FileText className="w-6 h-6 text-red-500" />
+        <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-950/30 flex items-center justify-center flex-shrink-0 group-hover:bg-red-100 dark:group-hover:bg-red-950/50 transition-colors">
+          <FileText className="w-5 h-5 text-red-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm group-hover:text-primary transition-colors">
+          <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
             Upload PDF
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            PDF files, up to {MAX_SIZE_MB}MB
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+            Court orders, parenting plans, or notices — up to {MAX_SIZE_MB}MB
           </p>
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary transition-colors flex-shrink-0" />
+        <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
       </button>
 
       {/* Take Photo / Scan */}
       <button
         onClick={onCamera}
-        className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-primary/5 active:scale-[0.99] transition-all text-left group"
+        className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
         data-testid="button-take-photo"
       >
-        <div className="w-12 h-12 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center flex-shrink-0">
-          <Camera className="w-6 h-6 text-blue-500" />
+        <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-950/50 transition-colors">
+          <Camera className="w-5 h-5 text-blue-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm group-hover:text-primary transition-colors">
-            Take Photo / Scan Document
+          <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+            Scan with Camera
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Open your phone camera to photograph the document
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+            Use your phone camera to photograph a physical document
           </p>
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary transition-colors flex-shrink-0" />
+        <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
       </button>
 
       {/* Upload Image */}
       <button
         onClick={onImage}
-        className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-primary/5 active:scale-[0.99] transition-all text-left group"
+        className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
         data-testid="button-upload-image"
       >
-        <div className="w-12 h-12 rounded-lg bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center flex-shrink-0">
-          <Image className="w-6 h-6 text-violet-500" />
+        <div className="w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center flex-shrink-0 group-hover:bg-violet-100 dark:group-hover:bg-violet-950/50 transition-colors">
+          <Image className="w-5 h-5 text-violet-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm group-hover:text-primary transition-colors">
+          <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
             Upload Image from Device
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            JPG or PNG — photos already saved on your device
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+            JPG or PNG photo already saved on your device
           </p>
         </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary transition-colors flex-shrink-0" />
+        <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
       </button>
 
-      {/* Multi-page tip */}
-      <div className="rounded-lg border border-blue-200 dark:border-blue-800/40 bg-blue-50 dark:bg-blue-950/30 p-3 flex items-start gap-2.5" data-testid="text-multipage-tip">
-        <ScanLine className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
-          <span className="font-semibold">Many custody orders and court notices are multiple pages.</span>{" "}
-          Scan or upload all pages together for a more accurate analysis.
-        </p>
-      </div>
-
-      {/* Drag hint — desktop only */}
-      <p className="text-center text-xs text-muted-foreground/60 hidden sm:block">
-        or drag and drop a file anywhere above
-      </p>
-
-      {/* Trust message */}
-      <div
-        className="flex items-center justify-center gap-2 pt-1"
-        data-testid="text-trust-message"
-      >
-        <Shield className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-        <p className="text-xs text-muted-foreground">
-          Your documents are processed securely and analyzed privately.
+      {/* Multi-page tip + drag hint in one compact row */}
+      <div className="flex items-start gap-2 pt-1" data-testid="text-multipage-tip">
+        <ScanLine className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground/70 leading-snug">
+          Multi-page document? Scan or upload all pages together for a more accurate analysis.
+          <span className="hidden sm:inline"> You can also drag and drop a file.</span>
         </p>
       </div>
     </div>
