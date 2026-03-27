@@ -1469,6 +1469,8 @@ export default function UploadDocumentPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
+      {/* ── 1. Header zone ──────────────────────────────────────────── */}
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/">
@@ -1481,6 +1483,13 @@ export default function UploadDocumentPage() {
         <span className="text-foreground font-medium">Analyze Document</span>
       </div>
 
+      <PageHeader
+        eyebrow="Document Analysis"
+        title="Analyze a Custody Document"
+        subtitle="Upload a custody order, parenting plan, or court notice. Our AI will extract key information and explain it in plain English."
+      />
+
+      {/* ── 2. Context bar ──────────────────────────────────────────── */}
       <JurisdictionContextHeader
         mode="document"
         state={jurisdiction?.state}
@@ -1489,24 +1498,12 @@ export default function UploadDocumentPage() {
         changeLocationHref="/location"
       />
 
-      <PageHeader
-        eyebrow="Document Analysis"
-        title="Analyze a Custody Document"
-        subtitle="Upload a custody order, parenting plan, or court notice. Our AI will extract key information and explain it in plain English."
-      />
-
-      {/* Privacy notice — informational strip */}
-      <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 flex items-center gap-3" data-testid="card-privacy-notice">
-        <Lock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-        <p className="text-xs text-muted-foreground leading-snug flex-1">
-          <span className="font-medium text-foreground/80">Analyzed privately.</span>
-          {" "}Files are never shared with other users and are deleted from our servers after analysis.
-        </p>
-      </div>
-
-      {/* ── Upload card ──────────────────────────────────────────────── */}
-      <Card data-testid="card-upload">
-        <CardHeader className="pb-3">
+      {/* ── 3. Primary action zone ──────────────────────────────────── */}
+      <Card
+        className="shadow-sm border-primary/20 bg-card"
+        data-testid="card-upload"
+      >
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">
             {showCameraPreview
               ? "Preview Photo"
@@ -1620,74 +1617,90 @@ export default function UploadDocumentPage() {
               <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
+
+          {/* Privacy notice — contextual footer of the upload zone */}
+          <div
+            className="flex items-center gap-2 pt-3 border-t border-border/40"
+            data-testid="card-privacy-notice"
+          >
+            <Lock className="w-3 h-3 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <p className="text-xs text-muted-foreground leading-snug">
+              <span className="font-medium text-foreground/70">Analyzed privately.</span>
+              {" "}Files are never shared with other users and are deleted from our servers after analysis.
+            </p>
+          </div>
+
         </CardContent>
       </Card>
 
-      {/* ── Analysis loading state ───────────────────────────────────── */}
-      {isAnalyzing && (
-        <Card>
-          <CardContent className="p-8">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="relative">
-                <Loader2 className="w-10 h-10 animate-spin text-primary" />
-              </div>
+      {/* ── 4. Analysis results zone ────────────────────────────────── */}
+      {(isAnalyzing || result) && (
+        <div className="space-y-6">
+
+          {/* Divider — visually separates input from output */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-border" />
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              <FileSearch className="w-3 h-3" />
+              <span>Analysis Results</span>
+            </div>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+
+          {/* Loading state */}
+          {isAnalyzing && (
+            <div className="flex flex-col items-center gap-4 text-center py-10" data-testid="text-analyzing">
+              <Loader2 className="w-9 h-9 animate-spin text-primary" />
               <div>
-                <p className="font-semibold mb-1" data-testid="text-analyzing">
-                  Analyzing your document…
-                </p>
+                <p className="font-semibold mb-1">Analyzing your document…</p>
                 <p className="text-sm text-muted-foreground">
                   Extracting text and generating your plain-English explanation.
                   This usually takes 15–30 seconds.
                 </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
 
-      {/* ── Analysis result ──────────────────────────────────────────── */}
-      {result && !isAnalyzing && (
-        <Card data-testid="card-result">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileSearch className="w-4 h-4 text-primary" />
-              Document Analysis
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AnalysisResultCard result={result} />
-          </CardContent>
-        </Card>
-      )}
+          {/* Analysis result */}
+          {result && !isAnalyzing && (
+            <Card className="shadow-none border-border/70" data-testid="card-result">
+              <CardContent className="pt-6">
+                <AnalysisResultCard result={result} />
+              </CardContent>
+            </Card>
+          )}
 
-      {/* ── Child Support Impact Card ────────────────────────────────── */}
-      {result && !isAnalyzing && (() => {
-        const haystack = [
-          result.document_type,
-          result.summary,
-          ...result.important_terms,
-          ...result.possible_implications,
-        ].join(" ").toLowerCase();
-        const mentionsSupport =
-          haystack.includes("child support") ||
-          haystack.includes("support order") ||
-          haystack.includes("support payment") ||
-          haystack.includes("support obligation") ||
-          haystack.includes("support modification") ||
-          haystack.includes("financial support");
-        if (!mentionsSupport) return null;
-        return (
-          <ChildSupportImpactCard
-            state={jurisdiction?.state}
-            county={jurisdiction?.county}
-            country={jurisdiction?.country ?? "United States"}
-          />
-        );
-      })()}
+          {/* Child Support Impact Card */}
+          {result && !isAnalyzing && (() => {
+            const haystack = [
+              result.document_type,
+              result.summary,
+              ...result.important_terms,
+              ...result.possible_implications,
+            ].join(" ").toLowerCase();
+            const mentionsSupport =
+              haystack.includes("child support") ||
+              haystack.includes("support order") ||
+              haystack.includes("support payment") ||
+              haystack.includes("support obligation") ||
+              haystack.includes("support modification") ||
+              haystack.includes("financial support");
+            if (!mentionsSupport) return null;
+            return (
+              <ChildSupportImpactCard
+                state={jurisdiction?.state}
+                county={jurisdiction?.county}
+                country={jurisdiction?.country ?? "United States"}
+              />
+            );
+          })()}
 
-      {/* ── Document Q&A ─────────────────────────────────────────────── */}
-      {result && !isAnalyzing && (
-        <DocumentQASection result={result} jurisdiction={jurisdiction} />
+          {/* Document Q&A */}
+          {result && !isAnalyzing && (
+            <DocumentQASection result={result} jurisdiction={jurisdiction} />
+          )}
+
+        </div>
       )}
 
     </div>
