@@ -144,8 +144,7 @@ function HeroSection() {
             <Link href="/location">
               <Button
                 size="lg"
-                className="h-11 px-7 font-semibold text-white hover:opacity-90 transition-opacity"
-                style={{ background: NAVY }}
+                className="h-11 px-7 font-semibold hover:opacity-90 transition-opacity"
                 data-testid="button-hero-primary"
               >
                 Get Started Free

@@ -1729,7 +1729,7 @@ function WhatMattersNow({
           <Button
             size="sm"
             variant="outline"
-            className="h-7 text-xs gap-1 flex-shrink-0 whitespace-nowrap hover:bg-white/60 dark:hover:bg-white/10"
+            className="h-7 text-xs gap-1 flex-shrink-0 whitespace-nowrap hover:bg-muted/40 dark:hover:bg-white/10"
           >
             <cta.Icon className="w-3 h-3" />
             {cta.label}

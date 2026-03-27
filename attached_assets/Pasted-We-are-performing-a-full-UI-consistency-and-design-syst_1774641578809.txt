@@ -1,0 +1,156 @@
+We are performing a full UI consistency and design system rollout across the Custody Atlas app.
+
+Current issue:
+The landing page reflects the desired design (light, premium, editorial), but the rest of the app uses inconsistent colors, spacing, and component styles.
+
+Goal:
+Unify the entire app under a single design system so all pages match the landing page in tone, color, and quality.
+
+CRITICAL CONSTRAINTS:
+
+* Do NOT change backend logic
+* Do NOT break routes, auth, or functionality
+* Do NOT redesign UX flows
+* Focus ONLY on visual system consistency and component standardization
+
+---
+
+## STEP 1: IMPLEMENT GLOBAL DESIGN TOKENS
+
+In globals.css, define CSS variables:
+
+:root {
+--color-background: #F9FAFB;
+--color-surface: #FFFFFF;
+--color-surface-soft: #F8FAFC;
+
+--color-primary: #0F172A;
+--color-secondary: #334155;
+--color-muted: #64748B;
+
+--color-border: #E2E8F0;
+
+--color-accent: #B08A2E;
+}
+
+---
+
+## STEP 2: CONNECT TOKENS TO TAILWIND
+
+Update tailwind.config to map colors:
+
+background → var(--color-background)
+surface → var(--color-surface)
+surfaceSoft → var(--color-surface-soft)
+primary → var(--color-primary)
+secondary → var(--color-secondary)
+muted → var(--color-muted)
+border → var(--color-border)
+accent → var(--color-accent)
+
+---
+
+## STEP 3: REMOVE HARDCODED COLORS
+
+Across the entire codebase, replace:
+
+bg-white / bg-gray-* / bg-slate-*
+text-gray-* / text-slate-*
+border-gray-*
+
+WITH:
+
+bg-background
+bg-surface
+bg-surfaceSoft
+text-primary
+text-secondary
+text-muted
+border-border
+
+---
+
+## STEP 4: STANDARDIZE SHARED COMPONENTS
+
+Update components in /components/ui:
+
+* button
+* card
+* input
+* dialog
+* badge
+
+Ensure:
+
+* no hardcoded colors
+* all use design tokens
+* consistent border radius (12–16px)
+* consistent shadows (soft, minimal)
+
+---
+
+## STEP 5: HEADER / LOGO CLEANUP
+
+* Keep logo icon at ~26px height
+* Keep "Custody Atlas" as primary brand text
+* Remove tagline from navbar
+* Ensure logo has NO background box or badge styling
+* Ensure colors match the system (no extra blues/greens)
+
+---
+
+## STEP 6: GLOBAL UI CONSISTENCY PASS
+
+Apply system across:
+
+* landing page
+* workspace
+* case dashboard
+* ask atlas
+* analyze document
+* custody map
+
+Fix:
+
+* inconsistent backgrounds
+* inconsistent card styles
+* inconsistent spacing
+* inconsistent typography usage
+
+---
+
+## STEP 7: VISUAL QUALITY CHECK
+
+Ensure:
+
+* all pages feel like one product
+* no page uses a different color scheme
+* no component looks like default Tailwind/shadcn
+* UI feels calm, premium, and cohesive
+
+---
+
+## OUTPUT REQUIRED
+
+At completion, provide:
+
+1. List of components updated
+2. Examples of hardcoded color replacements
+3. Confirmation that all pages now use shared tokens
+4. Any remaining inconsistencies found
+
+---
+
+## DESIGN DIRECTION
+
+* light, editorial legal-tech UI
+* calm, premium, trustworthy
+* restrained use of gold accent
+* avoid dark-heavy UI
+* avoid flashy startup styling
+
+---
+
+## END STATE
+
+The app should feel like a single cohesive product, not a mix of landing page + default UI components.
