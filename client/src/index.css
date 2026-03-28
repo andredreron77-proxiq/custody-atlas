@@ -91,73 +91,73 @@
 
 .dark {
   /* ── Utility tokens ──────────────────────────────────────── */
-  --button-outline: rgba(255,255,255, .12);
-  --badge-outline: rgba(255,255,255, .06);
+  --button-outline: rgba(255,255,255, .18);
+  --badge-outline: rgba(255,255,255, .11);
   --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-1: rgba(255,255,255, .07);
+  --elevate-2: rgba(255,255,255, .14);
 
   /* ── Page canvas ─────────────────────────────────────────── */
-  /* Deep navy — not black. hsl(222,42%,11%) ≈ #101d33         */
-  --background: 222 42% 11%;
-  /* Warm near-white — slightly cool, not paper-white           */
-  --foreground: 214 32% 93%;
+  /* Deepened slightly to widen contrast gap vs card surface    */
+  --background: 222 44% 10%;
+  /* Near-white foreground — easy to read on dark surfaces      */
+  --foreground: 214 32% 95%;
 
   /* ── Borders — visible at rest against dark surfaces ─────── */
-  /* Border at 22% lightness gives clear separation on 11% bg  */
-  --border: 220 28% 22%;
+  /* 28% lightness gives 18pt contrast gap against 10% bg       */
+  --border: 220 24% 28%;
 
   /* ── Card / panel surfaces (elevation 1) ─────────────────── */
-  /* 5% lightness gap between bg and card = clear panel depth   */
-  --card: 222 38% 16%;
-  --card-foreground: 214 32% 93%;
-  --card-border: 220 28% 21%;
+  /* 9% lightness gap vs background = clearly elevated panels   */
+  --card: 222 36% 19%;
+  --card-foreground: 214 32% 95%;
+  --card-border: 220 24% 28%;
 
   /* ── Sidebar ─────────────────────────────────────────────── */
-  /* Slightly darker than card — sidebar recedes                */
-  --sidebar: 222 40% 13%;
+  /* Sidebar sits below card — recedes from main content        */
+  --sidebar: 222 42% 12%;
   --sidebar-foreground: 214 32% 93%;
-  --sidebar-border: 220 28% 20%;
+  --sidebar-border: 220 25% 25%;
   --sidebar-primary: 217 88% 62%;
   --sidebar-primary-foreground: 222 47% 10%;
-  --sidebar-accent: 220 32% 19%;
+  --sidebar-accent: 220 28% 22%;
   --sidebar-accent-foreground: 214 32% 93%;
   --sidebar-ring: 217 88% 62%;
 
   /* ── Popover (elevation 2 — sits above cards) ────────────── */
-  --popover: 222 36% 19%;
-  --popover-foreground: 214 32% 93%;
-  --popover-border: 220 28% 24%;
+  --popover: 222 34% 23%;
+  --popover-foreground: 214 32% 95%;
+  --popover-border: 220 24% 30%;
 
   /* ── Primary — sky blue works in dark mode; navy is invisible */
-  /* Readable on dark surface; navy brand shows in bg hue       */
   --primary: 217 88% 62%;
   --primary-foreground: 222 50% 8%;
 
-  /* ── Secondary — subtle tinted surface for chips, tags ────── */
-  --secondary: 220 32% 21%;
-  --secondary-foreground: 214 28% 90%;
+  /* ── Secondary — chips, tags, tinted surfaces ─────────────── */
+  /* 28% lightness = clearly visible above background (10%)     */
+  --secondary: 220 28% 28%;
+  --secondary-foreground: 214 28% 93%;
 
-  /* ── Muted — lowest-priority surfaces and text ───────────── */
-  --muted: 220 30% 18%;
-  /* 65% lightness = ~6:1 contrast against 11% bg surface       */
-  --muted-foreground: 215 18% 65%;
+  /* ── Muted — surfaces and text at lowest priority tier ────── */
+  /* KEY: 27% base means bg-muted/40 ≈ 18% — visibly above bg  */
+  --muted: 220 26% 27%;
+  /* 72% lightness = clearly readable secondary text            */
+  --muted-foreground: 215 20% 72%;
 
-  /* ── Accent — for highlight rings and subtle fills ───────── */
-  --accent: 220 30% 19%;
-  --accent-foreground: 214 32% 93%;
+  /* ── Accent — highlight rings and hover fills ─────────────── */
+  --accent: 220 26% 24%;
+  --accent-foreground: 214 32% 95%;
 
   /* ── Gold accent — warm, slightly brighter in dark context ── */
   --gold: 38 62% 58%;
   --gold-foreground: 0 0% 100%;
 
   /* ── Destructive — MUST be bright in dark mode ───────────── */
-  /* 30% was nearly invisible; 65% is clearly red on dark bg    */
   --destructive: 0 72% 65%;
   --destructive-foreground: 0 0% 100%;
 
-  /* ── Input ───────────────────────────────────────────────── */
-  --input: 220 28% 28%;
+  /* ── Input — must stand out from card surface ─────────────── */
+  --input: 220 24% 33%;
   --ring: 217 88% 62%;
 
   /* ── Charts ──────────────────────────────────────────────── */
