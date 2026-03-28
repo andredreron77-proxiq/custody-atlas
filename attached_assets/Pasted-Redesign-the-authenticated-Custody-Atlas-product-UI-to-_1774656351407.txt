@@ -1,0 +1,75 @@
+Redesign the authenticated Custody Atlas product UI to follow this exact product structure and hierarchy.
+
+This is a layout rebuild, not a style tweak.
+
+GLOBAL RULES
+- Use a centered page container with max width around 1200px
+- Remove large redundant footers from authenticated pages
+- Keep spacing generous and consistent
+- Use calm, premium legal-tech styling
+- Do not make all panels equal in weight
+- One primary panel per page, all others secondary
+- Replace layouts if needed to achieve this
+
+ANALYZE DOCUMENT PAGE
+Structure the page in this order:
+1. Breadcrumb
+2. Context bar with jurisdiction + private session info + change location action
+3. Page intro with eyebrow, title, and one short description
+4. Primary upload card
+   - secure analysis reassurance section
+   - upload options as full-width clickable rows
+   - supporting note for multi-page uploads
+5. Results section below the upload area, not competing side-by-side as the main default layout
+
+Upload option rows must:
+- be full-width clickable cards
+- have icon on left
+- title + description in middle
+- chevron on right
+- hover state and clear affordance
+
+Results section must:
+- begin with compact tab strip (Summary / Risks / Clauses)
+- use a main summary card as the hero result
+- place quick facts inside a lighter inset panel
+- place supporting result cards below
+
+WORKSPACE PAGE
+Structure the page in this order:
+1. Breadcrumb
+2. Page intro
+3. Primary row:
+   - large “What Matters Now” panel
+   - smaller “Case Snapshot” panel
+4. Secondary row:
+   - Documents panel
+   - Timeline / Recent Activity panel
+5. Optional lower Ask Atlas entry panel
+
+What Matters Now must be the dominant panel and should include:
+- urgent items
+- recommended action
+- unresolved risks or clarifications
+- a clear CTA
+
+Case Snapshot should feel lighter and more compact.
+
+Documents panel should only show a small number of recent items and a View All action.
+
+Timeline / Recent Activity should be compact and scannable.
+
+VISUAL RULES
+- Use soft borders, soft shadows, rounded corners
+- Use white surfaces on a very light background
+- Keep typography hierarchy strong
+- Reduce clutter and density
+- Improve breathing room
+- Do not show excessive information by default
+- Prioritize guided workflow over dashboard density
+
+IMPORTANT
+- Do not just tweak spacing or colors
+- Replace JSX/layout structure as needed
+- Do not change backend logic or API behavior
+- The goal is a noticeably cleaner, more guided, more premium interface
