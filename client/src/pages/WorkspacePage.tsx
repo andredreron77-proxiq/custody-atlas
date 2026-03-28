@@ -22,14 +22,12 @@ import {
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { SectionLabel } from "@/components/app/PageShell";
 import {
   PageContainer, PageIntro,
   HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
   Panel, PanelHeader, PanelContent,
-  ActionRow as ProdActionRow,
+  ActionRow as ProdActionRow, SectionStack,
 } from "@/components/app/ProductLayout";
-import { CaseSelector } from "@/components/app/CaseSelector";
 import {
   DocFactChips, DocKeyDatesRow, DocObligationBadge,
 } from "@/components/app/DocIntelPanel";
@@ -241,6 +239,11 @@ function WhatMattersNowPanel({
   if (threads.length > 0) activityParts.push(`${threads.length} conversation${threads.length !== 1 ? "s" : ""}`);
   if (documents.length > 0) activityParts.push(`${documents.length} document${documents.length !== 1 ? "s" : ""} analyzed`);
 
+  const { icon: Icon, iconBg, iconColor, title, description, ctaLabel } = STEP_CONFIGS[scenario];
+  const isHashCta = ctaHref.startsWith("#");
+  const CtaLink = ({ children }: { children: React.ReactNode }) =>
+    isHashCta ? <a href={ctaHref}>{children}</a> : <Link href={ctaHref}>{children}</Link>;
+
   return (
     <HeroPanel testId="panel-what-matters-now">
       <HeroPanelHeader className="flex items-center justify-between gap-4">
@@ -264,11 +267,57 @@ function WhatMattersNowPanel({
           </Link>
         )}
       </HeroPanelHeader>
-      <HeroPanelContent className="space-y-3">
-        {primaryActions.map((action) => (
-          <ProdActionRow key={action.testId} {...action} />
-        ))}
+
+      <HeroPanelContent className="space-y-6">
+        {/* Recommended action — inline, not a card wrapper */}
+        <div className="flex items-start gap-4">
+          <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
+            <Icon className={`w-5 h-5 ${iconColor}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">
+              Recommended action
+            </p>
+            <h3 className="font-semibold text-foreground text-[15px] leading-tight mb-1.5" data-testid="text-wmn-action-title">
+              {title}
+            </h3>
+            <p className="text-sm text-muted-foreground leading-relaxed" data-testid="text-wmn-action-description">
+              {description}
+            </p>
+          </div>
+        </div>
+
+        {/* Primary CTA */}
+        <CtaLink>
+          <Button className="gap-2 px-5 shadow-sm" data-testid="button-wmn-primary-cta">
+            {ctaLabel}
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </CtaLink>
       </HeroPanelContent>
+
+      <HeroPanelFooter>
+        <div className="flex items-center gap-5 flex-wrap">
+          <Link href={askAIPath}>
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
+              data-testid="wmn-footer-ask"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Ask Atlas a question
+            </button>
+          </Link>
+          <Link href="/upload-document">
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
+              data-testid="wmn-footer-analyze"
+            >
+              <FileSearch className="w-3.5 h-3.5" />
+              Analyze a document
+            </button>
+          </Link>
+        </div>
+      </HeroPanelFooter>
     </HeroPanel>
   );
 }
@@ -396,158 +445,6 @@ function EmptyState({
         </Button>
       </Link>
     </div>
-  );
-}
-
-/* ── Timeline Section ─────────────────────────────────────────────────────── */
-
-function TimelineSection({ events, isLoading }: {
-  events: WorkspaceTimelineEvent[];
-  isLoading: boolean;
-}) {
-  const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [eventDate, setEventDate] = useState("");
-  const [description, setDescription] = useState("");
-
-  const addMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/timeline", { eventDate, description }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
-      setShowForm(false);
-      setEventDate("");
-      setDescription("");
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (eventId: string) => apiRequest("DELETE", `/api/timeline/${eventId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/workspace"] }),
-  });
-
-  return (
-    <Panel testId="card-timeline">
-      <PanelHeader
-        icon={CalendarDays}
-        label="Case Timeline"
-        action={
-          !showForm ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs gap-1.5 px-2"
-              onClick={() => setShowForm(true)}
-              data-testid="button-add-event"
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              Add event
-            </Button>
-          ) : undefined
-        }
-      />
-      <PanelContent className="space-y-3">
-        {/* Add event form */}
-        {showForm && (
-          <div className="rounded-lg border bg-muted/30 p-3 space-y-3" data-testid="form-add-event">
-            <p className="text-xs font-semibold text-foreground">New timeline event</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="event-date" className="text-xs">Date</Label>
-                <Input
-                  id="event-date"
-                  type="date"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  className="h-8 text-sm"
-                  data-testid="input-event-date"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="event-desc" className="text-xs">Description</Label>
-                <Input
-                  id="event-desc"
-                  type="text"
-                  placeholder="e.g. Custody hearing scheduled"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  maxLength={500}
-                  className="h-8 text-sm"
-                  data-testid="input-event-description"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                className="h-7 text-xs gap-1"
-                disabled={!eventDate || !description.trim() || addMutation.isPending}
-                onClick={() => addMutation.mutate()}
-                data-testid="button-save-event"
-              >
-                {addMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <PlusCircle className="w-3 h-3" />}
-                Save event
-              </Button>
-              <button
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => { setShowForm(false); setEventDate(""); setDescription(""); }}
-                data-testid="button-cancel-event"
-              >
-                Cancel
-              </button>
-            </div>
-            {addMutation.isError && (
-              <p className="text-xs text-destructive">Failed to save. Please try again.</p>
-            )}
-          </div>
-        )}
-
-        {/* Event list */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : events.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-5 text-center" data-testid="empty-timeline">
-            <CalendarDays className="w-7 h-7 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground max-w-[260px] leading-snug">
-              Add dates that matter — hearings, filing deadlines, agreements — to keep your timeline organized.
-            </p>
-          </div>
-        ) : (
-          <div className="relative" data-testid="list-timeline-events">
-            {/* Vertical connector line */}
-            <div className="absolute left-[7px] top-3 bottom-3 w-px bg-border" aria-hidden />
-            <ul className="space-y-2 pl-6">
-              {events.map((ev) => (
-                <li
-                  key={ev.id}
-                  className="relative flex items-start justify-between gap-3 group"
-                  data-testid={`timeline-event-${ev.id}`}
-                >
-                  {/* Dot */}
-                  <span className="absolute -left-6 top-1.5 w-3 h-3 rounded-full border-2 border-primary bg-background flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-muted-foreground">
-                      {formatEventDate(ev.eventDate)}
-                    </p>
-                    <p className="text-sm text-foreground leading-snug mt-0.5">{ev.description}</p>
-                  </div>
-                  <button
-                    className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    onClick={() => deleteMutation.mutate(ev.id)}
-                    disabled={deleteMutation.isPending}
-                    aria-label="Delete event"
-                    data-testid={`button-delete-event-${ev.id}`}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </PanelContent>
-    </Panel>
   );
 }
 
@@ -959,13 +856,17 @@ function CaseSnapshotPanel({
   jurisdiction,
   threadCount,
   documentCount,
+  documents,
   lawPagePath,
 }: {
   jurisdiction: { state: string; county: string; country: string } | null;
   threadCount: number;
   documentCount: number;
+  documents: WorkspaceDocument[];
   lawPagePath: string | null;
 }) {
+  const mostRecentDoc = documents[0] ?? null;
+
   return (
     <Panel className="h-full" testId="panel-case-snapshot">
       <PanelHeader icon={LayoutDashboard} label="Case Snapshot" />
@@ -994,11 +895,11 @@ function CaseSnapshotPanel({
           )}
         </div>
 
-        {/* Activity stats */}
-        <div className="grid grid-cols-2 gap-2.5">
+        {/* Case overview */}
+        <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
             <p className="text-lg font-bold text-foreground tabular-nums">{threadCount}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">Conversations</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">Questions</p>
           </div>
           <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
             <p className="text-lg font-bold text-foreground tabular-nums">{documentCount}</p>
@@ -1006,14 +907,42 @@ function CaseSnapshotPanel({
           </div>
         </div>
 
-        {/* My Cases */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">My Cases</p>
-          <CaseSelector />
-        </div>
+        {/* Most recent document */}
+        {mostRecentDoc ? (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Last Document</p>
+            <Link href={`/document/${mostRecentDoc.id}`}>
+              <div
+                className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-background px-3 py-2.5 hover:border-primary/40 hover:bg-primary/[0.03] transition-all cursor-pointer group"
+                data-testid="link-last-document"
+              >
+                <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-foreground truncate">{mostRecentDoc.fileName}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{relativeTime(mostRecentDoc.createdAt)}</p>
+                </div>
+                {Object.keys(mostRecentDoc.analysisJson).length > 0 && <AnalyzedBadge />}
+                <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors flex-shrink-0" />
+              </div>
+            </Link>
+          </div>
+        ) : (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Last Document</p>
+            <Link href="/upload-document">
+              <button
+                className="flex items-center gap-1.5 text-xs text-primary/70 hover:text-primary transition-colors"
+                data-testid="button-snapshot-upload-doc"
+              >
+                <FileText className="w-3 h-3" />
+                Analyze your first document
+              </button>
+            </Link>
+          </div>
+        )}
 
         {/* Quick links */}
-        <div className="space-y-0.5">
+        <div className="space-y-0.5 pt-1 border-t border-border/40">
           {lawPagePath && (
             <Link href={lawPagePath}>
               <button className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group" data-testid="button-view-law-summary">
@@ -1049,6 +978,232 @@ function CaseSnapshotPanel({
           </Link>
         </div>
 
+      </PanelContent>
+    </Panel>
+  );
+}
+
+/* ── TimelineAndActivityPanel ─────────────────────────────────────────────── */
+
+function TimelineAndActivityPanel({
+  events,
+  threads,
+  isLoading,
+  askAIPath,
+}: {
+  events: WorkspaceTimelineEvent[];
+  threads: WorkspaceThread[];
+  isLoading: boolean;
+  askAIPath: string;
+}) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [eventDate, setEventDate] = useState("");
+  const [description, setDescription] = useState("");
+
+  const addMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/timeline", { eventDate, description }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
+      setShowForm(false);
+      setEventDate("");
+      setDescription("");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (eventId: string) => apiRequest("DELETE", `/api/timeline/${eventId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/workspace"] }),
+  });
+
+  type FeedItem =
+    | { kind: "event"; sortKey: number; event: WorkspaceTimelineEvent }
+    | { kind: "thread"; sortKey: number; thread: WorkspaceThread };
+
+  const feed: FeedItem[] = [
+    ...events.map((e) => ({
+      kind: "event" as const,
+      sortKey: new Date(e.eventDate.includes("T") ? e.eventDate : e.eventDate + "T12:00:00").getTime(),
+      event: e,
+    })),
+    ...threads.slice(0, 6).map((t) => ({
+      kind: "thread" as const,
+      sortKey: new Date(t.createdAt).getTime(),
+      thread: t,
+    })),
+  ].sort((a, b) => b.sortKey - a.sortKey).slice(0, 8);
+
+  return (
+    <Panel testId="card-timeline-activity">
+      <PanelHeader
+        icon={Clock}
+        label="Recent Activity"
+        action={
+          !showForm ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1.5 px-2"
+              onClick={() => setShowForm(true)}
+              data-testid="button-add-event"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              Add event
+            </Button>
+          ) : undefined
+        }
+      />
+      <PanelContent className="space-y-3">
+        {/* Add event form */}
+        {showForm && (
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-3" data-testid="form-add-event">
+            <p className="text-xs font-semibold text-foreground">New timeline event</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="tap-event-date" className="text-xs">Date</Label>
+                <Input
+                  id="tap-event-date"
+                  type="date"
+                  value={eventDate}
+                  onChange={(e) => setEventDate(e.target.value)}
+                  className="h-8 text-sm"
+                  data-testid="input-event-date"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="tap-event-desc" className="text-xs">Description</Label>
+                <Input
+                  id="tap-event-desc"
+                  type="text"
+                  placeholder="e.g. Custody hearing scheduled"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={500}
+                  className="h-8 text-sm"
+                  data-testid="input-event-description"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1"
+                disabled={!eventDate || !description.trim() || addMutation.isPending}
+                onClick={() => addMutation.mutate()}
+                data-testid="button-save-event"
+              >
+                {addMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <PlusCircle className="w-3 h-3" />}
+                Save event
+              </Button>
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => { setShowForm(false); setEventDate(""); setDescription(""); }}
+                data-testid="button-cancel-event"
+              >
+                Cancel
+              </button>
+            </div>
+            {addMutation.isError && (
+              <p className="text-xs text-destructive">Failed to save. Please try again.</p>
+            )}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : feed.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center" data-testid="empty-timeline-activity">
+            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+              <Clock className="w-5 h-5 text-muted-foreground/50" />
+            </div>
+            <p className="text-sm text-muted-foreground leading-snug max-w-[220px]">
+              Recent conversations and timeline events will appear here.
+            </p>
+            <Link href={askAIPath}>
+              <Button variant="outline" size="sm" className="gap-1.5" data-testid="empty-activity-cta">
+                Ask a question <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </Link>
+          </div>
+        ) : (
+          <ul className="space-y-0.5" data-testid="list-timeline-activity">
+            {feed.map((item) => {
+              if (item.kind === "event") {
+                const ev = item.event;
+                return (
+                  <li
+                    key={`event-${ev.id}`}
+                    className="flex items-start gap-2.5 rounded-lg px-2.5 py-2.5 group hover:bg-muted/30 transition-colors"
+                    data-testid={`timeline-event-${ev.id}`}
+                  >
+                    <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <CalendarDays className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground leading-snug">{ev.description}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{formatEventDate(ev.eventDate)}</p>
+                    </div>
+                    <button
+                      className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+                      onClick={() => deleteMutation.mutate(ev.id)}
+                      disabled={deleteMutation.isPending}
+                      aria-label="Delete event"
+                      data-testid={`button-delete-event-${ev.id}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </li>
+                );
+              }
+
+              const thread = item.thread;
+              const params = new URLSearchParams({ thread: thread.id });
+              if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
+              if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
+              return (
+                <Link key={`thread-${thread.id}`} href={`/ask?${params.toString()}`}>
+                  <li
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 hover:bg-muted/30 cursor-pointer group"
+                    data-testid={`conversation-item-${thread.id}`}
+                  >
+                    <div className="w-6 h-6 rounded-md bg-violet-50 dark:bg-violet-950/40 flex items-center justify-center flex-shrink-0">
+                      <MessageSquare className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+                        {thread.title ?? "Custody Conversation"}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {thread.jurisdictionState && (
+                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                            <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-muted-foreground">{relativeTime(thread.createdAt)}</span>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors flex-shrink-0" />
+                  </li>
+                </Link>
+              );
+            })}
+          </ul>
+        )}
+
+        {threads.length > 6 && (
+          <Link href={askAIPath}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full h-7 text-xs gap-1"
+              data-testid="button-show-all-conversations"
+            >
+              View all {threads.length} conversations
+            </Button>
+          </Link>
+        )}
       </PanelContent>
     </Panel>
   );
@@ -1176,7 +1331,7 @@ export default function WorkspacePage() {
         }
       />
 
-      {/* 3. Primary row: What Matters Now (dominant) + Case Snapshot (compact) */}
+      {/* 3. Primary row: What Matters Now (dominant 2/3) + Case Snapshot (1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <WhatMattersNowPanel
@@ -1194,15 +1349,16 @@ export default function WorkspacePage() {
             jurisdiction={jurisdiction}
             threadCount={threads.length}
             documentCount={documents.length}
+            documents={documents}
             lawPagePath={lawPagePath}
           />
         </div>
       </div>
 
-      {/* 4. Secondary row: Documents + Recent Activity */}
+      {/* 4. Secondary row: Documents + Timeline / Recent Activity */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {/* Documents */}
+        {/* Documents — recent 3–5 items, View All action */}
         <Panel testId="card-recent-documents">
           <PanelHeader
             icon={FileText}
@@ -1225,135 +1381,73 @@ export default function WorkspacePage() {
           </PanelContent>
         </Panel>
 
-        {/* Recent Activity (Conversations) */}
-        <Panel testId="card-recent-conversations">
-          <PanelHeader
-            icon={MessageSquare}
-            label="Recent Activity"
-            meta={user && <span className="text-[10px] text-muted-foreground/60 leading-none">auto-saved</span>}
+        {/* Timeline + Recent Activity — unified chronological feed */}
+        {user ? (
+          <TimelineAndActivityPanel
+            events={timelineEvents}
+            threads={threads}
+            isLoading={isLoadingWorkspace && !!user}
+            askAIPath={askAIPath}
           />
-          <PanelContent>
-            {!user ? (
+        ) : (
+          <Panel testId="card-timeline-activity">
+            <PanelHeader icon={Clock} label="Recent Activity" />
+            <PanelContent>
               <EmptyState
                 icon={MessageSquare}
-                message="Sign in to save and resume conversations"
+                message="Sign in to save conversations and track your case timeline"
                 ctaLabel="Ask Atlas"
                 ctaHref={askAIPath}
-                testId="empty-conversations-unauth"
+                testId="empty-activity-unauth"
               />
-            ) : isLoadingWorkspace ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-              </div>
-            ) : threads.length > 0 ? (
-              <div className="space-y-2">
-                <ul className="space-y-1.5" data-testid="list-recent-conversations">
-                  {threads.slice(0, 3).map((thread) => {
-                    const params = new URLSearchParams({ thread: thread.id });
-                    if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
-                    if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
-                    return (
-                      <Link key={thread.id} href={`/ask?${params.toString()}`}>
-                        <li
-                          className="flex items-center gap-3 rounded-lg border bg-card px-3 py-3 hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-px hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 cursor-pointer group"
-                          data-testid={`conversation-item-${thread.id}`}
-                        >
-                          <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground leading-snug line-clamp-1 group-hover:text-primary transition-colors">
-                              {thread.title ?? "Custody Conversation"}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {thread.jurisdictionState && (
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
-                                </span>
-                              )}
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Clock className="w-2.5 h-2.5" />{relativeTime(thread.createdAt)}
-                              </span>
-                            </div>
-                          </div>
-                          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
-                        </li>
-                      </Link>
-                    );
-                  })}
-                </ul>
-                {threads.length > 3 && (
-                  <Link href={askAIPath}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-1.5 h-7 text-xs mt-1"
-                      data-testid="button-show-all-conversations"
-                    >
-                      View all {threads.length} conversations
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            ) : (
-              <EmptyState
-                icon={MessageSquare}
-                message="Your conversations will appear here after you ask your first question"
-                ctaLabel="Ask Atlas"
-                ctaHref={askAIPath}
-                testId="empty-recent-conversations"
-              />
-            )}
-          </PanelContent>
-        </Panel>
+            </PanelContent>
+          </Panel>
+        )}
       </div>
 
-      {/* 5. Ask Atlas entry panel */}
-      {user && (
-        <Link href={askAIPath}>
-          <div
-            className="rounded-xl border border-primary/20 bg-primary/[0.03] p-5 flex items-center justify-between hover:bg-primary/[0.06] hover:border-primary/30 transition-all duration-150 cursor-pointer group"
-            data-testid="panel-ask-atlas-entry"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <MessageSquare className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Ask Atlas a Question</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Get plain-English answers to your custody questions, tailored to your state.
+      {/* 5. Lower section — Ask Atlas + Case Summary (lighter visual weight) */}
+      <SectionStack gap="md">
+        {/* Ask Atlas entry panel */}
+        {user && (
+          <Panel testId="panel-ask-atlas-entry">
+            <PanelHeader icon={MessageSquare} label="Ask Atlas" />
+            <PanelContent>
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Get plain-English answers to your custody questions, tailored to your jurisdiction.
                 </p>
+                <Link href={askAIPath}>
+                  <Button className="gap-1.5 flex-shrink-0" data-testid="button-go-ask-atlas">
+                    Ask a question
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
               </div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary transition-colors flex-shrink-0 ml-4" />
+            </PanelContent>
+          </Panel>
+        )}
+
+        {/* Case Summary */}
+        {user && <CaseSummarySection />}
+
+        {/* Privacy strip */}
+        <div
+          className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4"
+          data-testid="card-privacy-trust"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <p className="text-xs text-muted-foreground leading-snug">
+              Documents are analyzed privately and never retained. Your questions are confidential.
+            </p>
           </div>
-        </Link>
-      )}
-
-      {/* Timeline */}
-      {user && (
-        <TimelineSection
-          events={timelineEvents}
-          isLoading={isLoadingWorkspace && !!user}
-        />
-      )}
-
-      {/* Case Summary */}
-      {user && <CaseSummarySection />}
-
-      {/* Privacy strip */}
-      <div className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4" data-testid="card-privacy-trust">
-        <div className="flex items-center gap-2 min-w-0">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-          <p className="text-xs text-muted-foreground leading-snug">
-            Documents are analyzed privately and never retained. Your questions are confidential.
-          </p>
+          <Link href="/privacy">
+            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
+              Privacy Policy
+            </Button>
+          </Link>
         </div>
-        <Link href="/privacy">
-          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
-            Privacy Policy
-          </Button>
-        </Link>
-      </div>
+      </SectionStack>
 
     </PageContainer>
   );
