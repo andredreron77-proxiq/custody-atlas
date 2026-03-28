@@ -880,6 +880,48 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
         console.log(`[ask] FACT intent — no deterministic match, falling through to LLM (docs=${intentUserDocs.length})`);
       }
 
+      // ── Load user documents for context injection (non-FACT intents) ────────
+      // For FACT intents, intentUserDocs was already loaded above (for the resolver).
+      // For EXPLANATION/ACTION intents without a documentId scope, load recent docs now
+      // so we can inject a compact summary block into the system prompt.
+      let generalDocSummaryAddendum = "";
+
+      if (intent !== "FACT" && !scopedDocument && userId) {
+        const recentDocs = await getDocuments(userId).catch(() => []);
+        if (recentDocs.length > 0) {
+          const docSummaries = recentDocs.slice(0, 5).map((doc, i) => {
+            const analysis = doc.analysisJson as any;
+            const summary = analysis?.summary ? `Summary: ${analysis.summary}` : "";
+            const docType = analysis?.document_type ?? doc.docType;
+            const ef = analysis?.extracted_facts;
+            const facts: string[] = [];
+            if (ef?.case_number)  facts.push(`Case #: ${ef.case_number}`);
+            if (ef?.court_name)   facts.push(`Court: ${ef.court_name}`);
+            if (ef?.hearing_date) facts.push(`Hearing: ${ef.hearing_date}`);
+            if (ef?.judge_name)   facts.push(`Judge: ${ef.judge_name}`);
+            const factsLine = facts.length > 0 ? `Key facts: ${facts.join(" | ")}` : "";
+            const lines = [`${i + 1}. "${doc.fileName}" (${docType})`];
+            if (summary) lines.push(`   ${summary}`);
+            if (factsLine) lines.push(`   ${factsLine}`);
+            return lines.join("\n");
+          }).join("\n\n");
+
+          generalDocSummaryAddendum = `
+
+---
+USER'S UPLOADED DOCUMENTS (${recentDocs.length} document${recentDocs.length > 1 ? "s" : ""})
+The user has uploaded the following custody documents. Reference them when your answer relates to their specific situation.
+
+${docSummaries}
+
+RULES FOR USING THESE DOCUMENTS:
+1. If your answer can be informed by the user's specific document(s), reference them by name.
+2. Do NOT invent or guess document details not listed above.
+3. Suggest the user review their specific document for exact values if needed.
+4. If the question seems to be about one of these documents specifically, note that they can select it via "Document scope" for more detailed answers.`;
+        }
+      }
+
       // ── System prompt addenda based on intent ────────────────────────────────
       let factModeAddendum = "";
 
@@ -917,7 +959,7 @@ ACTION GUIDANCE MODE
 The user is asking what they should do or how to take a specific action. Focus your response on concrete next steps. Keep steps numbered and clear. Distinguish between actions they can take themselves and actions that require an attorney.`;
       }
 
-      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + documentContextAddendum + factModeAddendum;
+      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + documentContextAddendum + generalDocSummaryAddendum + factModeAddendum;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -1738,6 +1780,28 @@ ${userQuestion}`;
    * PATCH /api/documents/:documentId/type
    * Update the document type label. Body: { docType }.
    */
+
+  /**
+   * GET /api/documents
+   * Return the authenticated user's recent documents (lightweight — no extractedText).
+   * Used by the Ask Atlas document picker to let users scope a question to a document.
+   */
+  app.get("/api/documents", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    try {
+      const rawDocs = await getDocuments(user.id);
+      const documents = rawDocs.map(({ extractedText, storagePath, ...safe }) => ({
+        ...safe,
+        hasStoragePath: !!storagePath,
+        // Include a short summary snippet for the picker label
+        summary: ((safe.analysisJson as any)?.summary as string | undefined)?.slice(0, 120) ?? null,
+      }));
+      return res.json({ documents });
+    } catch (err) {
+      console.error("[documents] GET list error:", err);
+      return res.status(500).json({ error: "Failed to load documents." });
+    }
+  });
 
   /**
    * POST /api/documents/:documentId/reanalyze

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { MessageSquare, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar, ClipboardList, CircleCheck, X, FileText, AlertTriangle } from "lucide-react";
+import { MessageSquare, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar, ClipboardList, CircleCheck, X, FileText, AlertTriangle, FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChatBox } from "@/components/app/ChatBox";
@@ -42,6 +42,15 @@ interface CaseRecord {
   status: string;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
+}
+
+interface DocumentRecord {
+  id: string;
+  fileName: string;
+  docType: string;
+  pageCount: number;
+  createdAt: string;
+  summary: string | null;
 }
 
 interface CaseFactItem {
@@ -345,6 +354,59 @@ function CasePickerMenu({
   );
 }
 
+function DocPickerMenu({
+  documents,
+  activeDocumentId,
+  onSelect,
+}: {
+  documents: DocumentRecord[];
+  activeDocumentId: string | undefined;
+  onSelect: (id: string | undefined) => void;
+}) {
+  return (
+    <div className="absolute right-0 top-full mt-1 z-30 w-72 rounded-lg border bg-popover shadow-lg py-1 text-sm">
+      <button
+        className="w-full text-left px-3 py-2 hover:bg-muted/60 text-muted-foreground text-xs"
+        onClick={() => onSelect(undefined)}
+        data-testid="option-no-document"
+      >
+        No document (General questions)
+      </button>
+      {documents.length === 0 && (
+        <p className="px-3 py-2 text-xs text-muted-foreground italic">
+          No documents yet — upload one via Document Analysis.
+        </p>
+      )}
+      {documents.map((doc) => (
+        <button
+          key={doc.id}
+          className={cn(
+            "w-full text-left px-3 py-2 hover:bg-muted/60 flex flex-col gap-0.5",
+            doc.id === activeDocumentId && "bg-primary/8 font-medium text-primary"
+          )}
+          onClick={() => onSelect(doc.id)}
+          data-testid={`option-document-${doc.id}`}
+        >
+          <span className="block truncate text-sm">{doc.fileName}</span>
+          <span className="text-xs text-muted-foreground">{doc.docType}</span>
+        </button>
+      ))}
+      {documents.length > 0 && (
+        <div className="border-t mt-1 pt-1">
+          <Link href="/upload">
+            <button
+              className="w-full text-left px-3 py-2 hover:bg-muted/60 text-xs text-primary/70 hover:text-primary transition-colors"
+              data-testid="link-upload-new-document"
+            >
+              + Upload a new document
+            </button>
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One-line urgent strip shown above ChatBox when the case has time-sensitive signals. */
 function UrgentPriorityStrip({
   signal,
@@ -407,7 +469,22 @@ export default function AskAIPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [activeCaseId, setActiveCaseId] = useState<string | undefined>(caseIdParam);
   const [showCasePicker, setShowCasePicker] = useState(false);
+  const [activeDocumentId, setActiveDocumentId] = useState<string | undefined>(undefined);
+  const [showDocPicker, setShowDocPicker] = useState(false);
+  const docPickerRef = useRef<HTMLDivElement>(null);
   const { user } = useCurrentUser();
+
+  // Close doc picker when clicking outside
+  useEffect(() => {
+    if (!showDocPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (docPickerRef.current && !docPickerRef.current.contains(e.target as Node)) {
+        setShowDocPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showDocPicker]);
 
   // Legacy thread resume: fetch saved messages when ?thread= is in URL
   const { data: threadData, isLoading: isLoadingThread } = useQuery<ThreadWithMessages | null>({
@@ -447,7 +524,8 @@ export default function AskAIPage() {
   });
 
   // Document scope: fetch the selected document's metadata so we can show the
-  // scope indicator.  extractedText is NOT returned by this endpoint (too large).
+  // scope indicator when a URL-param doc is selected (not needed when picker-selected,
+  // since the picker already has full doc metadata from the list query).
   interface ScopedDocMeta {
     id: string;
     fileName: string;
@@ -457,7 +535,7 @@ export default function AskAIPage() {
   }
   const { data: scopedDocMeta } = useQuery<ScopedDocMeta | null>({
     queryKey: ["/api/documents", documentIdParam],
-    enabled: !!documentIdParam,
+    enabled: !!documentIdParam && !activeDocumentId,
     staleTime: 120_000,
     retry: false,
     queryFn: async () => {
@@ -465,7 +543,6 @@ export default function AskAIPage() {
       const res = await apiRequestRaw("GET", `/api/documents/${documentIdParam}`);
       if (!res.ok) return null;
       const json = await res.json();
-      // GET /api/documents/:id returns { document: {...} }
       return json.document ?? json;
     },
   });
@@ -490,6 +567,25 @@ export default function AskAIPage() {
   });
   const cases = casesData?.cases ?? [];
   const activeCase = cases.find((c) => c.id === activeCaseId) ?? null;
+
+  // Documents list — only fetched when the user is authenticated (for the doc picker)
+  const { data: documentsData } = useQuery<{ documents: DocumentRecord[] }>({
+    queryKey: ["/api/documents"],
+    enabled: !!user,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const userDocuments = documentsData?.documents ?? [];
+
+  // effectiveDocumentId: state-picked doc takes precedence over URL param.
+  // URL param is for deep-linking (e.g., from Upload page). State is for in-page picker.
+  const effectiveDocumentId = activeDocumentId ?? documentIdParam;
+  const activeDoc = userDocuments.find((d) => d.id === effectiveDocumentId) ?? null;
+
+  // Derive the display name for the scope indicator:
+  // - If the user picked a doc via the picker, use its fileName from the list
+  // - If it came from a URL param, use scopedDocMeta.fileName
+  const scopedDocName = activeDoc?.fileName ?? scopedDocMeta?.fileName ?? null;
 
   // Page-level actions query — same cache key as CaseActionsPanel, zero extra requests.
   // Used to derive urgent_case state for the priority strip.
@@ -735,8 +831,8 @@ export default function AskAIPage() {
         </div>
       )}
 
-      {/* Document scope indicator — shown when ?document= is in URL */}
-      {documentIdParam && (
+      {/* Document scope indicator — shown when a document is selected (URL param or picker) */}
+      {effectiveDocumentId && (
         <div
           className="rounded-lg border border-primary/20 dark:border-primary/30 bg-primary/[0.06] dark:bg-primary/[0.12] px-3 py-2 flex items-center gap-2.5"
           data-testid="document-scope-indicator"
@@ -744,9 +840,9 @@ export default function AskAIPage() {
           <FileText className="w-4 h-4 text-primary flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <span className="text-xs font-semibold text-primary">Document scope active</span>
-            {scopedDocMeta ? (
+            {scopedDocName ? (
               <span className="ml-1.5 text-xs text-foreground/70 truncate">
-                — {scopedDocMeta.fileName}
+                — {scopedDocName}
               </span>
             ) : (
               <span className="ml-1.5 text-xs text-muted-foreground/60">Loading…</span>
@@ -755,11 +851,51 @@ export default function AskAIPage() {
           <span className="text-xs text-foreground/50 flex-shrink-0 hidden sm:inline">
             Questions answered from this document first
           </span>
-          <Link href={`/ask${jurisdiction ? `?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}` : ""}`}>
-            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-primary/60 hover:text-primary" data-testid="button-clear-document-scope">
-              <X className="w-3.5 h-3.5" />
+          <button
+            onClick={() => {
+              setActiveDocumentId(undefined);
+              if (documentIdParam) {
+                // Clear URL param by navigating without it
+                const baseUrl = `/ask${jurisdiction ? `?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}` : ""}`;
+                window.history.replaceState(null, "", baseUrl);
+              }
+            }}
+            className="p-1 rounded hover:bg-primary/10 transition-colors"
+            data-testid="button-clear-document-scope"
+            aria-label="Clear document scope"
+          >
+            <X className="w-3.5 h-3.5 text-primary/60" />
+          </button>
+        </div>
+      )}
+
+      {/* Document picker — shown when user is logged in and no document is currently scoped */}
+      {user && !effectiveDocumentId && (
+        <div className="rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 flex items-center gap-2.5" data-testid="document-context-bar">
+          <FileSearch className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+          <span className="text-xs text-muted-foreground flex-1 min-w-0">
+            Scope questions to an uploaded document for document-specific answers.
+          </span>
+          <div className="relative flex-shrink-0" ref={docPickerRef}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-7 text-xs"
+              onClick={() => setShowDocPicker((v) => !v)}
+              data-testid="button-pick-document"
+            >
+              <FileText className="w-3 h-3" />
+              {userDocuments.length > 0 ? "Select Document" : "Upload Document"}
+              <ChevronDown className="w-3 h-3" />
             </Button>
-          </Link>
+            {showDocPicker && (
+              <DocPickerMenu
+                documents={userDocuments}
+                activeDocumentId={effectiveDocumentId}
+                onSelect={(id) => { setActiveDocumentId(id); setShowDocPicker(false); }}
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -780,7 +916,7 @@ export default function AskAIPage() {
         initialThreadId={threadIdParam}
         initialConversationId={conversationIdParam}
         caseId={activeCaseId}
-        documentId={documentIdParam}
+        documentId={effectiveDocumentId}
       />
 
       {/* Trust signal footer */}

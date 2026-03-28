@@ -756,6 +756,7 @@ function PagesReviewView({
   isAnalyzing,
   analyzeDisabled = false,
   hasResult = false,
+  documentId,
   onAddCamera,
   onAddImage,
   onMoveUp,
@@ -773,6 +774,7 @@ function PagesReviewView({
   isAnalyzing: boolean;
   analyzeDisabled?: boolean;
   hasResult?: boolean;
+  documentId?: string | null;
   onAddCamera: () => void;
   onAddImage: () => void;
   onMoveUp: (index: number) => void;
@@ -947,6 +949,19 @@ function PagesReviewView({
       {/* Analyze CTA — changes based on whether a result already exists */}
       {hasResult ? (
         <div className="flex flex-col gap-2">
+          {documentId && (
+            <Button
+              asChild
+              className="w-full gap-2"
+              size="lg"
+              data-testid="button-ask-atlas-document"
+            >
+              <a href={`/ask?document=${documentId}`}>
+                <MessageSquare className="w-4 h-4" />
+                Ask Atlas About This Document
+              </a>
+            </Button>
+          )}
           <Button
             onClick={onReanalyze}
             disabled={isAnalyzing || analyzeDisabled}
@@ -970,6 +985,7 @@ function PagesReviewView({
           <Button
             onClick={onUploadAnother}
             disabled={isAnalyzing}
+            variant="outline"
             className="w-full gap-2"
             data-testid="button-upload-another"
             size="lg"
@@ -1502,6 +1518,7 @@ export default function UploadDocumentPage() {
               isAnalyzing={isAnalyzing}
               analyzeDisabled={docLimitReached}
               hasResult={!!result}
+              documentId={documentId}
               onAddCamera={() => addCameraInputRef.current?.click()}
               onAddImage={() => addImageInputRef.current?.click()}
               onMoveUp={(i) => movePage(i, i - 1)}
