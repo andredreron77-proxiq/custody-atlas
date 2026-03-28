@@ -9,7 +9,6 @@ import {
   ScanLine, GripVertical, Bot, User, ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,8 +21,9 @@ import { getAccessToken } from "@/lib/tokenStore";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import {
   PageContainer, PageIntro, ContextBar,
-  HeroPanel, HeroPanelContent,
-  InsetPanel, ActionRow as ProdActionRow,
+  HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
+  Panel, PanelHeader, PanelContent,
+  InsetPanel, ActionRow as ProdActionRow, SectionStack,
 } from "@/components/app/ProductLayout";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DocumentAnalysisResult, DocumentQAResponse, ExtractedFacts } from "@shared/schema";
@@ -160,138 +160,18 @@ function ExtractedFactsCard({ facts }: { facts: ExtractedFacts }) {
   if (entries.length === 0) return null;
 
   return (
-    <div className="rounded-lg border border-primary/20 bg-primary/5 dark:bg-primary/10 p-4" data-testid="card-extracted-facts">
-      <div className="flex items-center gap-2 mb-3">
-        <FileSearch className="w-4 h-4 text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">Key Document Facts</h3>
-        <span className="text-xs text-muted-foreground ml-auto">Extracted directly from document</span>
-      </div>
-      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-        {entries.map(({ key, label, value }) => (
-          <div key={key} className="flex flex-col gap-0.5" data-testid={`fact-${key}`}>
-            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</dt>
-            <dd className="text-sm text-foreground font-medium break-words">{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
+    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3" data-testid="card-extracted-facts">
+      {entries.map(({ key, label, value }) => (
+        <div key={key} className="flex flex-col gap-0.5" data-testid={`fact-${key}`}>
+          <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</dt>
+          <dd className="text-sm text-foreground font-medium break-words">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
-/* ── Analysis Result Card ─────────────────────────────────────────────────── */
-
-function AnalysisResultCard({ result }: { result: DocumentAnalysisResult }) {
-  const ttsText = [
-    result.summary,
-    ...(result.possible_implications.length > 0
-      ? ["Possible implications: " + result.possible_implications.join(". ")]
-      : []),
-  ].join(" ");
-
-  return (
-    <div className="space-y-5" data-testid="card-analysis-result">
-      <div className="flex items-center gap-3">
-        <Badge className="text-sm px-3 py-1" data-testid="text-document-type">
-          {result.document_type}
-        </Badge>
-        <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Analysis complete</span>
-        </div>
-      </div>
-
-      {result.extracted_facts && <ExtractedFactsCard facts={result.extracted_facts} />}
-
-      <div>
-        <h3 className="text-sm font-semibold mb-2 text-foreground">Summary</h3>
-        <p className="text-sm leading-relaxed text-muted-foreground" data-testid="text-summary">
-          {result.summary}
-        </p>
-        <TTSControls text={ttsText} className="mt-3" />
-      </div>
-
-      {result.important_terms.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Scale className="w-3.5 h-3.5 text-primary" />
-            <h3 className="text-sm font-semibold">Important Terms & Provisions</h3>
-          </div>
-          <ul className="space-y-2">
-            {result.important_terms.map((term, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`important-term-${i}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                <span className="leading-relaxed text-muted-foreground">{term}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {result.key_dates.length > 0 && (
-        <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 p-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-              Key Dates
-            </h3>
-          </div>
-          <ul className="space-y-1.5">
-            {result.key_dates.map((date, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200" data-testid={`key-date-${i}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                <span className="leading-relaxed">{date}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {result.possible_implications.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <FileSearch className="w-3.5 h-3.5 text-violet-500" />
-            <h3 className="text-sm font-semibold">Possible Implications</h3>
-          </div>
-          <ul className="space-y-2">
-            {result.possible_implications.map((impl, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`implication-${i}`}>
-                <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-violet-400 flex-shrink-0" />
-                <span className="leading-relaxed text-muted-foreground">{impl}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {result.questions_to_ask_attorney.length > 0 && (
-        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
-              Questions to Ask Your Attorney
-            </h3>
-          </div>
-          <ul className="space-y-1.5">
-            {result.questions_to_ask_attorney.map((q, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200" data-testid={`attorney-question-${i}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                <span className="leading-relaxed">{q}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="flex items-start gap-1.5 pt-2 border-t border-border">
-        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground italic leading-relaxed">
-          This analysis is for general informational purposes only and does not constitute legal advice.
-          Always consult a licensed family law attorney before making decisions based on this information.
-        </p>
-      </div>
-    </div>
-  );
-}
+/* ── Analysis Result Card removed — results rendered inline in tabs ─────── */
 
 function QAResponseCard({ response }: { response: DocumentQAResponse }) {
   return (
@@ -516,56 +396,45 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
   const jurisdictionLabel = formatJurisdictionLabel(jurisdiction?.state ?? "", jurisdiction?.county ?? "");
 
   return (
-    <Card className="border-t-2 border-t-primary/30" data-testid="card-document-qa">
-      <CardHeader className="pb-3">
-        {/* Two-row context bar: Conversation + Jurisdiction as separate labeled fields */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1 min-w-0 flex-1">
-            {/* Row 1: Conversation */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Conversation</span>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <MessageSquare className="w-3 h-3 text-primary flex-shrink-0" />
-                <span className="text-sm font-semibold text-foreground">Questions About This Document</span>
-                {hasMessages && (
-                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal flex-shrink-0">
-                    {Math.ceil(qaMessages.length / 2)} Q&amp;A
-                  </Badge>
-                )}
-              </div>
-            </div>
-            {/* Row 2: Jurisdiction — only rendered when we have a usable label */}
-            {jurisdictionLabel && (
-              <div className="flex items-center gap-2 flex-wrap" data-testid="text-jurisdiction-badge">
-                <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Jurisdiction</span>
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <MapPin className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                  <span className="text-xs font-medium text-foreground">{jurisdictionLabel}</span>
-                </div>
-              </div>
-            )}
-          </div>
-          {hasMessages && (
+    <Panel testId="card-document-qa">
+      <PanelHeader
+        icon={MessageSquare}
+        label="Questions About This Document"
+        meta={
+          hasMessages ? (
+            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal ml-1.5">
+              {Math.ceil(qaMessages.length / 2)} Q&amp;A
+            </Badge>
+          ) : undefined
+        }
+        action={
+          hasMessages ? (
             <button
               onClick={() => { setQaMessages([]); setQaError(null); }}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 pt-0.5"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               data-testid="button-new-doc-thread"
               title="Clear conversation and start over"
             >
               <RotateCcw className="w-3 h-3" />
               New
             </button>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
+
+      <PanelContent className="space-y-4">
+        {jurisdictionLabel && (
+          <div className="flex items-center gap-1.5" data-testid="text-jurisdiction-badge">
+            <MapPin className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground">{jurisdictionLabel}</span>
+          </div>
+        )}
 
         {!hasMessages && (
-          <p className="text-sm text-muted-foreground mt-2">
+          <p className="text-sm text-muted-foreground">
             Ask follow-up questions about this document's terms, dates, or implications.
           </p>
         )}
-      </CardHeader>
-
-      <CardContent className="space-y-4">
         {/* Suggested questions — shown only before first message */}
         {!hasMessages && (
           <div>
@@ -693,8 +562,8 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
             </Button>
           </form>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   );
 }
 
@@ -762,14 +631,6 @@ function UploadSelector({
         testId="button-upload-image"
       />
 
-      {/* Multi-page tip + drag hint in one compact row */}
-      <div className="flex items-start gap-2 pt-1" data-testid="text-multipage-tip">
-        <ScanLine className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground/70 leading-snug">
-          Multi-page document? Scan or upload all pages together for a more accurate analysis.
-          <span className="hidden sm:inline"> You can also drag and drop a file.</span>
-        </p>
-      </div>
     </div>
   );
 }
@@ -1435,7 +1296,7 @@ export default function UploadDocumentPage() {
           </span>
         </Link>
         <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
-        <span className="text-foreground font-medium">Analyze Document</span>
+        <span className="text-foreground font-medium">Analyze a Document</span>
       </nav>
 
       {/* 2. Context bar: jurisdiction + private session + change */}
@@ -1474,25 +1335,26 @@ export default function UploadDocumentPage() {
       {/* 3. Page intro: eyebrow + title + description */}
       <PageIntro
         eyebrow="Document Analysis"
-        title="Analyze a Document"
+        title="Analyze a Custody Document"
         titleTestId="heading-upload-page"
-        description="Upload a custody order or court notice. Our AI will extract key facts and explain them in plain English."
+        description="Upload a court order, parenting plan, or legal notice. Atlas extracts the key facts and explains what it means in plain English."
       />
 
       {/* 4. Primary upload card */}
       <HeroPanel testId="card-upload">
-        <HeroPanelContent className="space-y-6">
+        <HeroPanelHeader className="flex items-center gap-3.5">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <ShieldCheck className="w-4.5 h-4.5 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Secure Document Analysis</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Files are analyzed privately and deleted immediately after analysis.
+            </p>
+          </div>
+        </HeroPanelHeader>
 
-          {/* Secure analysis reassurance */}
-          <InsetPanel variant="success" className="flex items-start gap-3 p-3.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Secure, private analysis</p>
-              <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80 mt-0.5 leading-relaxed">
-                Your documents are analyzed privately and never stored or shared. Files are deleted immediately after analysis.
-              </p>
-            </div>
-          </InsetPanel>
+        <HeroPanelContent className="space-y-4">
 
           {/* Hidden file inputs */}
           <input ref={pdfInputRef} type="file" accept=".pdf" onChange={handlePdfInput} className="hidden" data-testid="input-file-pdf" />
@@ -1523,7 +1385,6 @@ export default function UploadDocumentPage() {
               onRetake={retakePhoto}
               onConfirmAndContinue={confirmPhotoAndContinue}
               onConfirmAndAddAnother={confirmPhotoAndAddAnother}
-              onConfirmDone={confirmPhotoDone}
             />
           )}
 
@@ -1563,55 +1424,71 @@ export default function UploadDocumentPage() {
           )}
 
         </HeroPanelContent>
+
+        <HeroPanelFooter>
+          <div className="flex items-start gap-2.5" data-testid="text-multipage-tip">
+            <ScanLine className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-muted-foreground/70 leading-relaxed">
+              Multi-page document? Scan or upload all pages together for a more accurate analysis.
+              You can also drag and drop a file directly onto the upload options.
+            </p>
+          </div>
+        </HeroPanelFooter>
       </HeroPanel>
 
       {/* 5. Analysis results zone */}
       {(isAnalyzing || result) && (
-        <div data-testid="section-analysis-results" className="space-y-4">
+        <div data-testid="section-analysis-results" className="space-y-5">
 
           {/* Zone header */}
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
               <FileSearch className="w-3.5 h-3.5 text-primary" />
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Analysis Results</p>
-              {result && !isAnalyzing && (
-                <p className="text-xs text-muted-foreground mt-0.5">{result.document_type}</p>
-              )}
-            </div>
+            <p className="text-sm font-semibold text-foreground">
+              {isAnalyzing ? "Analyzing your document…" : "Analysis Results"}
+            </p>
+            {result && !isAnalyzing && (
+              <Badge variant="secondary" className="text-xs font-normal ml-auto" data-testid="text-document-type">
+                {result.document_type}
+              </Badge>
+            )}
           </div>
 
-          {/* Loading */}
+          {/* Loading state */}
           {isAnalyzing && (
-            <div className="rounded-2xl border border-border/60 bg-muted/30 flex flex-col items-center gap-4 text-center py-12 px-6" data-testid="text-analyzing">
-              <Loader2 className="w-9 h-9 animate-spin text-primary" />
-              <div>
-                <p className="font-semibold mb-1">Analyzing your document…</p>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Extracting text and generating your plain-English explanation.
-                  This usually takes 15–30 seconds.
-                </p>
-              </div>
-            </div>
+            <HeroPanel testId="text-analyzing">
+              <HeroPanelContent className="flex flex-col items-center gap-5 py-12 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <Loader2 className="w-7 h-7 animate-spin text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground mb-1">Analyzing your document…</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed max-w-[280px]">
+                    Extracting text and generating your plain-English explanation.
+                    This usually takes 15–30 seconds.
+                  </p>
+                </div>
+              </HeroPanelContent>
+            </HeroPanel>
           )}
 
           {/* Tabbed results */}
           {result && !isAnalyzing && (
-            <>
+            <SectionStack gap="md">
               <Tabs defaultValue="summary" className="w-full">
-                <TabsList className="w-full grid grid-cols-3">
-                  <TabsTrigger value="summary">Summary</TabsTrigger>
-                  <TabsTrigger value="risks">Risks</TabsTrigger>
-                  <TabsTrigger value="clauses">Clauses</TabsTrigger>
+                <TabsList className="w-full grid grid-cols-3 h-9">
+                  <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
+                  <TabsTrigger value="risks" className="text-xs">Risks &amp; Dates</TabsTrigger>
+                  <TabsTrigger value="clauses" className="text-xs">Clauses</TabsTrigger>
                 </TabsList>
 
-                {/* Summary tab */}
+                {/* ── Summary tab ── */}
                 <TabsContent value="summary" className="mt-4 space-y-3">
-                  <Card className="shadow-sm border bg-card">
-                    <CardContent className="pt-5 pb-5 space-y-4">
-                      <div className="flex items-center gap-3">
-                        <Badge className="text-sm px-3 py-1" data-testid="text-document-type">
+                  <HeroPanel>
+                    <HeroPanelHeader className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Badge className="text-xs px-2.5 py-0.5" data-testid="text-document-type-summary">
                           {result.document_type}
                         </Badge>
                         <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
@@ -1619,116 +1496,130 @@ export default function UploadDocumentPage() {
                           <span>Analysis complete</span>
                         </div>
                       </div>
-                      <div>
-                        <h3 className="text-sm font-semibold mb-2 text-foreground">Summary</h3>
-                        <p className="text-sm leading-relaxed text-muted-foreground" data-testid="text-summary">
-                          {result.summary}
-                        </p>
-                        <TTSControls text={result.summary} className="mt-3" />
-                      </div>
-                    </CardContent>
-                  </Card>
+                      <TTSControls text={result.summary} />
+                    </HeroPanelHeader>
+                    <HeroPanelContent>
+                      <p className="text-sm leading-relaxed text-muted-foreground" data-testid="text-summary">
+                        {result.summary}
+                      </p>
+                    </HeroPanelContent>
+                  </HeroPanel>
+
                   {result.extracted_facts && (
-                    <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
-                      <ExtractedFactsCard facts={result.extracted_facts} />
-                    </div>
+                    <Panel>
+                      <PanelHeader
+                        icon={FileSearch}
+                        label="Key Document Facts"
+                        meta={<span className="text-[10px] text-muted-foreground ml-1.5 normal-case tracking-normal">from document</span>}
+                      />
+                      <PanelContent>
+                        <ExtractedFactsCard facts={result.extracted_facts} />
+                      </PanelContent>
+                    </Panel>
                   )}
                 </TabsContent>
 
-                {/* Risks tab */}
-                <TabsContent value="risks" className="mt-4">
-                  <Card className="shadow-sm border bg-card">
-                    <CardContent className="pt-5 pb-5 space-y-5">
+                {/* ── Risks tab ── */}
+                <TabsContent value="risks" className="mt-4 space-y-3">
+                  <HeroPanel>
+                    <HeroPanelHeader>
+                      <div className="flex items-center gap-2">
+                        <FileSearch className="w-4 h-4 text-violet-500" />
+                        <h3 className="text-sm font-semibold text-foreground">Possible Implications</h3>
+                      </div>
+                    </HeroPanelHeader>
+                    <HeroPanelContent>
                       {result.possible_implications.length > 0 ? (
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-3">
-                            <FileSearch className="w-3.5 h-3.5 text-violet-500" />
-                            <h3 className="text-sm font-semibold">Possible Implications</h3>
-                          </div>
-                          <ul className="space-y-2">
-                            {result.possible_implications.map((impl, i) => (
-                              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`implication-${i}`}>
-                                <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-violet-400 flex-shrink-0" />
-                                <span className="leading-relaxed text-muted-foreground">{impl}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                        <ul className="space-y-2.5">
+                          {result.possible_implications.map((impl, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm" data-testid={`implication-${i}`}>
+                              <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-violet-400 flex-shrink-0" />
+                              <span className="leading-relaxed text-muted-foreground">{impl}</span>
+                            </li>
+                          ))}
+                        </ul>
                       ) : (
                         <p className="text-sm text-muted-foreground italic">No risk implications identified for this document.</p>
                       )}
-                      {result.key_dates.length > 0 && (
-                        <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 p-3">
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Key Dates</h3>
-                          </div>
-                          <ul className="space-y-1.5">
-                            {result.key_dates.map((date, i) => (
-                              <li key={i} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200" data-testid={`key-date-${i}`}>
-                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                                <span className="leading-relaxed">{date}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      <div className="flex items-start gap-1.5 pt-1 border-t border-border">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-muted-foreground italic leading-relaxed">
-                          This analysis is for general informational purposes only and does not constitute legal advice.
-                        </p>
+                    </HeroPanelContent>
+                  </HeroPanel>
+
+                  {result.key_dates.length > 0 && (
+                    <InsetPanel variant="warning">
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Key Dates</h3>
                       </div>
-                    </CardContent>
-                  </Card>
+                      <ul className="space-y-1.5">
+                        {result.key_dates.map((date, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200" data-testid={`key-date-${i}`}>
+                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                            <span className="leading-relaxed">{date}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </InsetPanel>
+                  )}
+
+                  <InsetPanel>
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-muted-foreground italic leading-relaxed">
+                        This analysis is for general informational purposes only and does not constitute legal advice.
+                      </p>
+                    </div>
+                  </InsetPanel>
                 </TabsContent>
 
-                {/* Clauses tab */}
-                <TabsContent value="clauses" className="mt-4">
-                  <Card className="shadow-sm border bg-card">
-                    <CardContent className="pt-5 pb-5 space-y-5">
+                {/* ── Clauses tab ── */}
+                <TabsContent value="clauses" className="mt-4 space-y-3">
+                  <HeroPanel>
+                    <HeroPanelHeader>
+                      <div className="flex items-center gap-2">
+                        <Scale className="w-4 h-4 text-primary" />
+                        <h3 className="text-sm font-semibold text-foreground">Important Terms &amp; Provisions</h3>
+                      </div>
+                    </HeroPanelHeader>
+                    <HeroPanelContent>
                       {result.important_terms.length > 0 ? (
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-3">
-                            <Scale className="w-3.5 h-3.5 text-primary" />
-                            <h3 className="text-sm font-semibold">Important Terms &amp; Provisions</h3>
-                          </div>
-                          <ul className="space-y-2">
-                            {result.important_terms.map((term, i) => (
-                              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`important-term-${i}`}>
-                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                                <span className="leading-relaxed text-muted-foreground">{term}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                        <ul className="space-y-2.5">
+                          {result.important_terms.map((term, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm" data-testid={`important-term-${i}`}>
+                              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                              <span className="leading-relaxed text-muted-foreground">{term}</span>
+                            </li>
+                          ))}
+                        </ul>
                       ) : (
                         <p className="text-sm text-muted-foreground italic">No specific terms or clauses identified.</p>
                       )}
-                      {result.questions_to_ask_attorney.length > 0 && (
-                        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3">
-                          <div className="flex items-center gap-1.5 mb-2">
-                            <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Questions to Ask Your Attorney</h3>
-                          </div>
-                          <ul className="space-y-1.5">
-                            {result.questions_to_ask_attorney.map((q, i) => (
-                              <li key={i} className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200" data-testid={`attorney-question-${i}`}>
-                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                                <span className="leading-relaxed">{q}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      <div className="flex items-start gap-1.5 pt-1 border-t border-border">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-muted-foreground italic leading-relaxed">
-                          Always consult a licensed family law attorney before making decisions based on this analysis.
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    </HeroPanelContent>
+                  </HeroPanel>
+
+                  {result.questions_to_ask_attorney.length > 0 && (
+                    <Panel>
+                      <PanelHeader icon={HelpCircle} label="Questions to Ask Your Attorney" />
+                      <PanelContent>
+                        <ul className="space-y-1.5">
+                          {result.questions_to_ask_attorney.map((q, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm" data-testid={`attorney-question-${i}`}>
+                              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                              <span className="leading-relaxed text-muted-foreground">{q}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </PanelContent>
+                    </Panel>
+                  )}
+
+                  <InsetPanel>
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-muted-foreground italic leading-relaxed">
+                        Always consult a licensed family law attorney before making decisions based on this analysis.
+                      </p>
+                    </div>
+                  </InsetPanel>
                 </TabsContent>
               </Tabs>
 
@@ -1759,7 +1650,7 @@ export default function UploadDocumentPage() {
 
               {/* Document Q&A */}
               <DocumentQASection result={result} jurisdiction={jurisdiction} />
-            </>
+            </SectionStack>
           )}
 
         </div>
