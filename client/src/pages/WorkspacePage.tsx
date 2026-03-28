@@ -10,7 +10,6 @@ import {
 import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +23,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { SectionLabel } from "@/components/app/PageShell";
+import {
+  PageContainer, PageIntro,
+  HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
+  Panel, PanelHeader, PanelContent,
+  ActionRow as ProdActionRow,
+} from "@/components/app/ProductLayout";
 import { CaseSelector } from "@/components/app/CaseSelector";
 import {
   DocFactChips, DocKeyDatesRow, DocObligationBadge,
@@ -215,43 +220,20 @@ function WhatMattersNowPanel({
     },
   ];
 
-  function ActionRow({
-    href, icon: Icon, iconBg, iconColor, title, description, testId,
-  }: typeof primaryActions[0]) {
-    return (
-      <Link href={href}>
-        <button
-          className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
-          data-testid={testId}
-        >
-          <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
-            <Icon className={`w-5 h-5 ${iconColor}`} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[15px] font-semibold text-foreground group-hover:text-primary transition-colors leading-snug">
-              {title}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{description}</p>
-          </div>
-          <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-        </button>
-      </Link>
-    );
-  }
 
   if (workspaceState === "new_user") {
     return (
-      <Card className="shadow-sm border bg-card overflow-hidden" data-testid="panel-what-matters-now">
-        <CardContent className="pt-6 pb-5">
+      <HeroPanel testId="panel-what-matters-now">
+        <HeroPanelContent className="pb-5">
           <NextBestStepPanel scenario={scenario} ctaHref={ctaHref} />
-        </CardContent>
-        <div className="border-t bg-muted/30 dark:bg-muted/10 px-6 py-6 space-y-3">
-          <p className="text-xs font-medium text-muted-foreground mb-1">Or jump to</p>
+        </HeroPanelContent>
+        <HeroPanelFooter className="space-y-3">
+          <p className="text-xs font-medium text-muted-foreground">Or jump to</p>
           {[...primaryActions, ...explorationActions].map((action) => (
-            <ActionRow key={action.testId} {...action} />
+            <ProdActionRow key={action.testId} {...action} />
           ))}
-        </div>
-      </Card>
+        </HeroPanelFooter>
+      </HeroPanel>
     );
   }
 
@@ -260,8 +242,8 @@ function WhatMattersNowPanel({
   if (documents.length > 0) activityParts.push(`${documents.length} document${documents.length !== 1 ? "s" : ""} analyzed`);
 
   return (
-    <Card className="shadow-sm border bg-card overflow-hidden" data-testid="panel-what-matters-now">
-      <div className="px-6 pt-6 pb-5 border-b border-border/60 flex items-center justify-between gap-4">
+    <HeroPanel testId="panel-what-matters-now">
+      <HeroPanelHeader className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-foreground leading-tight">What Matters Now</h2>
           {activityParts.length > 0 && (
@@ -281,13 +263,13 @@ function WhatMattersNowPanel({
             </Button>
           </Link>
         )}
-      </div>
-      <CardContent className="py-6 space-y-3">
+      </HeroPanelHeader>
+      <HeroPanelContent className="space-y-3">
         {primaryActions.map((action) => (
-          <ActionRow key={action.testId} {...action} />
+          <ProdActionRow key={action.testId} {...action} />
         ))}
-      </CardContent>
-    </Card>
+      </HeroPanelContent>
+    </HeroPanel>
   );
 }
 
@@ -444,14 +426,12 @@ function TimelineSection({ events, isLoading }: {
   });
 
   return (
-    <Card className="border border-border/60 bg-muted/20 shadow-none" data-testid="card-timeline">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <CalendarDays className="w-3.5 h-3.5 text-primary/70" />
-            Case Timeline
-          </CardTitle>
-          {!showForm && (
+    <Panel testId="card-timeline">
+      <PanelHeader
+        icon={CalendarDays}
+        label="Case Timeline"
+        action={
+          !showForm ? (
             <Button
               variant="ghost"
               size="sm"
@@ -462,10 +442,10 @@ function TimelineSection({ events, isLoading }: {
               <PlusCircle className="w-3.5 h-3.5" />
               Add event
             </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+          ) : undefined
+        }
+      />
+      <PanelContent className="space-y-3">
         {/* Add event form */}
         {showForm && (
           <div className="rounded-lg border bg-muted/30 p-3 space-y-3" data-testid="form-add-event">
@@ -566,8 +546,8 @@ function TimelineSection({ events, isLoading }: {
             </ul>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   );
 }
 
@@ -597,14 +577,12 @@ function CaseSummarySection() {
   });
 
   return (
-    <Card id="case-summary" className="border border-border/60 bg-muted/20 shadow-none" data-testid="card-case-summary">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-primary/70" />
-            Case Summary
-          </CardTitle>
-          {summary && (
+    <Panel testId="card-case-summary" className="scroll-mt-4" id="case-summary">
+      <PanelHeader
+        icon={Sparkles}
+        label="Case Summary"
+        action={
+          summary ? (
             <button
               className="text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setOpen((v) => !v)}
@@ -612,10 +590,10 @@ function CaseSummarySection() {
             >
               <ChevronDown className={`w-4 h-4 transition-transform ${open ? "" : "-rotate-90"}`} />
             </button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
+          ) : undefined
+        }
+      />
+      <PanelContent>
         {!summary && !summaryMutation.isPending && (
           <div className="flex flex-col items-center gap-4 py-4 text-center">
             <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -727,8 +705,8 @@ function CaseSummarySection() {
             </button>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   );
 }
 
@@ -989,14 +967,9 @@ function CaseSnapshotPanel({
   lawPagePath: string | null;
 }) {
   return (
-    <Card className="h-full border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="panel-case-snapshot">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-          <LayoutDashboard className="w-3.5 h-3.5 text-primary/70" />
-          Case Snapshot
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <Panel className="h-full" testId="panel-case-snapshot">
+      <PanelHeader icon={LayoutDashboard} label="Case Snapshot" />
+      <PanelContent className="space-y-5">
 
         {/* Jurisdiction */}
         <div>
@@ -1076,8 +1049,8 @@ function CaseSnapshotPanel({
           </Link>
         </div>
 
-      </CardContent>
-    </Card>
+      </PanelContent>
+    </Panel>
   );
 }
 
@@ -1170,7 +1143,7 @@ export default function WorkspacePage() {
   })();
 
   return (
-    <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-10 animate-fade-in" data-testid="page-workspace">
+    <PageContainer size="wide" testId="page-workspace">
 
       {/* 1. Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
@@ -1182,15 +1155,12 @@ export default function WorkspacePage() {
       </nav>
 
       {/* 2. Page intro */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1
-              className="font-serif text-[28px] md:text-4xl font-bold text-foreground leading-tight tracking-tight"
-              data-testid="heading-workspace"
-            >
-              Case Workspace
-            </h1>
+      <PageIntro
+        title="Case Workspace"
+        titleTestId="heading-workspace"
+        description="Track your custody case, review documents, and get answers tailored to your situation."
+        right={
+          <div className="flex items-center gap-2">
             {isProUser && (
               <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium" data-testid="badge-workspace-plan-pro">
                 <Zap className="w-3 h-3" />
@@ -1203,11 +1173,8 @@ export default function WorkspacePage() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-lg">
-            Track your custody case, review documents, and get answers tailored to your situation.
-          </p>
-        </div>
-      </div>
+        }
+      />
 
       {/* 3. Primary row: What Matters Now (dominant) + Case Snapshot (compact) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1236,44 +1203,36 @@ export default function WorkspacePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
         {/* Documents */}
-        <Card className="border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="card-recent-documents">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-primary/70" />
-                Documents
-              </CardTitle>
+        <Panel testId="card-recent-documents">
+          <PanelHeader
+            icon={FileText}
+            label="Documents"
+            action={
               <Link href="/upload-document">
                 <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 px-2.5" data-testid="button-upload-new-doc">
                   <PlusCircle className="w-3.5 h-3.5" />
                   Upload
                 </Button>
               </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
+            }
+          />
+          <PanelContent>
             <DocumentsSection
               documents={documents}
               isLoading={isLoadingWorkspace && !!user}
               askAIPath={askAIPath}
             />
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
 
         {/* Recent Activity (Conversations) */}
-        <Card className="border border-border/60 bg-muted/20 shadow-none dark:bg-muted/10" data-testid="card-recent-conversations">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-primary/70" />
-                Recent Activity
-              </CardTitle>
-              {user && (
-                <span className="text-[10px] text-muted-foreground/60 leading-none">auto-saved</span>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
+        <Panel testId="card-recent-conversations">
+          <PanelHeader
+            icon={MessageSquare}
+            label="Recent Activity"
+            meta={user && <span className="text-[10px] text-muted-foreground/60 leading-none">auto-saved</span>}
+          />
+          <PanelContent>
             {!user ? (
               <EmptyState
                 icon={MessageSquare}
@@ -1343,8 +1302,8 @@ export default function WorkspacePage() {
                 testId="empty-recent-conversations"
               />
             )}
-          </CardContent>
-        </Card>
+          </PanelContent>
+        </Panel>
       </div>
 
       {/* 5. Ask Atlas entry panel */}
@@ -1396,6 +1355,6 @@ export default function WorkspacePage() {
         </Link>
       </div>
 
-    </div>
+    </PageContainer>
   );
 }

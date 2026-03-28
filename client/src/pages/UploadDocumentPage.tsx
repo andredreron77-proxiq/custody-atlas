@@ -20,6 +20,11 @@ import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { TTSControls } from "@/components/app/TTSControls";
 import { getAccessToken } from "@/lib/tokenStore";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
+import {
+  PageContainer, PageIntro, ContextBar,
+  HeroPanel, HeroPanelContent,
+  InsetPanel, ActionRow as ProdActionRow,
+} from "@/components/app/ProductLayout";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DocumentAnalysisResult, DocumentQAResponse, ExtractedFacts } from "@shared/schema";
 
@@ -727,65 +732,35 @@ function UploadSelector({
         Choose how to add your document
       </p>
 
-      {/* Upload PDF */}
-      <button
+      <ProdActionRow
         onClick={onPdf}
-        className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/50 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
-        data-testid="button-upload-pdf"
-      >
-        <div className="w-11 h-11 rounded-xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:bg-red-100 dark:group-hover:bg-red-950/50 transition-colors">
-          <FileText className="w-5 h-5 text-red-500" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-[15px] text-foreground group-hover:text-primary transition-colors leading-snug">
-            Upload PDF
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-            Court orders, parenting plans, or notices — up to {MAX_SIZE_MB}MB
-          </p>
-        </div>
-        <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-      </button>
+        icon={FileText}
+        iconBg="bg-red-50 dark:bg-red-950/30"
+        iconColor="text-red-500"
+        title="Upload PDF"
+        description={`Court orders, parenting plans, or notices — up to ${MAX_SIZE_MB}MB`}
+        testId="button-upload-pdf"
+      />
 
-      {/* Take Photo / Scan */}
-      <button
+      <ProdActionRow
         onClick={onCamera}
-        className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/50 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
-        data-testid="button-take-photo"
-      >
-        <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:bg-blue-100 dark:group-hover:bg-blue-950/50 transition-colors">
-          <Camera className="w-5 h-5 text-blue-500" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-[15px] text-foreground group-hover:text-primary transition-colors leading-snug">
-            Scan with Camera
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-            Use your phone camera to photograph a physical document
-          </p>
-        </div>
-        <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-      </button>
+        icon={Camera}
+        iconBg="bg-blue-50 dark:bg-blue-950/30"
+        iconColor="text-blue-500"
+        title="Scan with Camera"
+        description="Use your phone camera to photograph a physical document"
+        testId="button-take-photo"
+      />
 
-      {/* Upload Image */}
-      <button
+      <ProdActionRow
         onClick={onImage}
-        className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/50 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
-        data-testid="button-upload-image"
-      >
-        <div className="w-11 h-11 rounded-xl bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:bg-violet-100 dark:group-hover:bg-violet-950/50 transition-colors">
-          <Image className="w-5 h-5 text-violet-500" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-[15px] text-foreground group-hover:text-primary transition-colors leading-snug">
-            Upload Image from Device
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-            JPG or PNG photo already saved on your device
-          </p>
-        </div>
-        <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-      </button>
+        icon={Image}
+        iconBg="bg-violet-50 dark:bg-violet-950/30"
+        iconColor="text-violet-500"
+        title="Upload Image from Device"
+        description="JPG or PNG photo already saved on your device"
+        testId="button-upload-image"
+      />
 
       {/* Multi-page tip + drag hint in one compact row */}
       <div className="flex items-start gap-2 pt-1" data-testid="text-multipage-tip">
@@ -1450,7 +1425,7 @@ export default function UploadDocumentPage() {
   /* ── Render ──────────────────────────────────────────────────────────── */
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 space-y-6">
+    <PageContainer size="narrow">
 
       {/* 1. Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
@@ -1464,55 +1439,52 @@ export default function UploadDocumentPage() {
       </nav>
 
       {/* 2. Context bar: jurisdiction + private session + change */}
-      <div
-        className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border border-border/50 bg-muted/40"
-        data-testid="card-context-bar"
-      >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <MapPin className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
-          {jurisdiction ? (
-            <span className="text-sm text-foreground font-medium truncate" data-testid="text-jurisdiction-label">
-              {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
-            </span>
-          ) : (
-            <span className="text-sm text-muted-foreground" data-testid="text-no-jurisdiction">
-              No location set
-            </span>
-          )}
-          <Link href="/location">
-            <button
-              className="text-xs text-primary/70 hover:text-primary transition-colors flex-shrink-0 ml-0.5"
-              data-testid="button-change-location-upload"
-            >
-              Change
-            </button>
-          </Link>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0" data-testid="card-privacy-notice">
-          <Lock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-          <span className="text-xs text-muted-foreground">Private session</span>
-        </div>
-      </div>
+      <ContextBar
+        testId="card-context-bar"
+        left={
+          <>
+            <MapPin className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
+            {jurisdiction ? (
+              <span className="text-sm text-foreground font-medium truncate" data-testid="text-jurisdiction-label">
+                {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground" data-testid="text-no-jurisdiction">
+                No location set
+              </span>
+            )}
+            <Link href="/location">
+              <button
+                className="text-xs text-primary/70 hover:text-primary transition-colors flex-shrink-0 ml-0.5"
+                data-testid="button-change-location-upload"
+              >
+                Change
+              </button>
+            </Link>
+          </>
+        }
+        right={
+          <div className="flex items-center gap-1.5" data-testid="card-privacy-notice">
+            <Lock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-xs text-muted-foreground">Private session</span>
+          </div>
+        }
+      />
 
       {/* 3. Page intro: eyebrow + title + description */}
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-          Document Analysis
-        </p>
-        <h1 className="font-serif text-[28px] md:text-[34px] font-bold text-foreground leading-tight tracking-tight" data-testid="heading-upload-page">
-          Analyze a Document
-        </h1>
-        <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed max-w-sm">
-          Upload a custody order or court notice. Our AI will extract key facts and explain them in plain English.
-        </p>
-      </div>
+      <PageIntro
+        eyebrow="Document Analysis"
+        title="Analyze a Document"
+        titleTestId="heading-upload-page"
+        description="Upload a custody order or court notice. Our AI will extract key facts and explain them in plain English."
+      />
 
       {/* 4. Primary upload card */}
-      <Card className="shadow-sm border bg-card" data-testid="card-upload">
-        <CardContent className="pt-7 pb-7 space-y-6">
+      <HeroPanel testId="card-upload">
+        <HeroPanelContent className="space-y-6">
 
           {/* Secure analysis reassurance */}
-          <div className="flex items-start gap-3 p-3.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/40">
+          <InsetPanel variant="success" className="flex items-start gap-3 p-3.5">
             <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Secure, private analysis</p>
@@ -1520,7 +1492,7 @@ export default function UploadDocumentPage() {
                 Your documents are analyzed privately and never stored or shared. Files are deleted immediately after analysis.
               </p>
             </div>
-          </div>
+          </InsetPanel>
 
           {/* Hidden file inputs */}
           <input ref={pdfInputRef} type="file" accept=".pdf" onChange={handlePdfInput} className="hidden" data-testid="input-file-pdf" />
@@ -1590,8 +1562,8 @@ export default function UploadDocumentPage() {
             </div>
           )}
 
-        </CardContent>
-      </Card>
+        </HeroPanelContent>
+      </HeroPanel>
 
       {/* 5. Analysis results zone */}
       {(isAnalyzing || result) && (
@@ -1793,6 +1765,6 @@ export default function UploadDocumentPage() {
         </div>
       )}
 
-    </div>
+    </PageContainer>
   );
 }
