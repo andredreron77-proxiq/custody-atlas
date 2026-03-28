@@ -1296,10 +1296,18 @@ export default function UploadDocumentPage() {
           </span>
         </Link>
         <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
-        <span className="text-foreground font-medium">Analyze a Document</span>
+        <span className="text-foreground font-medium">Analyze</span>
       </nav>
 
-      {/* 2. Context bar: jurisdiction + private session + change */}
+      {/* 2. Page intro — identity first, before any context */}
+      <PageIntro
+        eyebrow="Document Analysis"
+        title="Analyze a Custody Document"
+        titleTestId="heading-upload-page"
+        description="Upload a court order, parenting plan, or legal notice. Atlas reads the document and explains what it means in plain English."
+      />
+
+      {/* 3. Context bar: jurisdiction + private session + change */}
       <ContextBar
         testId="card-context-bar"
         left={
@@ -1330,14 +1338,6 @@ export default function UploadDocumentPage() {
             <span className="text-xs text-muted-foreground">Private session</span>
           </div>
         }
-      />
-
-      {/* 3. Page intro: eyebrow + title + description */}
-      <PageIntro
-        eyebrow="Document Analysis"
-        title="Analyze a Custody Document"
-        titleTestId="heading-upload-page"
-        description="Upload a court order, parenting plan, or legal notice. Atlas extracts the key facts and explains what it means in plain English."
       />
 
       {/* 4. Primary upload card */}
