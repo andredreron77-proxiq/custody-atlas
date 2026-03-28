@@ -7,6 +7,13 @@ export const jurisdictionSchema = z.object({
   county: z.string(),
   /** City/locality name — always separate from county, never used as county. */
   city: z.string().optional(),
+  /**
+   * True when county was resolved via reverse-geocoding of the ZIP's center
+   * point rather than from postal-code-level data.  The ZIP may span more than
+   * one county so the user should confirm before proceeding to county-specific
+   * guidance.
+   */
+  countyIsApproximate: z.boolean().optional(),
   country: z.string().optional().default("United States"),
   formattedAddress: z.string().optional(),
   latitude: z.number().optional(),

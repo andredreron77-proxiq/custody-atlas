@@ -21,6 +21,9 @@ type GpsState =
   | { status: "unavailable" }
   | { status: "timeout" }
   | { status: "server_error"; message: string }
+  /** County resolved from center-point reverse geocode — needs user confirmation */
+  | { status: "county_confirm"; jurisdiction: Jurisdiction }
+  /** No county resolved at all — free-text manual entry */
   | { status: "county_ambiguous"; jurisdiction: Jurisdiction }
   | { status: "success"; jurisdiction: Jurisdiction };
 
@@ -29,6 +32,9 @@ type ZipState =
   | { status: "loading" }
   | { status: "invalid" }
   | { status: "server_error"; message: string }
+  /** County resolved from center-point reverse geocode — needs user confirmation */
+  | { status: "county_confirm"; jurisdiction: Jurisdiction }
+  /** No county resolved at all — free-text manual entry */
   | { status: "county_ambiguous"; jurisdiction: Jurisdiction }
   | { status: "success"; jurisdiction: Jurisdiction };
 
@@ -38,9 +44,126 @@ function isValidZip(zip: string): boolean {
 }
 
 /**
- * Shown when we detected a state (and optionally city) but could not determine
- * the county from the geocoding response.  The user can either continue with
- * state-level context only or type their county manually.
+ * CountyConfirmPanel — shown when the server resolved a county via reverse
+ * geocoding of the ZIP's center point.  The ZIP may span multiple counties so
+ * the user must confirm the suggested county (or enter a different one) before
+ * proceeding to county-specific guidance.
+ */
+function CountyConfirmPanel({
+  jurisdiction,
+  onConfirm,
+  onSkip,
+}: {
+  jurisdiction: Jurisdiction;
+  onConfirm: (county: string) => void;
+  onSkip: () => void;
+}) {
+  const [showManual, setShowManual] = useState(false);
+  const [manualCounty, setManualCounty] = useState("");
+  const manualInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showManual) {
+      const t = setTimeout(() => manualInputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [showManual]);
+
+  return (
+    <div
+      className="rounded-md border border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3 text-left"
+      data-testid="panel-county-confirm"
+    >
+      <div className="flex items-start gap-2">
+        <TriangleAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            Confirm your county
+          </p>
+          <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5 leading-relaxed">
+            This ZIP code may span more than one county. Please confirm your
+            county to continue with county-specific custody rules.
+          </p>
+        </div>
+      </div>
+
+      {!showManual ? (
+        <div className="space-y-2">
+          {/* Pre-selected primary county button */}
+          <button
+            onClick={() => onConfirm(jurisdiction.county)}
+            className="w-full flex items-center gap-2.5 rounded-md border border-amber-300 dark:border-amber-600 bg-white dark:bg-background px-3 py-2.5 text-left hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+            data-testid="button-county-primary"
+          >
+            <CheckCircle2 className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {jurisdiction.county} County
+              </p>
+              <p className="text-xs text-muted-foreground">Primary county for this ZIP</p>
+            </div>
+          </button>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              className="text-xs text-amber-700 dark:text-amber-300 underline underline-offset-2"
+              onClick={() => setShowManual(true)}
+              data-testid="button-county-different"
+            >
+              My county is different
+            </button>
+            <span className="text-xs text-muted-foreground">·</span>
+            <button
+              className="text-xs text-muted-foreground"
+              onClick={onSkip}
+              data-testid="button-county-skip"
+            >
+              Use {jurisdiction.state} laws only
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Input
+            ref={manualInputRef}
+            placeholder="Enter your county name (e.g. Clayton)"
+            value={manualCounty}
+            onChange={(e) => setManualCounty(e.target.value)}
+            className="bg-white dark:bg-background text-sm"
+            data-testid="input-county-disambiguation"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && manualCounty.trim()) onConfirm(manualCounty.trim());
+            }}
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={!manualCounty.trim()}
+              onClick={() => onConfirm(manualCounty.trim())}
+              className="flex-1 text-xs h-8"
+              data-testid="button-county-confirm"
+            >
+              Use {manualCounty.trim() ? `${manualCounty.trim()} County` : "This County"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => { setShowManual(false); setManualCounty(""); }}
+              className="text-xs h-8"
+            >
+              Back
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CountyDisambiguationPanel — fallback shown when no county could be resolved
+ * at all (rare — forward and reverse geocoding both failed to find a county).
+ * Requires free-text manual entry.
  */
 function CountyDisambiguationPanel({
   jurisdiction,
@@ -68,14 +191,13 @@ function CountyDisambiguationPanel({
         <TriangleAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-            County could not be determined
+            County needed
           </p>
           <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5 leading-relaxed">
             We found <strong>{jurisdiction.state}</strong>
-            {jurisdiction.city ? ` (${jurisdiction.city})` : ""}, but this ZIP
-            code may span multiple counties or county data wasn't returned.
-            Enter your county below for county-specific custody rules, or
-            continue with statewide information only.
+            {jurisdiction.city ? `, near ${jurisdiction.city},` : ""} but
+            couldn't determine your county from this ZIP. Enter your county for
+            county-specific custody rules, or continue with statewide guidance.
           </p>
         </div>
       </div>
@@ -83,15 +205,13 @@ function CountyDisambiguationPanel({
       <div className="space-y-2">
         <Input
           ref={inputRef}
-          placeholder={`e.g. Fulton`}
+          placeholder="e.g. Fulton"
           value={county}
           onChange={(e) => setCounty(e.target.value)}
           className="bg-white dark:bg-background text-sm"
           data-testid="input-county-disambiguation"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && county.trim()) {
-              onConfirm(county.trim());
-            }
+            if (e.key === "Enter" && county.trim()) onConfirm(county.trim());
           }}
         />
         <div className="flex gap-2">
@@ -258,7 +378,11 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
             position.coords.longitude
           );
           if (!jurisdiction.county) {
+            // No county at all — rare, requires manual entry
             setGpsState({ status: "county_ambiguous", jurisdiction });
+          } else if (jurisdiction.countyIsApproximate) {
+            // County was inferred from center-point reverse geocode — needs confirmation
+            setGpsState({ status: "county_confirm", jurisdiction });
           } else {
             setGpsState({ status: "success", jurisdiction });
             commitJurisdiction(jurisdiction);
@@ -329,8 +453,11 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
       // Sends ZIP to server — Google Maps API key used server-side only
       const jurisdiction = await geocodeZip(trimmed);
       if (!jurisdiction.county) {
-        // County could not be determined — surface disambiguation UI
+        // No county at all — rare, both forward and reverse geocode failed
         setZipState({ status: "county_ambiguous", jurisdiction });
+      } else if (jurisdiction.countyIsApproximate) {
+        // County resolved from center-point reverse geocode — needs user confirmation
+        setZipState({ status: "county_confirm", jurisdiction });
       } else {
         setZipState({ status: "success", jurisdiction });
         commitJurisdiction(jurisdiction);
@@ -380,7 +507,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
               className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto transition-colors ${
                 gpsState.status === "success"
                   ? "bg-emerald-100 dark:bg-emerald-900/30"
-                  : gpsState.status === "county_ambiguous"
+                  : gpsState.status === "county_confirm" || gpsState.status === "county_ambiguous"
                     ? "bg-amber-100 dark:bg-amber-900/30"
                     : "bg-primary/10"
               }`}
@@ -389,7 +516,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
                 <Loader2 className="w-7 h-7 text-primary animate-spin" />
               ) : gpsState.status === "success" ? (
                 <CheckCircle2 className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-              ) : gpsState.status === "county_ambiguous" ? (
+              ) : gpsState.status === "county_confirm" || gpsState.status === "county_ambiguous" ? (
                 <TriangleAlert className="w-7 h-7 text-amber-500" />
               ) : gpsState.status === "denied" ? (
                 <ShieldOff className="w-7 h-7 text-amber-500" />
@@ -404,9 +531,11 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
                   ? "Detecting Your Location..."
                   : gpsState.status === "success"
                     ? "Location Detected"
-                    : gpsState.status === "county_ambiguous"
-                      ? "State Detected — County Needed"
-                      : "Use Your Current Location"}
+                    : gpsState.status === "county_confirm"
+                      ? "Confirm Your County"
+                      : gpsState.status === "county_ambiguous"
+                        ? "County Needed"
+                        : "Use Your Current Location"}
               </h3>
               {gpsState.status === "idle" && (
                 <p className="text-sm text-muted-foreground">
@@ -431,7 +560,16 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
               )}
             </div>
 
-            {/* County disambiguation — shown when state resolved but county is unknown */}
+            {/* County confirm — preselected county from reverse geocode, requires confirmation */}
+            {gpsState.status === "county_confirm" && (
+              <CountyConfirmPanel
+                jurisdiction={gpsState.jurisdiction}
+                onConfirm={(county) => handleCountyConfirm("gps", gpsState.jurisdiction, county)}
+                onSkip={() => handleCountySkip("gps", gpsState.jurisdiction)}
+              />
+            )}
+
+            {/* County disambiguation — fallback when even reverse geocode found no county */}
             {gpsState.status === "county_ambiguous" && (
               <CountyDisambiguationPanel
                 jurisdiction={gpsState.jurisdiction}
@@ -447,7 +585,9 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
               onSwitchToZip={() => setActiveTab("zip")}
             />
 
-            {gpsState.status !== "denied" && gpsState.status !== "county_ambiguous" && (
+            {gpsState.status !== "denied" &&
+             gpsState.status !== "county_confirm" &&
+             gpsState.status !== "county_ambiguous" && (
               <Button
                 onClick={handleGpsDetect}
                 disabled={isGpsLoading || gpsState.status === "success"}
@@ -483,7 +623,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
               className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto transition-colors ${
                 zipState.status === "success"
                   ? "bg-emerald-100 dark:bg-emerald-900/30"
-                  : zipState.status === "county_ambiguous"
+                  : zipState.status === "county_confirm" || zipState.status === "county_ambiguous"
                     ? "bg-amber-100 dark:bg-amber-900/30"
                     : "bg-primary/10"
               }`}
@@ -492,7 +632,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
                 <Loader2 className="w-7 h-7 text-primary animate-spin" />
               ) : zipState.status === "success" ? (
                 <CheckCircle2 className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-              ) : zipState.status === "county_ambiguous" ? (
+              ) : zipState.status === "county_confirm" || zipState.status === "county_ambiguous" ? (
                 <TriangleAlert className="w-7 h-7 text-amber-500" />
               ) : (
                 <Hash className="w-7 h-7 text-primary" />
@@ -501,11 +641,15 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
 
             <div className="text-center">
               <h3 className="font-semibold mb-1">
-                {zipState.status === "county_ambiguous"
-                  ? "State Detected — County Needed"
-                  : "Enter Your ZIP Code"}
+                {zipState.status === "county_confirm"
+                  ? "Confirm Your County"
+                  : zipState.status === "county_ambiguous"
+                    ? "County Needed"
+                    : "Enter Your ZIP Code"}
               </h3>
-              {zipState.status !== "county_ambiguous" && zipState.status !== "success" && (
+              {zipState.status !== "county_confirm" &&
+               zipState.status !== "county_ambiguous" &&
+               zipState.status !== "success" && (
                 <p className="text-sm text-muted-foreground">
                   Enter your 5-digit ZIP code to find custody laws for your area.
                 </p>
@@ -523,7 +667,16 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
               )}
             </div>
 
-            {/* County disambiguation — shown when state resolved but county is unknown */}
+            {/* County confirm — preselected county from reverse geocode, requires confirmation */}
+            {zipState.status === "county_confirm" && (
+              <CountyConfirmPanel
+                jurisdiction={zipState.jurisdiction}
+                onConfirm={(county) => handleCountyConfirm("zip", zipState.jurisdiction, county)}
+                onSkip={() => handleCountySkip("zip", zipState.jurisdiction)}
+              />
+            )}
+
+            {/* County disambiguation — fallback when even reverse geocode found no county */}
             {zipState.status === "county_ambiguous" && (
               <CountyDisambiguationPanel
                 jurisdiction={zipState.jurisdiction}
@@ -532,8 +685,10 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
               />
             )}
 
-            {/* ZIP input form — hidden once county disambiguation or success is active */}
-            {zipState.status !== "county_ambiguous" && zipState.status !== "success" && (
+            {/* ZIP input form — hidden once a county panel or success is active */}
+            {zipState.status !== "county_confirm" &&
+             zipState.status !== "county_ambiguous" &&
+             zipState.status !== "success" && (
               <form onSubmit={handleZipSubmit} className="space-y-2">
                 <div className="space-y-1.5">
                   <Input

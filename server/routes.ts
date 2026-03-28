@@ -195,9 +195,11 @@ async function geocodeByZip(zipCode: string): Promise<Jurisdiction | null> {
   );
   const result = withCounty ?? exactMatches[0];
 
-  const { state, county, city, country } = extractJurisdictionFields(
+  const { state, county: forwardCounty, city, country } = extractJurisdictionFields(
     result.address_components as GComponent[],
   );
+  // `county` must be `let` so we can update it from the reverse-geocode fallback below.
+  let county = forwardCounty;
 
   // ── Data integrity checks ────────────────────────────────────────────────────
   if (country !== "United States") {
@@ -211,16 +213,45 @@ async function geocodeByZip(zipCode: string): Promise<Jurisdiction | null> {
 
   const geometry = result.geometry?.location as { lat: number; lng: number } | undefined;
 
+  // ── County fallback via reverse geocoding ────────────────────────────────────
+  // Some ZIPs (e.g. 30349) span county lines, so the forward geocode result
+  // omits administrative_area_level_2.  When this happens, we reverse-geocode
+  // the ZIP's center coordinates — every point is in exactly one county, so
+  // this gives us the primary county (where most of the ZIP's population is).
+  // We set countyIsApproximate=true so the frontend can ask the user to confirm
+  // before surfacing county-specific guidance.
+  let countyIsApproximate = false;
+
+  if (!county && geometry?.lat !== undefined && geometry?.lng !== undefined) {
+    console.log(
+      `[geocodeByZip] ZIP=${normalizedZip} — no county from forward geocode; ` +
+      `reverse-geocoding center (${geometry.lat}, ${geometry.lng}) to find primary county`,
+    );
+    try {
+      const centerResult = await geocodeByCoordinates(geometry.lat, geometry.lng);
+      if (centerResult?.county && centerResult.county !== county) {
+        county = centerResult.county;
+        countyIsApproximate = true;
+        console.log(`[geocodeByZip] ZIP=${normalizedZip} primary county from center-point reverse geocode → "${county}"`);
+      }
+    } catch (reverseErr) {
+      // Non-fatal — we just won't have a county suggestion
+      console.warn(`[geocodeByZip] ZIP=${normalizedZip} reverse-geocode failed:`, reverseErr);
+    }
+  }
+
   console.log(
     `[geocodeByZip] ZIP=${normalizedZip} resolved → ` +
-    `city="${city || "(none)"}" state="${state}" county="${county || "(undetermined)"}" ` +
+    `city="${city || "(none)"}" state="${state}" ` +
+    `county="${county || "(undetermined)"}" approximate=${countyIsApproximate} ` +
     `addr="${result.formatted_address}"`,
   );
 
   return {
     state,
-    county,                          // may be "" — caller shows disambiguation UI
-    ...(city    ? { city }    : {}), // city kept separate from county
+    county,                                               // "" only when reverse geocode also failed
+    ...(city               ? { city }               : {}),
+    ...(countyIsApproximate ? { countyIsApproximate } : {}),
     country,
     formattedAddress: result.formatted_address,
     ...(geometry?.lat !== undefined ? { latitude:  geometry.lat } : {}),
