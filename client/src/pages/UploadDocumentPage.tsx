@@ -604,8 +604,8 @@ function UploadSelector({
       <ProdActionRow
         onClick={onPdf}
         icon={FileText}
-        iconBg="bg-red-50 dark:bg-red-950/30"
-        iconColor="text-red-500"
+        iconBg="bg-primary/[0.08] dark:bg-primary/20"
+        iconColor="text-primary"
         title="Upload PDF"
         description={`Court orders, parenting plans, or notices — up to ${MAX_SIZE_MB}MB`}
         testId="button-upload-pdf"
@@ -614,8 +614,8 @@ function UploadSelector({
       <ProdActionRow
         onClick={onCamera}
         icon={Camera}
-        iconBg="bg-blue-50 dark:bg-blue-950/30"
-        iconColor="text-blue-500"
+        iconBg="bg-[#fdf9ee] dark:bg-amber-950/40"
+        iconColor="text-[#b5922f] dark:text-amber-400"
         title="Scan with Camera"
         description="Use your phone camera to photograph a physical document"
         testId="button-take-photo"
@@ -624,8 +624,8 @@ function UploadSelector({
       <ProdActionRow
         onClick={onImage}
         icon={Image}
-        iconBg="bg-violet-50 dark:bg-violet-950/30"
-        iconColor="text-violet-500"
+        iconBg="bg-[#fdf9ee] dark:bg-amber-950/40"
+        iconColor="text-[#b5922f] dark:text-amber-400"
         title="Upload Image from Device"
         description="JPG or PNG photo already saved on your device"
         testId="button-upload-image"
@@ -1477,10 +1477,10 @@ export default function UploadDocumentPage() {
           {result && !isAnalyzing && (
             <SectionStack gap="md">
               <Tabs defaultValue="summary" className="w-full">
-                <TabsList className="w-full grid grid-cols-3 h-9">
-                  <TabsTrigger value="summary" className="text-xs">Summary</TabsTrigger>
-                  <TabsTrigger value="risks" className="text-xs">Risks &amp; Dates</TabsTrigger>
-                  <TabsTrigger value="clauses" className="text-xs">Clauses</TabsTrigger>
+                <TabsList className="w-full grid grid-cols-3 h-9 bg-muted/40 border border-border/40">
+                  <TabsTrigger value="summary" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none data-[state=active]:font-semibold">Summary</TabsTrigger>
+                  <TabsTrigger value="risks" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none data-[state=active]:font-semibold">Risks &amp; Dates</TabsTrigger>
+                  <TabsTrigger value="clauses" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none data-[state=active]:font-semibold">Clauses</TabsTrigger>
                 </TabsList>
 
                 {/* ── Summary tab ── */}

@@ -180,8 +180,8 @@ function WhatMattersNowPanel({
     {
       href: askAIPath,
       icon: MessageSquare,
-      iconBg: "bg-blue-50 dark:bg-blue-950/40",
-      iconColor: "text-blue-600 dark:text-blue-400",
+      iconBg: "bg-primary/[0.08] dark:bg-primary/20",
+      iconColor: "text-primary",
       title: "Ask Atlas",
       description: "Get answers to your custody questions",
       testId: "wmn-ask-atlas",
@@ -189,8 +189,8 @@ function WhatMattersNowPanel({
     {
       href: "/upload-document",
       icon: FileSearch,
-      iconBg: "bg-emerald-50 dark:bg-emerald-950/40",
-      iconColor: "text-emerald-600 dark:text-emerald-400",
+      iconBg: "bg-primary/[0.08] dark:bg-primary/20",
+      iconColor: "text-primary",
       title: "Analyze a Document",
       description: "Upload a custody order for instant analysis",
       testId: "wmn-analyze-doc",
@@ -201,8 +201,8 @@ function WhatMattersNowPanel({
     {
       href: "/custody-map",
       icon: Map,
-      iconBg: "bg-violet-50 dark:bg-violet-950/40",
-      iconColor: "text-violet-600 dark:text-violet-400",
+      iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40",
+      iconColor: "text-[#b5922f] dark:text-amber-400",
       title: "Explore Custody Map",
       description: "See how custody laws vary across the U.S.",
       testId: "wmn-explore-map",
@@ -210,8 +210,8 @@ function WhatMattersNowPanel({
     {
       href: "/custody-map?mode=compare",
       icon: GitCompare,
-      iconBg: "bg-amber-50 dark:bg-amber-950/40",
-      iconColor: "text-amber-600 dark:text-amber-400",
+      iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40",
+      iconColor: "text-[#b5922f] dark:text-amber-400",
       title: "Compare States",
       description: "Side-by-side custody law comparison",
       testId: "wmn-compare-states",
@@ -275,7 +275,7 @@ function WhatMattersNowPanel({
             <Icon className={`w-5 h-5 ${iconColor}`} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5" style={{ color: "#b5922f" }}>
               Recommended action
             </p>
             <h3 className="font-semibold text-foreground text-[15px] leading-tight mb-1.5" data-testid="text-wmn-action-title">
@@ -343,31 +343,31 @@ interface StepConfig {
 
 const STEP_CONFIGS: Record<StepScenario, StepConfig> = {
   "no-jurisdiction": {
-    icon: MapPin, iconBg: "bg-blue-100 dark:bg-blue-950/50", iconColor: "text-blue-600 dark:text-blue-400",
+    icon: MapPin, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
     title: "Set your location",
     description: "We'll use your state and county to provide more relevant custody information.",
     ctaLabel: "Set Location", ctaHref: "/location", secondaryLabel: "Skip for now",
   },
   "no-questions": {
-    icon: MessageSquare, iconBg: "bg-blue-100 dark:bg-blue-950/50", iconColor: "text-blue-600 dark:text-blue-400",
+    icon: MessageSquare, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
     title: "Ask your first custody question",
     description: "Ask Atlas can help you understand custody rules that may apply where you live.",
     ctaLabel: "Ask Atlas", ctaHref: "/ask", secondaryLabel: "Skip for now",
   },
   "no-document": {
-    icon: FileText, iconBg: "bg-emerald-100 dark:bg-emerald-950/50", iconColor: "text-emerald-600 dark:text-emerald-400",
+    icon: FileText, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
     title: "Upload a custody document",
     description: "Analyze a custody order or legal notice to get a plain-English explanation.",
     ctaLabel: "Analyze a Document", ctaHref: "/upload-document", secondaryLabel: "Skip for now",
   },
   "review-conversations": {
-    icon: MessageSquare, iconBg: "bg-violet-100 dark:bg-violet-950/50", iconColor: "text-violet-600 dark:text-violet-400",
+    icon: MessageSquare, iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40", iconColor: "text-[#b5922f] dark:text-amber-400",
     title: "Review your saved conversations",
     description: "Your questions and documents are saved here so you can continue where you left off.",
     ctaLabel: "Resume Conversation", ctaHref: "/ask", secondaryLabel: "Maybe later",
   },
   "pro-summarize": {
-    icon: Sparkles, iconBg: "bg-amber-100 dark:bg-amber-950/50", iconColor: "text-amber-600 dark:text-amber-400",
+    icon: Sparkles, iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40", iconColor: "text-[#b5922f] dark:text-amber-400",
     title: "Summarize your situation",
     description: "Generate a structured summary based on your questions and documents.",
     ctaLabel: "Summarize My Situation", ctaHref: "#case-summary", secondaryLabel: "Maybe later",
