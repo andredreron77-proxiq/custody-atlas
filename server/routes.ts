@@ -132,52 +132,63 @@ async function geocodeWithGoogle(
     return null;
   }
 
-  const result = data.results[0];
-  const components = result.address_components as Array<{
-    long_name: string;
-    short_name: string;
-    types: string[];
-  }>;
+  // ── Result selection ────────────────────────────────────────────────────────
+  // For some ZIPs (e.g. 30349), results[0] is a city-level record that omits
+  // administrative_area_level_2 (county).  A later result may include it.
+  // We prefer the first result that has both state AND county.
+  type GComponent = { long_name: string; short_name: string; types: string[] };
+  const hasCountyComponent = (r: any) =>
+    (r.address_components as GComponent[])?.some((c) =>
+      c.types.includes("administrative_area_level_2"),
+    );
+
+  let result = data.results[0];
+  if (!hasCountyComponent(result)) {
+    const betterResult = (data.results as any[]).find(hasCountyComponent);
+    if (betterResult) result = betterResult;
+  }
+
+  const components = result.address_components as GComponent[];
 
   let state = "";
   let county = "";
+  let city = "";   // locality / city — always tracked separately from county
   let country = "";
-  let cityFallback = "";
 
   for (const component of components) {
     if (component.types.includes("administrative_area_level_1")) {
       state = component.long_name;
     }
     if (component.types.includes("administrative_area_level_2")) {
+      // Strip the administrative suffix; keep only the proper name.
       county = component.long_name
         .replace(/ County$/, "")
         .replace(/ Parish$/, "")
         .replace(/ Borough$/, "")
-        .replace(/ Municipality$/, "");
+        .replace(/ Municipality$/, "")
+        .trim();
     }
     if (component.types.includes("country")) {
       country = component.long_name;
     }
-    // Collect fallback values for areas where Google omits administrative_area_level_2
-    // (e.g. New York City ZIPs, some rural/PO Box ZIPs)
-    if (!cityFallback && component.types.includes("locality")) {
-      cityFallback = component.long_name;
+    // Collect city/locality — NEVER used as county (they are distinct concepts).
+    if (!city && component.types.includes("locality")) {
+      city = component.long_name;
     }
-    if (!cityFallback && component.types.includes("sublocality_level_1")) {
-      cityFallback = component.long_name;
+    if (!city && component.types.includes("sublocality_level_1")) {
+      city = component.long_name;
     }
-    if (!cityFallback && component.types.includes("postal_town")) {
-      cityFallback = component.long_name;
+    if (!city && component.types.includes("postal_town")) {
+      city = component.long_name;
     }
-    if (!cityFallback && component.types.includes("neighborhood")) {
-      cityFallback = component.long_name;
+    if (!city && component.types.includes("neighborhood")) {
+      city = component.long_name;
     }
   }
 
-  // Use city/locality as county display name when the county component is missing
-  if (!county && cityFallback) {
-    county = cityFallback;
-  }
+  // CRITICAL: city names must NEVER be used as county names.
+  // If county is still empty after inspecting all results, we return it as-is.
+  // The caller surfaces an ambiguity UI rather than inventing a county name.
 
   if (!state) return null;
 
@@ -188,7 +199,8 @@ async function geocodeWithGoogle(
 
   return {
     state,
-    county,
+    county,                                            // may be "" when undetermined
+    ...(city ? { city } : {}),                         // separate from county
     country,
     formattedAddress: result.formatted_address,
     ...(latitude !== undefined && { latitude }),

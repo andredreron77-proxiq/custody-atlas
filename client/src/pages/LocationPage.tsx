@@ -11,12 +11,18 @@ export default function LocationPage() {
   const handleJurisdictionFound = (jurisdiction: Jurisdiction) => {
     setJurisdiction(jurisdiction);
 
+    // When county is empty (user skipped disambiguation or county couldn't be
+    // determined), use the "General" sentinel so the route pattern resolves and
+    // JurisdictionPage renders in state-only mode.
+    const routeCounty = jurisdiction.county || "General";
+
     const params = new URLSearchParams({
-      county: jurisdiction.county,
+      county: jurisdiction.county,         // preserve real value (may be "")
       country: jurisdiction.country ?? "United States",
       address: jurisdiction.formattedAddress ?? "",
     });
 
+    if (jurisdiction.city) params.set("city", jurisdiction.city);
     if (jurisdiction.latitude !== undefined) {
       params.set("lat", String(jurisdiction.latitude));
     }
@@ -25,7 +31,7 @@ export default function LocationPage() {
     }
 
     navigate(
-      `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}?${params}`
+      `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(routeCounty)}?${params}`
     );
   };
 

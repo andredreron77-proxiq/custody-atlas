@@ -5,6 +5,8 @@ import { createInsertSchema } from "drizzle-zod";
 export const jurisdictionSchema = z.object({
   state: z.string(),
   county: z.string(),
+  /** City/locality name — always separate from county, never used as county. */
+  city: z.string().optional(),
   country: z.string().optional().default("United States"),
   formattedAddress: z.string().optional(),
   latitude: z.number().optional(),
