@@ -231,8 +231,8 @@ function StateInfoPanel({
         {/* ── Empty state ─────────────────────────────────────────────── */}
         {!selectedState && (
           <div className="p-6 flex flex-col items-center justify-center text-center gap-5 min-h-[360px]">
-            <div className="w-14 h-14 rounded-2xl border border-border bg-background flex items-center justify-center shadow-xs">
-              <Scale className="w-6 h-6 text-muted-foreground/50" />
+            <div className="w-14 h-14 rounded-2xl border border-border bg-background dark:bg-muted/40 flex items-center justify-center shadow-xs">
+              <Scale className="w-6 h-6 text-muted-foreground/70 dark:text-muted-foreground" />
             </div>
             <div>
               <p className="font-serif font-semibold text-base mb-1.5" data-testid="text-panel-empty-heading">
@@ -251,7 +251,7 @@ function StateInfoPanel({
                   <button
                     key={s}
                     onClick={() => onQuickAccess(s)}
-                    className="text-xs px-2.5 py-1 rounded-full bg-primary/[0.07] text-primary border border-primary/20 hover:bg-primary/[0.13] transition-colors dark:bg-primary/20 dark:text-primary-foreground/80 dark:border-primary/30"
+                    className="text-xs px-2.5 py-1 rounded-full bg-primary/[0.07] text-primary border border-primary/20 hover:bg-primary/[0.13] transition-colors dark:bg-primary/[0.18] dark:text-primary dark:border-primary/50 dark:hover:bg-primary/[0.28]"
                     data-testid={`quick-state-${s.toLowerCase().replace(/\s+/g, "-")}`}
                   >
                     {s}
