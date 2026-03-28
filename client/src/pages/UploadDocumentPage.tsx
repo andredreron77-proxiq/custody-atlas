@@ -723,68 +723,68 @@ function UploadSelector({
       onDrop={onDrop}
       data-testid="upload-selector"
     >
-      <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground pb-1">
+      <p className="text-xs font-medium text-muted-foreground">
         Choose how to add your document
       </p>
 
       {/* Upload PDF */}
       <button
         onClick={onPdf}
-        className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
+        className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/50 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
         data-testid="button-upload-pdf"
       >
-        <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-950/30 flex items-center justify-center flex-shrink-0 group-hover:bg-red-100 dark:group-hover:bg-red-950/50 transition-colors">
+        <div className="w-11 h-11 rounded-xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:bg-red-100 dark:group-hover:bg-red-950/50 transition-colors">
           <FileText className="w-5 h-5 text-red-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+          <p className="font-semibold text-[15px] text-foreground group-hover:text-primary transition-colors leading-snug">
             Upload PDF
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
             Court orders, parenting plans, or notices — up to {MAX_SIZE_MB}MB
           </p>
         </div>
-        <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+        <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
       </button>
 
       {/* Take Photo / Scan */}
       <button
         onClick={onCamera}
-        className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
+        className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/50 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
         data-testid="button-take-photo"
       >
-        <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-950/50 transition-colors">
+        <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:bg-blue-100 dark:group-hover:bg-blue-950/50 transition-colors">
           <Camera className="w-5 h-5 text-blue-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+          <p className="font-semibold text-[15px] text-foreground group-hover:text-primary transition-colors leading-snug">
             Scan with Camera
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
             Use your phone camera to photograph a physical document
           </p>
         </div>
-        <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+        <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
       </button>
 
       {/* Upload Image */}
       <button
         onClick={onImage}
-        className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
+        className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/50 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
         data-testid="button-upload-image"
       >
-        <div className="w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center flex-shrink-0 group-hover:bg-violet-100 dark:group-hover:bg-violet-950/50 transition-colors">
+        <div className="w-11 h-11 rounded-xl bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:bg-violet-100 dark:group-hover:bg-violet-950/50 transition-colors">
           <Image className="w-5 h-5 text-violet-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+          <p className="font-semibold text-[15px] text-foreground group-hover:text-primary transition-colors leading-snug">
             Upload Image from Device
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
             JPG or PNG photo already saved on your device
           </p>
         </div>
-        <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+        <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
       </button>
 
       {/* Multi-page tip + drag hint in one compact row */}
@@ -1499,17 +1499,17 @@ export default function UploadDocumentPage() {
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
           Document Analysis
         </p>
-        <h1 className="font-serif text-2xl md:text-[28px] font-semibold text-foreground leading-tight" data-testid="heading-upload-page">
+        <h1 className="font-serif text-[28px] md:text-[34px] font-bold text-foreground leading-tight tracking-tight" data-testid="heading-upload-page">
           Analyze a Document
         </h1>
-        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+        <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed max-w-sm">
           Upload a custody order or court notice. Our AI will extract key facts and explain them in plain English.
         </p>
       </div>
 
       {/* 4. Primary upload card */}
       <Card className="shadow-sm border bg-card" data-testid="card-upload">
-        <CardContent className="pt-6 pb-6 space-y-5">
+        <CardContent className="pt-7 pb-7 space-y-6">
 
           {/* Secure analysis reassurance */}
           <div className="flex items-start gap-3 p-3.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/40">

@@ -221,19 +221,19 @@ function WhatMattersNowPanel({
     return (
       <Link href={href}>
         <button
-          className="w-full flex items-center gap-4 px-4 py-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
+          className="w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-none transition-all duration-150 text-left group"
           data-testid={testId}
         >
-          <div className={`w-10 h-10 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0`}>
+          <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
             <Icon className={`w-5 h-5 ${iconColor}`} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors leading-snug">
+            <p className="text-[15px] font-semibold text-foreground group-hover:text-primary transition-colors leading-snug">
               {title}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{description}</p>
           </div>
-          <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+          <ArrowRight className="w-4 h-4 text-muted-foreground/25 group-hover:text-primary group-hover:translate-x-0.5 transition-all flex-shrink-0" />
         </button>
       </Link>
     );
@@ -245,10 +245,8 @@ function WhatMattersNowPanel({
         <CardContent className="pt-6 pb-5">
           <NextBestStepPanel scenario={scenario} ctaHref={ctaHref} />
         </CardContent>
-        <div className="border-t bg-muted/30 dark:bg-muted/10 px-5 py-5 space-y-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground pb-0.5">
-            Or jump to
-          </p>
+        <div className="border-t bg-muted/30 dark:bg-muted/10 px-6 py-6 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1">Or jump to</p>
           {[...primaryActions, ...explorationActions].map((action) => (
             <ActionRow key={action.testId} {...action} />
           ))}
@@ -263,14 +261,12 @@ function WhatMattersNowPanel({
 
   return (
     <Card className="shadow-sm border bg-card overflow-hidden" data-testid="panel-what-matters-now">
-      <div className="px-6 pt-5 pb-4 border-b border-border/60 flex items-center justify-between gap-4 bg-muted/20 dark:bg-muted/10">
+      <div className="px-6 pt-6 pb-5 border-b border-border/60 flex items-center justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
-            What Matters Now
-          </p>
-          <p className="text-sm text-foreground font-medium">
-            {activityParts.length > 0 ? activityParts.join(" · ") : "Welcome back"}
-          </p>
+          <h2 className="text-base font-semibold text-foreground leading-tight">What Matters Now</h2>
+          {activityParts.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-1 leading-snug">{activityParts.join(" · ")}</p>
+          )}
         </div>
         {threads.length > 0 && (
           <Link href={resumeHref}>
@@ -286,7 +282,7 @@ function WhatMattersNowPanel({
           </Link>
         )}
       </div>
-      <CardContent className="py-5 space-y-2.5">
+      <CardContent className="py-6 space-y-3">
         {primaryActions.map((action) => (
           <ActionRow key={action.testId} {...action} />
         ))}
@@ -1174,7 +1170,7 @@ export default function WorkspacePage() {
   })();
 
   return (
-    <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-8 animate-fade-in" data-testid="page-workspace">
+    <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-10 animate-fade-in" data-testid="page-workspace">
 
       {/* 1. Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
@@ -1190,7 +1186,7 @@ export default function WorkspacePage() {
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1
-              className="font-serif text-2xl md:text-3xl font-semibold text-foreground leading-tight"
+              className="font-serif text-[28px] md:text-4xl font-bold text-foreground leading-tight tracking-tight"
               data-testid="heading-workspace"
             >
               Case Workspace
@@ -1207,7 +1203,7 @@ export default function WorkspacePage() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-1.5">
+          <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-lg">
             Track your custody case, review documents, and get answers tailored to your situation.
           </p>
         </div>
@@ -1293,14 +1289,14 @@ export default function WorkspacePage() {
             ) : threads.length > 0 ? (
               <div className="space-y-2">
                 <ul className="space-y-1.5" data-testid="list-recent-conversations">
-                  {threads.slice(0, 4).map((thread) => {
+                  {threads.slice(0, 3).map((thread) => {
                     const params = new URLSearchParams({ thread: thread.id });
                     if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
                     if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
                     return (
                       <Link key={thread.id} href={`/ask?${params.toString()}`}>
                         <li
-                          className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5 hover:border-primary/30 hover:bg-primary/[0.03] transition-all duration-150 cursor-pointer group"
+                          className="flex items-center gap-3 rounded-lg border bg-card px-3 py-3 hover:border-primary/40 hover:bg-primary/[0.04] hover:-translate-y-px hover:shadow-sm active:translate-y-0 active:shadow-none transition-all duration-150 cursor-pointer group"
                           data-testid={`conversation-item-${thread.id}`}
                         >
                           <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
@@ -1325,7 +1321,7 @@ export default function WorkspacePage() {
                     );
                   })}
                 </ul>
-                {threads.length > 4 && (
+                {threads.length > 3 && (
                   <Link href={askAIPath}>
                     <Button
                       variant="outline"
