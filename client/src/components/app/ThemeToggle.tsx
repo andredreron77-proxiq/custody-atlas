@@ -1,5 +1,5 @@
 import { Sun, Moon, Monitor } from "lucide-react";
-import { useTheme } from "./ThemeProvider";
+import { useTheme } from "next-themes";
 
 type Theme = "light" | "dark" | "system";
 
@@ -28,7 +28,8 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ compact = false }: ThemeToggleProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme: rawTheme, setTheme } = useTheme();
+  const theme: Theme = (rawTheme as Theme) ?? "system";
 
   function cycleTheme() {
     const idx = CYCLE.indexOf(theme);
