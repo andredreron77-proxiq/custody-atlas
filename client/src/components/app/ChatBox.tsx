@@ -235,7 +235,7 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
               <div className="mt-2 space-y-1.5">
                 {data.conflictOptions.map((opt, i) => (
                   <div key={i} className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                    <span className="text-xs text-foreground/80 font-medium truncate max-w-[200px]">
                       "{opt.value}"
                     </span>
                     <button

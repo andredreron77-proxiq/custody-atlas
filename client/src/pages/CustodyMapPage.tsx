@@ -107,17 +107,17 @@ function getStateFill(opts: {
   const hasData = STATES_WITH_DATA.has(stateName);
 
   if (mode === "explore") {
-    if (selectedState === stateName) return "#1d4ed8";
-    if (hoveredState === stateName) return hasData ? "#3b82f6" : "#94a3b8";
-    if (hasData) return "#bfdbfe";
+    if (selectedState === stateName) return "#0f172a";
+    if (hoveredState === stateName) return hasData ? "#334155" : "#94a3b8";
+    if (hasData) return "#c7d5f0";
     return "#e2e8f0";
   }
 
   // Compare mode
-  if (stateA === stateName) return "#1d4ed8";
-  if (stateB === stateName) return "#d97706";
-  if (hoveredState === stateName) return hasData ? "#60a5fa" : "#94a3b8";
-  if (hasData) return "#bfdbfe";
+  if (stateA === stateName) return "#0f172a";
+  if (stateB === stateName) return "#b5922f";
+  if (hoveredState === stateName) return hasData ? "#334155" : "#94a3b8";
+  if (hasData) return "#c7d5f0";
   return "#e2e8f0";
 }
 
@@ -200,7 +200,7 @@ function StateInfoPanel({
           {selectedState && (
             <Badge className={`text-[10px] flex-shrink-0 ${
               hasData
-                ? "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300"
+                ? "bg-primary/[0.1] text-primary border-primary/30 dark:bg-primary/20 dark:text-primary-foreground/80"
                 : "bg-muted text-muted-foreground border-border"
             }`}>
               {hasData ? "Data available" : "Coming soon"}
@@ -245,7 +245,7 @@ function StateInfoPanel({
                   <button
                     key={s}
                     onClick={() => onQuickAccess(s)}
-                    className="text-xs px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
+                    className="text-xs px-2.5 py-1 rounded-full bg-primary/[0.07] text-primary border border-primary/20 hover:bg-primary/[0.13] transition-colors dark:bg-primary/20 dark:text-primary-foreground/80 dark:border-primary/30"
                     data-testid={`quick-state-${s.toLowerCase().replace(/\s+/g, "-")}`}
                   >
                     {s}
@@ -312,7 +312,7 @@ function StateInfoPanel({
               </div>
               <Link href={fullDetailsPath} className="flex-shrink-0 mt-0.5">
                 <Badge
-                  className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+                  className="text-[10px] bg-primary/[0.07] text-primary border-primary/20 dark:bg-primary/20 cursor-pointer hover:bg-primary/[0.13] transition-colors"
                   data-testid="badge-detailed-data"
                 >
                   Full details ↗
@@ -644,10 +644,10 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
 
       {/* Column headers */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-lg px-3 py-2">
-          <span className="w-2 h-2 rounded-full bg-blue-600 flex-shrink-0" />
-          <span className="font-semibold text-sm text-blue-800 dark:text-blue-200 truncate flex-1">{stateA}</span>
-          <button onClick={onClearA} className="text-blue-400 hover:text-blue-600 flex-shrink-0" data-testid="button-clear-state-a">
+        <div className="flex items-center gap-1.5 bg-primary/[0.08] dark:bg-primary/20 border border-primary/25 dark:border-primary/40 rounded-lg px-3 py-2">
+          <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+          <span className="font-semibold text-sm text-primary dark:text-primary-foreground/90 truncate flex-1">{stateA}</span>
+          <button onClick={onClearA} className="text-primary/40 hover:text-primary flex-shrink-0" data-testid="button-clear-state-a">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -702,7 +702,7 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
               </div>
               {/* Side-by-side cells */}
               <div className="grid grid-cols-2 divide-x">
-                <div className="p-2.5 min-h-[64px] bg-blue-50/40 dark:bg-blue-950/10">
+                <div className="p-2.5 min-h-[64px] bg-primary/[0.04] dark:bg-primary/[0.08]">
                   {!hasDataA ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawA ? (
@@ -711,7 +711,7 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
                 </div>
-                <div className="p-2.5 min-h-[64px] bg-amber-50/40 dark:bg-amber-950/10">
+                <div className="p-2.5 min-h-[64px] bg-[#fdf9ee]/70 dark:bg-amber-950/10">
                   {!hasDataB ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawB ? (
@@ -803,7 +803,7 @@ function StateSelectDropdown({ value, onChange, placeholder, accentClass, testId
               >
                 <span>{state}</span>
                 {STATES_WITH_DATA.has(state) ? (
-                  <Badge className="text-[10px] bg-blue-100 text-blue-700 border-blue-200 ml-2 py-0">Data</Badge>
+                  <Badge className="text-[10px] bg-primary/[0.1] text-primary border-primary/25 ml-2 py-0">Data</Badge>
                 ) : (
                   <span className="text-[10px] text-muted-foreground ml-2">Soon</span>
                 )}
@@ -922,7 +922,7 @@ export default function CustodyMapPage() {
               aria-selected={mode === "explore"}
               onClick={() => switchMode("explore")}
               className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                mode === "explore" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                mode === "explore" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
               }`}
               data-testid="tab-explore"
             >
@@ -934,7 +934,7 @@ export default function CustodyMapPage() {
               aria-selected={mode === "compare"}
               onClick={() => switchMode("compare")}
               className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                mode === "compare" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                mode === "compare" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
               }`}
               data-testid="tab-compare"
             >
@@ -965,7 +965,7 @@ export default function CustodyMapPage() {
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#bfdbfe] border border-[#93c5fd] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#c7d5f0] border border-[#9aafd8] inline-block" />
               <span className="text-xs text-muted-foreground">Data available ({STATES_WITH_DATA.size} states)</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -973,7 +973,7 @@ export default function CustodyMapPage() {
               <span className="text-xs text-muted-foreground">Coming soon</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#1d4ed8] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#0f172a] inline-block" />
               <span className="text-xs text-muted-foreground">Selected</span>
             </div>
           </div>

@@ -69,9 +69,9 @@ export function PageHeader({
     >
       <div className={`min-w-0 ${center ? "" : "flex-1"}`}>
         {eyebrow && (
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+          <span className="inline-flex items-center rounded-full border border-[#dcc98a] bg-[#fdf9ee] px-2.5 py-0.5 text-[11px] font-semibold tracking-widest text-[#b5922f] uppercase mb-2.5">
             {eyebrow}
-          </p>
+          </span>
         )}
         <h1
           className="font-serif text-2xl md:text-3xl font-semibold text-foreground leading-tight"
@@ -80,7 +80,7 @@ export function PageHeader({
           {title}
         </h1>
         {subtitle && (
-          <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-prose">
+          <p className="text-[15px] text-foreground/70 mt-2 leading-relaxed max-w-prose">
             {subtitle}
           </p>
         )}

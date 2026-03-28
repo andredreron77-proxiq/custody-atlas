@@ -260,13 +260,13 @@ export default function JurisdictionPage() {
       />
 
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
+        <span className="inline-flex items-center rounded-full border border-[#dcc98a] bg-[#fdf9ee] px-2.5 py-0.5 text-[11px] font-semibold tracking-widest text-[#b5922f] uppercase mb-2.5">
           {isStateOnly ? "State Law Overview" : "Jurisdiction"}
-        </p>
+        </span>
         <h1 className="font-serif text-2xl md:text-3xl font-semibold text-foreground leading-tight mb-1" data-testid="heading-jurisdiction">
           {isStateOnly ? `${state} Custody Law` : `Child Custody Laws — ${state}`}
         </h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-[15px] text-foreground/70">
           {isStateOnly
             ? "General statewide overview"
             : `Jurisdiction-specific information for ${county} County`}

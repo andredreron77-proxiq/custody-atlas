@@ -200,7 +200,7 @@ function CaseActionsPanel({ caseId }: { caseId: string }) {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">{action.description}</p>
+              <p className="text-xs text-foreground/75 mt-0.5 leading-relaxed line-clamp-2">{action.description}</p>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
               <button
@@ -738,25 +738,25 @@ export default function AskAIPage() {
       {/* Document scope indicator — shown when ?document= is in URL */}
       {documentIdParam && (
         <div
-          className="rounded-lg border border-blue-200 dark:border-blue-800/60 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2 flex items-center gap-2.5"
+          className="rounded-lg border border-primary/20 dark:border-primary/30 bg-primary/[0.06] dark:bg-primary/[0.12] px-3 py-2 flex items-center gap-2.5"
           data-testid="document-scope-indicator"
         >
-          <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <FileText className="w-4 h-4 text-primary flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Document scope active</span>
+            <span className="text-xs font-semibold text-primary">Document scope active</span>
             {scopedDocMeta ? (
-              <span className="ml-1.5 text-xs text-blue-600/80 dark:text-blue-400/80 truncate">
+              <span className="ml-1.5 text-xs text-foreground/70 truncate">
                 — {scopedDocMeta.fileName}
               </span>
             ) : (
-              <span className="ml-1.5 text-xs text-blue-500/60 dark:text-blue-500/60">Loading…</span>
+              <span className="ml-1.5 text-xs text-muted-foreground/60">Loading…</span>
             )}
           </div>
-          <span className="text-xs text-blue-500/70 dark:text-blue-400/50 flex-shrink-0 hidden sm:inline">
+          <span className="text-xs text-foreground/50 flex-shrink-0 hidden sm:inline">
             Questions answered from this document first
           </span>
           <Link href={`/ask${jurisdiction ? `?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}` : ""}`}>
-            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-blue-600/70 hover:text-blue-700 dark:text-blue-400/70" data-testid="button-clear-document-scope">
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-primary/60 hover:text-primary" data-testid="button-clear-document-scope">
               <X className="w-3.5 h-3.5" />
             </Button>
           </Link>
