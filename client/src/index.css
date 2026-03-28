@@ -90,55 +90,93 @@
 }
 
 .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  /* ── Utility tokens ──────────────────────────────────────── */
+  --button-outline: rgba(255,255,255, .12);
+  --badge-outline: rgba(255,255,255, .06);
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --border: 217 33% 17%;
-  --card: 220 39% 13%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217 33% 16%;
-  --sidebar: 217 33% 15%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217 33% 18%;
-  --sidebar-primary: 217 91% 60%;
-  --sidebar-primary-foreground: 222 47% 11%;
-  --sidebar-accent: 217 33% 18%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 217 91% 60%;
-  --popover: 217 33% 17%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217 33% 20%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 217 33% 20%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 33% 19%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 217 17% 19%;
-  --accent-foreground: 210 40% 98%;
-  --gold: 38 60% 55%;
+
+  /* ── Page canvas ─────────────────────────────────────────── */
+  /* Deep navy — not black. hsl(222,42%,11%) ≈ #101d33         */
+  --background: 222 42% 11%;
+  /* Warm near-white — slightly cool, not paper-white           */
+  --foreground: 214 32% 93%;
+
+  /* ── Borders — visible at rest against dark surfaces ─────── */
+  /* Border at 22% lightness gives clear separation on 11% bg  */
+  --border: 220 28% 22%;
+
+  /* ── Card / panel surfaces (elevation 1) ─────────────────── */
+  /* 5% lightness gap between bg and card = clear panel depth   */
+  --card: 222 38% 16%;
+  --card-foreground: 214 32% 93%;
+  --card-border: 220 28% 21%;
+
+  /* ── Sidebar ─────────────────────────────────────────────── */
+  /* Slightly darker than card — sidebar recedes                */
+  --sidebar: 222 40% 13%;
+  --sidebar-foreground: 214 32% 93%;
+  --sidebar-border: 220 28% 20%;
+  --sidebar-primary: 217 88% 62%;
+  --sidebar-primary-foreground: 222 47% 10%;
+  --sidebar-accent: 220 32% 19%;
+  --sidebar-accent-foreground: 214 32% 93%;
+  --sidebar-ring: 217 88% 62%;
+
+  /* ── Popover (elevation 2 — sits above cards) ────────────── */
+  --popover: 222 36% 19%;
+  --popover-foreground: 214 32% 93%;
+  --popover-border: 220 28% 24%;
+
+  /* ── Primary — sky blue works in dark mode; navy is invisible */
+  /* Readable on dark surface; navy brand shows in bg hue       */
+  --primary: 217 88% 62%;
+  --primary-foreground: 222 50% 8%;
+
+  /* ── Secondary — subtle tinted surface for chips, tags ────── */
+  --secondary: 220 32% 21%;
+  --secondary-foreground: 214 28% 90%;
+
+  /* ── Muted — lowest-priority surfaces and text ───────────── */
+  --muted: 220 30% 18%;
+  /* 65% lightness = ~6:1 contrast against 11% bg surface       */
+  --muted-foreground: 215 18% 65%;
+
+  /* ── Accent — for highlight rings and subtle fills ───────── */
+  --accent: 220 30% 19%;
+  --accent-foreground: 214 32% 93%;
+
+  /* ── Gold accent — warm, slightly brighter in dark context ── */
+  --gold: 38 62% 58%;
   --gold-foreground: 0 0% 100%;
-  --destructive: 0 62% 30%;
-  --destructive-foreground: 210 40% 98%;
-  --input: 217 33% 30%;
-  --ring: 217 91% 60%;
-  --chart-1: 217 91% 70%;
-  --chart-2: 142 76% 65%;
-  --chart-3: 280 65% 75%;
-  --chart-4: 32 95% 65%;
-  --chart-5: 340 82% 70%;
-  --shadow-2xs: 0px 2px 0px 0px hsl(217 33% 15% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(217 33% 15% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(217 33% 15% / 0.00), 0px 1px 2px -1px hsl(217 33% 15% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(217 33% 15% / 0.00), 0px 1px 2px -1px hsl(217 33% 15% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(217 33% 15% / 0.00), 0px 2px 4px -1px hsl(217 33% 15% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(217 33% 15% / 0.00), 0px 4px 6px -1px hsl(217 33% 15% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(217 33% 15% / 0.00), 0px 8px 10px -1px hsl(217 33% 15% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(217 33% 15% / 0.00);
+
+  /* ── Destructive — MUST be bright in dark mode ───────────── */
+  /* 30% was nearly invisible; 65% is clearly red on dark bg    */
+  --destructive: 0 72% 65%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* ── Input ───────────────────────────────────────────────── */
+  --input: 220 28% 28%;
+  --ring: 217 88% 62%;
+
+  /* ── Charts ──────────────────────────────────────────────── */
+  --chart-1: 217 88% 68%;
+  --chart-2: 142 70% 58%;
+  --chart-3: 280 62% 72%;
+  --chart-4: 32 90% 62%;
+  --chart-5: 340 78% 68%;
+
+  /* ── Shadows — dark mode uses border + dark-bleed approach ── */
+  /* Light shadows are invisible on dark; use inset border ring  */
+  --shadow-2xs: 0px 1px 2px 0px hsl(222 47% 5% / 0.5);
+  --shadow-xs: 0px 1px 3px 0px hsl(222 47% 5% / 0.6);
+  --shadow-sm: 0px 1px 2px 0px hsl(222 47% 5% / 0.4), 0px 1px 3px 0px hsl(222 47% 5% / 0.5);
+  --shadow: 0px 2px 4px 0px hsl(222 47% 5% / 0.5), 0px 1px 2px -1px hsl(222 47% 5% / 0.4);
+  --shadow-md: 0px 4px 8px -1px hsl(222 47% 5% / 0.55), 0px 2px 4px -2px hsl(222 47% 5% / 0.4);
+  --shadow-lg: 0px 8px 16px -3px hsl(222 47% 5% / 0.6), 0px 4px 6px -4px hsl(222 47% 5% / 0.4);
+  --shadow-xl: 0px 16px 24px -5px hsl(222 47% 5% / 0.65), 0px 8px 10px -6px hsl(222 47% 5% / 0.4);
+  --shadow-2xl: 0px 24px 48px -12px hsl(222 47% 5% / 0.75);
 
 /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));
@@ -185,6 +223,15 @@
     transition-property: background-color, border-color, color, fill, stroke;
     transition-duration: 200ms;
     transition-timing-function: ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html,
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0ms !important;
+    }
   }
 
   body {
