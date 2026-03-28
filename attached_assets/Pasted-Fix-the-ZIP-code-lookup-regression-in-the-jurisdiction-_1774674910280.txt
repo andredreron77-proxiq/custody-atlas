@@ -1,0 +1,53 @@
+Fix the ZIP code lookup/regression in the jurisdiction flow.
+
+Problem:
+ZIP lookup is returning incorrect location data and misleading fallback states/cities. For example, entering a ZIP can incorrectly return a different state/city and then say county could not be determined.
+
+Requirements:
+
+1. Exact ZIP matching only
+- Use exact 5-digit ZIP matching
+- Do not use partial matches
+- Do not use fuzzy matching
+- Normalize ZIP input by trimming whitespace and validating 5 digits before lookup
+
+2. Separate fields cleanly
+- Resolve ZIP -> city, state, county/county candidates
+- Keep city, state, and county as separate fields
+- Never derive county names from city names
+
+3. Safe fallback behavior
+- If ZIP lookup fails, show:
+  "We couldn't determine your location from that ZIP code."
+- Do not show a guessed city/state unless confidence is high
+- Do not display unrelated fallback data from another record
+
+4. County ambiguity handling
+- If a ZIP spans multiple counties:
+  - show the correct state
+  - explain that county could not be determined from ZIP alone
+  - let the user select or enter county manually
+- Do not substitute an arbitrary county
+
+5. Data integrity checks
+- Add validation so returned lookup data must be internally consistent:
+  - ZIP belongs to returned state
+  - city/state pairing is valid
+  - county belongs to returned state
+- If validation fails, reject the result and show a neutral fallback message
+
+6. Remove bad fallback contamination
+- Ensure stale/mock/sample location data is not used in production lookup flows
+- Prevent previous lookup results from leaking into the current ZIP lookup result
+
+7. Debugging support
+- Add temporary logging for:
+  - entered ZIP
+  - matched record ID/source
+  - resolved city
+  - resolved state
+  - resolved county/county candidates
+  - fallback reason if lookup fails
+
+Goal:
+Make ZIP lookup accurate, deterministic, and safe. If the app cannot resolve a ZIP confidently, it should fail gracefully rather than showing incorrect jurisdiction information.

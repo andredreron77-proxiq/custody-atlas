@@ -94,117 +94,189 @@ function getOpenAIDirectClient(): OpenAI {
   return new OpenAI({ apiKey: key });
 }
 
-async function geocodeWithGoogle(
-  params: { lat: number; lng: number } | { address: string }
-): Promise<Jurisdiction | null> {
-  // GOOGLE MAPS API KEY used here — server-side only, never exposed to the client
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) {
-    throw new Error("GOOGLE_MAPS_API_KEY is not configured");
-  }
+/** Shared address-component type used by both geocoding helpers. */
+type GComponent = { long_name: string; short_name: string; types: string[] };
 
-  let url: string;
-  let inputCoords: { latitude: number; longitude: number } | undefined;
-
-  if ("lat" in params) {
-    // Reverse geocoding: coordinates → address components
-    // GOOGLE MAPS GEOCODING API — latlng lookup
-    url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${params.lat},${params.lng}&key=${apiKey}`;
-    inputCoords = { latitude: params.lat, longitude: params.lng };
-  } else {
-    // Forward geocoding: ZIP/address → address components
-    // GOOGLE MAPS GEOCODING API — address lookup
-    url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(params.address)}&key=${apiKey}`;
-  }
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Geocoding API request failed: ${response.statusText}`);
-  }
-
-  const data = await response.json() as any;
-
-  if (data.status === "REQUEST_DENIED") {
-    throw new Error(`REQUEST_DENIED: ${data.error_message || "API key may have referrer restrictions"}`);
-  }
-
-  if (data.status !== "OK" || !data.results || data.results.length === 0) {
-    return null;
-  }
-
-  // ── Result selection ────────────────────────────────────────────────────────
-  // For some ZIPs (e.g. 30349), results[0] is a city-level record that omits
-  // administrative_area_level_2 (county).  A later result may include it.
-  // We prefer the first result that has both state AND county.
-  type GComponent = { long_name: string; short_name: string; types: string[] };
-  const hasCountyComponent = (r: any) =>
-    (r.address_components as GComponent[])?.some((c) =>
-      c.types.includes("administrative_area_level_2"),
-    );
-
-  let result = data.results[0];
-  if (!hasCountyComponent(result)) {
-    const betterResult = (data.results as any[]).find(hasCountyComponent);
-    if (betterResult) result = betterResult;
-  }
-
-  const components = result.address_components as GComponent[];
-
+/** Extract jurisdiction fields from a Google geocoding address_components array. */
+function extractJurisdictionFields(components: GComponent[]): {
+  state: string;
+  county: string;
+  city: string;
+  country: string;
+} {
   let state = "";
   let county = "";
-  let city = "";   // locality / city — always tracked separately from county
+  let city = "";
   let country = "";
 
-  for (const component of components) {
-    if (component.types.includes("administrative_area_level_1")) {
-      state = component.long_name;
-    }
-    if (component.types.includes("administrative_area_level_2")) {
-      // Strip the administrative suffix; keep only the proper name.
-      county = component.long_name
+  for (const c of components) {
+    if (c.types.includes("administrative_area_level_1")) state = c.long_name;
+    if (c.types.includes("administrative_area_level_2")) {
+      // Strip suffix — keep only the proper county name.
+      county = c.long_name
         .replace(/ County$/, "")
         .replace(/ Parish$/, "")
         .replace(/ Borough$/, "")
         .replace(/ Municipality$/, "")
         .trim();
     }
-    if (component.types.includes("country")) {
-      country = component.long_name;
-    }
-    // Collect city/locality — NEVER used as county (they are distinct concepts).
-    if (!city && component.types.includes("locality")) {
-      city = component.long_name;
-    }
-    if (!city && component.types.includes("sublocality_level_1")) {
-      city = component.long_name;
-    }
-    if (!city && component.types.includes("postal_town")) {
-      city = component.long_name;
-    }
-    if (!city && component.types.includes("neighborhood")) {
-      city = component.long_name;
-    }
+    if (c.types.includes("country")) country = c.long_name;
+    // City/locality — NEVER used as county (distinct concepts).
+    if (!city && c.types.includes("locality"))           city = c.long_name;
+    if (!city && c.types.includes("sublocality_level_1")) city = c.long_name;
+    if (!city && c.types.includes("postal_town"))        city = c.long_name;
+    if (!city && c.types.includes("neighborhood"))       city = c.long_name;
   }
 
-  // CRITICAL: city names must NEVER be used as county names.
-  // If county is still empty after inspecting all results, we return it as-is.
-  // The caller surfaces an ambiguity UI rather than inventing a county name.
+  return { state, county, city, country };
+}
 
-  if (!state) return null;
+/**
+ * ZIP-specific geocoding — uses Google's Geocoding API with US restriction and
+ * strict exact-ZIP validation to prevent cross-contamination from nearby results.
+ *
+ * Guarantees:
+ *   • Only results that contain the queried ZIP as a `postal_code` component
+ *     are accepted — wrong-city / wrong-state results are rejected outright.
+ *   • Country is validated as "United States".
+ *   • City names are NEVER used as county names.
+ *   • If county cannot be determined, `county` is returned as "" — the caller
+ *     surfaces a disambiguation UI rather than inventing a name.
+ */
+async function geocodeByZip(zipCode: string): Promise<Jurisdiction | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) throw new Error("GOOGLE_MAPS_API_KEY is not configured");
 
-  // Extract coordinates from the geocode result geometry (available for both lookup types)
+  // Normalize: trim whitespace, verify 5 digits before hitting the API.
+  const normalizedZip = zipCode.trim();
+  if (!/^\d{5}$/.test(normalizedZip)) {
+    console.warn(`[geocodeByZip] invalid format: "${zipCode}"`);
+    return null;
+  }
+
+  // GOOGLE MAPS GEOCODING API — forward geocoding with US component restriction.
+  // `components=country:US` prevents the API from returning non-US results.
+  const url =
+    `https://maps.googleapis.com/maps/api/geocode/json` +
+    `?address=${encodeURIComponent(normalizedZip)}` +
+    `&components=country:US|postal_code:${encodeURIComponent(normalizedZip)}` +
+    `&key=${apiKey}`;
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Geocoding API request failed: ${response.statusText}`);
+
+  const data = await response.json() as any;
+  console.log(`[geocodeByZip] ZIP=${normalizedZip} status=${data.status} results=${data.results?.length ?? 0}`);
+
+  if (data.status === "REQUEST_DENIED") {
+    throw new Error(`REQUEST_DENIED: ${data.error_message || "API key may have referrer restrictions"}`);
+  }
+  if (data.status !== "OK" || !data.results?.length) return null;
+
+  // ── Exact ZIP filtering ──────────────────────────────────────────────────────
+  // Accept only results whose postal_code component exactly matches the queried ZIP.
+  // This prevents the API from returning a nearby city or a different postal area.
+  const exactMatches = (data.results as any[]).filter((r: any) =>
+    (r.address_components as GComponent[])?.some(
+      (c) => c.types.includes("postal_code") && c.long_name === normalizedZip,
+    ),
+  );
+
+  console.log(
+    `[geocodeByZip] ZIP=${normalizedZip} exactMatches=${exactMatches.length}` +
+    (exactMatches.length === 0 ? " — REJECTED (no result contains exact ZIP)" : ""),
+  );
+
+  if (exactMatches.length === 0) return null;   // API returned results, but none match the queried ZIP
+
+  // ── Prefer the result that has county (administrative_area_level_2) ──────────
+  const withCounty = exactMatches.find((r: any) =>
+    (r.address_components as GComponent[])?.some((c) => c.types.includes("administrative_area_level_2")),
+  );
+  const result = withCounty ?? exactMatches[0];
+
+  const { state, county, city, country } = extractJurisdictionFields(
+    result.address_components as GComponent[],
+  );
+
+  // ── Data integrity checks ────────────────────────────────────────────────────
+  if (country !== "United States") {
+    console.warn(`[geocodeByZip] ZIP=${normalizedZip} REJECTED — country="${country}" is not United States`);
+    return null;
+  }
+  if (!state) {
+    console.warn(`[geocodeByZip] ZIP=${normalizedZip} REJECTED — no state in result`);
+    return null;
+  }
+
   const geometry = result.geometry?.location as { lat: number; lng: number } | undefined;
-  const latitude = inputCoords?.latitude ?? geometry?.lat;
-  const longitude = inputCoords?.longitude ?? geometry?.lng;
+
+  console.log(
+    `[geocodeByZip] ZIP=${normalizedZip} resolved → ` +
+    `city="${city || "(none)"}" state="${state}" county="${county || "(undetermined)"}" ` +
+    `addr="${result.formatted_address}"`,
+  );
 
   return {
     state,
-    county,                                            // may be "" when undetermined
-    ...(city ? { city } : {}),                         // separate from county
+    county,                          // may be "" — caller shows disambiguation UI
+    ...(city    ? { city }    : {}), // city kept separate from county
     country,
     formattedAddress: result.formatted_address,
-    ...(latitude !== undefined && { latitude }),
-    ...(longitude !== undefined && { longitude }),
+    ...(geometry?.lat !== undefined ? { latitude:  geometry.lat } : {}),
+    ...(geometry?.lng !== undefined ? { longitude: geometry.lng } : {}),
+  };
+}
+
+/**
+ * Reverse geocoding — converts GPS coordinates to a jurisdiction.
+ * Uses Google's Geocoding API with a latlng lookup; country=US is validated.
+ */
+async function geocodeByCoordinates(lat: number, lng: number): Promise<Jurisdiction | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) throw new Error("GOOGLE_MAPS_API_KEY is not configured");
+
+  // GOOGLE MAPS GEOCODING API — reverse geocoding.
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Geocoding API request failed: ${response.statusText}`);
+
+  const data = await response.json() as any;
+  console.log(`[geocodeByCoordinates] lat=${lat} lng=${lng} status=${data.status} results=${data.results?.length ?? 0}`);
+
+  if (data.status === "REQUEST_DENIED") {
+    throw new Error(`REQUEST_DENIED: ${data.error_message || "API key may have referrer restrictions"}`);
+  }
+  if (data.status !== "OK" || !data.results?.length) return null;
+
+  // Prefer the first result that has county data; fall back to results[0].
+  const withCounty = (data.results as any[]).find((r: any) =>
+    (r.address_components as GComponent[])?.some((c) => c.types.includes("administrative_area_level_2")),
+  );
+  const result = withCounty ?? data.results[0];
+
+  const { state, county, city, country } = extractJurisdictionFields(
+    result.address_components as GComponent[],
+  );
+
+  if (!state) return null;
+
+  const geometry = result.geometry?.location as { lat: number; lng: number } | undefined;
+
+  console.log(
+    `[geocodeByCoordinates] lat=${lat} lng=${lng} resolved → ` +
+    `city="${city || "(none)"}" state="${state}" county="${county || "(undetermined)"}"`,
+  );
+
+  return {
+    state,
+    county,
+    ...(city    ? { city }    : {}),
+    country,
+    formattedAddress: result.formatted_address,
+    latitude:  lat,
+    longitude: lng,
   };
 }
 
@@ -547,7 +619,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "Invalid coordinates", details: parsed.error.issues });
       }
 
-      const jurisdiction = await geocodeWithGoogle({ lat: parsed.data.lat, lng: parsed.data.lng });
+      const jurisdiction = await geocodeByCoordinates(parsed.data.lat, parsed.data.lng);
       if (!jurisdiction) {
         return res.status(404).json({
           error: "Could not determine jurisdiction for these coordinates. Please try entering your ZIP code manually.",
@@ -576,9 +648,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "Invalid ZIP code", details: parsed.error.issues });
       }
 
-      const jurisdiction = await geocodeWithGoogle({ address: `${parsed.data.zipCode}, USA` });
+      const jurisdiction = await geocodeByZip(parsed.data.zipCode);
       if (!jurisdiction) {
-        return res.status(404).json({ error: "Could not find a location for this ZIP code" });
+        return res.status(404).json({
+          error: "We couldn't determine your location from that ZIP code. Please check the ZIP and try again.",
+        });
       }
 
       return res.json(jurisdiction);
@@ -591,8 +665,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           error: "Google Maps API key has referrer restrictions. Please remove restrictions in Google Cloud Console.",
         });
       }
-      console.error("Geocoding error:", err);
-      return res.status(500).json({ error: "Location lookup failed. Please try a different ZIP code." });
+      console.error("[geocode/zip] error:", err);
+      return res.status(500).json({ error: "We couldn't determine your location from that ZIP code. Please try again." });
     }
   });
 

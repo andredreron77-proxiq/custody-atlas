@@ -28,7 +28,6 @@ type ZipState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "invalid" }
-  | { status: "not_found" }
   | { status: "server_error"; message: string }
   | { status: "county_ambiguous"; jurisdiction: Jurisdiction }
   | { status: "success"; jurisdiction: Jurisdiction };
@@ -73,10 +72,10 @@ function CountyDisambiguationPanel({
           </p>
           <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5 leading-relaxed">
             We found <strong>{jurisdiction.state}</strong>
-            {jurisdiction.city ? ` (${jurisdiction.city})` : ""} but couldn't
-            confirm your county from this ZIP code. Enter it below for
-            county-specific custody rules, or continue with statewide
-            information only.
+            {jurisdiction.city ? ` (${jurisdiction.city})` : ""}, but this ZIP
+            code may span multiple counties or county data wasn't returned.
+            Enter your county below for county-specific custody rules, or
+            continue with statewide information only.
           </p>
         </div>
       </div>
@@ -139,13 +138,12 @@ async function geocodeZip(zipCode: string): Promise<Jurisdiction> {
   const res = await fetch("/api/geocode/zip", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ zipCode }),
+    body: JSON.stringify({ zipCode: zipCode.trim() }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    const err = new Error(data.error || `Server error (${res.status})`);
-    if (res.status === 404) (err as any).notFound = true;
-    throw err;
+    // Use the server's specific error message — it explains exactly what went wrong.
+    throw new Error(data.error || `We couldn't determine your location from that ZIP code.`);
   }
   return res.json();
 }
@@ -338,11 +336,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
         commitJurisdiction(jurisdiction);
       }
     } catch (err: any) {
-      if ((err as any).notFound) {
-        setZipState({ status: "not_found" });
-      } else {
-        setZipState({ status: "server_error", message: err.message || "Failed to look up this ZIP code." });
-      }
+      setZipState({ status: "server_error", message: err.message || "We couldn't determine your location from that ZIP code." });
     }
   };
 
@@ -552,27 +546,21 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
                     onChange={handleZipChange}
                     maxLength={5}
                     disabled={isZipLoading}
-                    aria-invalid={zipState.status === "invalid" || zipState.status === "not_found"}
+                    aria-invalid={zipState.status === "invalid" || zipState.status === "server_error"}
                     aria-describedby="zip-error"
                     className={
-                      zipState.status === "invalid" || zipState.status === "not_found"
+                      zipState.status === "invalid" || zipState.status === "server_error"
                         ? "border-destructive focus-visible:ring-destructive"
                         : ""
                     }
                     data-testid="input-zip"
                   />
 
-                  {/* Inline validation errors — shown under the input, not as toasts */}
+                  {/* Inline validation / lookup errors — shown under the input, not as toasts */}
                   {zipState.status === "invalid" && (
                     <div id="zip-error" className="flex items-center gap-1.5" data-testid="error-zip-invalid">
                       <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
                       <p className="text-xs text-destructive">Please enter a valid 5-digit US ZIP code.</p>
-                    </div>
-                  )}
-                  {zipState.status === "not_found" && (
-                    <div id="zip-error" className="flex items-center gap-1.5" data-testid="error-zip-not-found">
-                      <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
-                      <p className="text-xs text-destructive">ZIP code not found. Please check and try again.</p>
                     </div>
                   )}
                   {zipState.status === "server_error" && (
