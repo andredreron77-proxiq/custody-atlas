@@ -1,0 +1,72 @@
+Perform a thorough audit and refactor of Workspace state logic so all messaging, prompts, recommended actions, and empty states reflect the user’s true case activity.
+
+Do not change backend business rules unless needed to correct state calculation.
+Do not hardcode onboarding text.
+
+Audit and fix the following logic areas:
+
+1. Source-of-truth case state
+Create a unified derived Workspace state using:
+- uploaded document count
+- analyzed document count
+- conversation/question count
+- latest activity timestamp
+- whether jurisdiction/location is set
+- whether there are unresolved risks, flagged clauses, or pending actions
+- whether there are duplicate or stale analysis records
+
+2. State tiers
+Support at least these states:
+- Empty: no documents, no questions, no analysis
+- Intake started: documents uploaded but not fully analyzed
+- Analyzed but no questions asked
+- Active case: documents + analyses + questions exist
+- Needs attention: risks/flags/actions exist
+- Stale/incomplete: records exist but required context is missing
+Ensure only one primary state is active at a time.
+
+3. Workspace prompts and CTA rules
+Fix all prompts so they match the current state:
+- Empty -> prompt to upload first document
+- Documents analyzed, no questions -> prompt to ask first question about documents
+- Active case -> never show “Ask your first custody question”
+- Active case should instead show:
+  - Continue your case
+  - Ask a follow-up question
+  - Review flagged risks
+  - Review recent insights
+Recommended action text must be derived from real user progress, not static defaults.
+
+4. Recommended action engine
+Audit how the “recommended action” is chosen.
+Priority order should favor:
+- unresolved risks
+- missing required context (jurisdiction, incomplete analysis, etc.)
+- follow-up actions based on latest uploaded/analyzed documents
+- recent unanswered user activity
+Only fall back to onboarding actions when the user is truly new.
+
+5. Document/analysis consistency
+Ensure re-analysis of an existing document does not create duplicate onboarding behavior.
+Ensure duplicate rows or duplicate derived states do not cause the Workspace to regress to a “new user” message.
+
+6. Conversation awareness
+If at least one user question exists, suppress all “first question” copy.
+If multiple questions exist, adapt prompts to continuing activity.
+If documents exist, Ask Atlas prompts should reference document-aware questioning.
+
+7. Cross-page consistency
+Workspace, Analyze, and Ask Atlas should all reflect the same underlying case state.
+Do not let one page behave like the user is new while another page shows prior activity.
+
+8. Debugging / inspection support
+Add temporary developer logging or a debug object for Workspace state calculation so it is easy to verify:
+- documentCount
+- analyzedCount
+- conversationCount
+- primaryState
+- recommendedActionReason
+This can be removed later.
+
+Goal:
+Make Workspace feel aware of the user’s real progress and prevent onboarding copy from appearing after meaningful activity already exists.

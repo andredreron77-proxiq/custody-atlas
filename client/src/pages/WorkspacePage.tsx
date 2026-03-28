@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
   LayoutDashboard, MapPin, MessageSquare, FileSearch, Map,
   GitCompare, ShieldCheck, FileText, ArrowRight, ChevronRight,
   BookOpen, Scale, Lightbulb, X,
   Clock, Loader2, CalendarDays, PlusCircle, Trash2,
-  Sparkles, ChevronDown, Tag, TriangleAlert, Zap,
+  Sparkles, ChevronDown, Tag, TriangleAlert, Zap, AlertCircle,
 } from "lucide-react";
 import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
@@ -135,28 +135,110 @@ function formatEventDate(dateStr: string): string {
 }
 
 /* ── Workspace state ──────────────────────────────────────────────────────────
- * Drives top-area layout.  Same pattern as Ask Atlas + Case Dashboard.
+ * Six tiers, evaluated in priority order.  Only one primary state is active.
  *
- *  new_user         No questions AND no documents (may or may not have jurisdiction)
- *  active_workspace Has questions or documents — user is actively working
+ *  loading              — workspace data still fetching
+ *  empty                — no documents, no questions, no analysis
+ *  intake_started       — documents uploaded but none fully analyzed
+ *  stale_incomplete     — data exists but required context (jurisdiction) missing
+ *  analyzed_no_questions — docs analyzed, no questions asked yet
+ *  needs_attention      — active case with risk/urgency signals detected
+ *  active_case          — healthy active state: docs + analyses + questions
  * ─────────────────────────────────────────────────────────────────────────── */
 
-type WorkspaceState = "new_user" | "active_workspace";
+type WorkspaceState =
+  | "loading"
+  | "empty"
+  | "intake_started"
+  | "stale_incomplete"
+  | "analyzed_no_questions"
+  | "needs_attention"
+  | "active_case";
 
-function resolveWorkspaceState({
-  hasQuestions,
-  hasDocuments,
-}: {
-  hasQuestions: boolean;
-  hasDocuments: boolean;
+/* Debug/inspection shape — logged in development; can be removed later. */
+interface WorkspaceSignals {
+  documentCount: number;
+  analyzedCount: number;
+  conversationCount: number;
+  hasJurisdiction: boolean;
+  hasRisks: boolean;
+  primaryState: WorkspaceState;
+  recommendedActionReason: string;
+  latestActivityIso: string | null;
+}
+
+/* Returns true if the document has a completed analysis. */
+function isDocAnalyzed(doc: WorkspaceDocument): boolean {
+  return (
+    !!doc.analysisJson &&
+    typeof doc.analysisJson.summary === "string" &&
+    doc.analysisJson.summary.length > 0
+  );
+}
+
+/* Keywords that indicate time-sensitive obligations or compliance requirements. */
+const URGENCY_KEYWORDS = [
+  "compli", "mandatory", "required within", "time-sensitive",
+  "immediately", "promptly", "respond", "deadline", "failure to",
+  "default judgment", "penalty", "respond within",
+];
+
+/* Returns true if a document's analysis contains urgency/risk signals. */
+function docHasRiskSignals(doc: WorkspaceDocument): boolean {
+  if (!isDocAnalyzed(doc)) return false;
+  const dates = Array.isArray(doc.analysisJson.key_dates)
+    ? (doc.analysisJson.key_dates as string[]).map((d) => d.toLowerCase())
+    : [];
+  const implications = Array.isArray(doc.analysisJson.possible_implications)
+    ? (doc.analysisJson.possible_implications as string[]).map((i) => i.toLowerCase())
+    : [];
+  return URGENCY_KEYWORDS.some(
+    (kw) => dates.some((d) => d.includes(kw)) || implications.some((i) => i.includes(kw)),
+  );
+}
+
+function resolveWorkspaceState(signals: {
+  isLoading: boolean;
+  documentCount: number;
+  analyzedCount: number;
+  conversationCount: number;
+  hasJurisdiction: boolean;
+  hasRisks: boolean;
 }): WorkspaceState {
-  return hasQuestions || hasDocuments ? "active_workspace" : "new_user";
+  const { isLoading, documentCount, analyzedCount, conversationCount, hasJurisdiction, hasRisks } = signals;
+
+  if (isLoading) return "loading";
+
+  // Nothing at all → onboarding
+  if (documentCount === 0 && conversationCount === 0) return "empty";
+
+  // Needs attention: active + urgent/risk signals detected (highest priority)
+  const isActive = conversationCount > 0 || analyzedCount > 0;
+  if (isActive && hasRisks) return "needs_attention";
+
+  // Missing required context: jurisdiction not set (priority 2 per spec)
+  if (!hasJurisdiction) return "stale_incomplete";
+
+  // Active case: conversations + analyzed docs both present
+  if (conversationCount > 0 && analyzedCount > 0) return "active_case";
+
+  // Analyzed docs but no questions asked yet
+  if (analyzedCount > 0 && conversationCount === 0) return "analyzed_no_questions";
+
+  // Conversations only, no analyzed docs
+  if (conversationCount > 0) return "active_case";
+
+  // Docs uploaded but not yet analyzed
+  if (documentCount > 0) return "intake_started";
+
+  return "empty";
 }
 
 /* ── What Matters Now Panel ───────────────────────────────────────────────────
  * PRIMARY panel — the first thing users see.
- * new_user:        guided NextBestStepPanel + supporting action rows
- * active_workspace: context header + full-width primary action rows
+ * loading:              skeleton, prevents flash of onboarding
+ * empty:                guided NextBestStepPanel + supporting action rows
+ * all other states:     context header + inline recommended action
  * ─────────────────────────────────────────────────────────────────────────── */
 
 function WhatMattersNowPanel({
@@ -167,6 +249,8 @@ function WhatMattersNowPanel({
   documents,
   resumeHref,
   askAIPath,
+  conversationCount,
+  analyzedCount,
 }: {
   workspaceState: WorkspaceState;
   scenario: StepScenario;
@@ -175,15 +259,30 @@ function WhatMattersNowPanel({
   documents: WorkspaceDocument[];
   resumeHref: string;
   askAIPath: string;
+  conversationCount: number;
+  analyzedCount: number;
 }) {
+  // Context-aware ask label — never "first question" if the user has already asked
+  const askLabel = conversationCount > 0
+    ? "Ask a follow-up question"
+    : analyzedCount > 0
+      ? "Ask about your documents"
+      : "Ask Atlas";
+
+  const askDescription = conversationCount > 0
+    ? "Continue where you left off with another question"
+    : analyzedCount > 0
+      ? "Get document-specific answers from your analyzed files"
+      : "Get answers to your custody questions";
+
   const primaryActions = [
     {
       href: askAIPath,
       icon: MessageSquare,
       iconBg: "bg-primary/[0.08] dark:bg-primary/20",
       iconColor: "text-primary",
-      title: "Ask Atlas",
-      description: "Get answers to your custody questions",
+      title: askLabel,
+      description: askDescription,
       testId: "wmn-ask-atlas",
     },
     {
@@ -218,8 +317,27 @@ function WhatMattersNowPanel({
     },
   ];
 
+  // Loading skeleton — prevents flash of "new user" while workspace data fetches
+  if (workspaceState === "loading") {
+    return (
+      <HeroPanel testId="panel-what-matters-now">
+        <HeroPanelContent className="space-y-4 py-6">
+          <div className="flex items-start gap-4">
+            <div className="w-11 h-11 rounded-xl bg-muted animate-pulse flex-shrink-0" />
+            <div className="flex-1 space-y-2.5">
+              <div className="h-3 w-32 rounded bg-muted animate-pulse" />
+              <div className="h-4 w-56 rounded bg-muted animate-pulse" />
+              <div className="h-3 w-72 rounded bg-muted animate-pulse" />
+            </div>
+          </div>
+          <div className="h-9 w-36 rounded-md bg-muted animate-pulse" />
+        </HeroPanelContent>
+      </HeroPanel>
+    );
+  }
 
-  if (workspaceState === "new_user") {
+  // Empty / onboarding — show guided next-best-step card
+  if (workspaceState === "empty") {
     return (
       <HeroPanel testId="panel-what-matters-now">
         <HeroPanelContent className="pb-5">
@@ -235,14 +353,21 @@ function WhatMattersNowPanel({
     );
   }
 
+  // All other states — active user layout with inline recommended action
   const activityParts: string[] = [];
-  if (threads.length > 0) activityParts.push(`${threads.length} conversation${threads.length !== 1 ? "s" : ""}`);
-  if (documents.length > 0) activityParts.push(`${documents.length} document${documents.length !== 1 ? "s" : ""} analyzed`);
+  if (conversationCount > 0) activityParts.push(`${conversationCount} conversation${conversationCount !== 1 ? "s" : ""}`);
+  if (analyzedCount > 0) activityParts.push(`${analyzedCount} document${analyzedCount !== 1 ? "s" : ""} analyzed`);
+  else if (documents.length > 0) activityParts.push(`${documents.length} document${documents.length !== 1 ? "s" : ""} uploaded`);
 
   const { icon: Icon, iconBg, iconColor, title, description, ctaLabel } = STEP_CONFIGS[scenario];
   const isHashCta = ctaHref.startsWith("#");
   const CtaLink = ({ children }: { children: React.ReactNode }) =>
     isHashCta ? <a href={ctaHref}>{children}</a> : <Link href={ctaHref}>{children}</Link>;
+
+  // Colour the "Recommended action" label amber for risks, primary for everything else
+  const recommendedLabelColor = workspaceState === "needs_attention"
+    ? "text-amber-600 dark:text-amber-400"
+    : "text-[#b5922f] dark:text-amber-400";
 
   return (
     <HeroPanel testId="panel-what-matters-now">
@@ -253,7 +378,7 @@ function WhatMattersNowPanel({
             <p className="text-xs text-muted-foreground mt-1 leading-snug">{activityParts.join(" · ")}</p>
           )}
         </div>
-        {threads.length > 0 && (
+        {conversationCount > 0 && (
           <Link href={resumeHref}>
             <Button
               variant="outline"
@@ -269,14 +394,14 @@ function WhatMattersNowPanel({
       </HeroPanelHeader>
 
       <HeroPanelContent className="space-y-6">
-        {/* Recommended action — inline, not a card wrapper */}
+        {/* Recommended action — inline */}
         <div className="flex items-start gap-4">
           <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
             <Icon className={`w-5 h-5 ${iconColor}`} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5 text-[#b5922f] dark:text-amber-400">
-              Recommended action
+            <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5 ${recommendedLabelColor}`}>
+              {workspaceState === "needs_attention" ? "Attention needed" : "Recommended action"}
             </p>
             <h3 className="font-semibold text-foreground text-[15px] leading-tight mb-1.5" data-testid="text-wmn-action-title">
               {title}
@@ -306,7 +431,7 @@ function WhatMattersNowPanel({
               data-testid="wmn-footer-ask"
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              Ask Atlas a question
+              {askLabel}
             </Button>
           </Link>
           <Link href="/upload-document">
@@ -328,7 +453,16 @@ function WhatMattersNowPanel({
 
 /* ── Next Best Step ───────────────────────────────────────────────────────── */
 
-type StepScenario = "no-jurisdiction" | "no-questions" | "no-document" | "review-conversations" | "pro-summarize";
+type StepScenario =
+  | "no-jurisdiction"
+  | "no-questions"
+  | "no-document"
+  | "review-conversations"
+  | "pro-summarize"
+  | "ask-about-docs"
+  | "review-risks"
+  | "continue-case"
+  | "intake-pending";
 
 interface StepConfig {
   icon: React.ElementType;
@@ -345,13 +479,13 @@ const STEP_CONFIGS: Record<StepScenario, StepConfig> = {
   "no-jurisdiction": {
     icon: MapPin, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
     title: "Set your location",
-    description: "We'll use your state and county to provide more relevant custody information.",
+    description: "We'll use your state and county to provide jurisdiction-specific custody information.",
     ctaLabel: "Set Location", ctaHref: "/location", secondaryLabel: "Skip for now",
   },
   "no-questions": {
     icon: MessageSquare, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
     title: "Ask your first custody question",
-    description: "Ask Atlas can help you understand custody rules that may apply where you live.",
+    description: "Ask Atlas can help you understand custody laws that apply where you live, in plain English.",
     ctaLabel: "Ask Atlas", ctaHref: "/ask", secondaryLabel: "Skip for now",
   },
   "no-document": {
@@ -362,15 +496,39 @@ const STEP_CONFIGS: Record<StepScenario, StepConfig> = {
   },
   "review-conversations": {
     icon: MessageSquare, iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40", iconColor: "text-[#b5922f] dark:text-amber-400",
-    title: "Review your saved conversations",
-    description: "Your questions and documents are saved here so you can continue where you left off.",
+    title: "Continue where you left off",
+    description: "Your conversations and documents are saved. Pick up your research from your last question.",
     ctaLabel: "Resume Conversation", ctaHref: "/ask", secondaryLabel: "Maybe later",
   },
   "pro-summarize": {
     icon: Sparkles, iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40", iconColor: "text-[#b5922f] dark:text-amber-400",
     title: "Summarize your situation",
-    description: "Generate a structured summary based on your questions and documents.",
+    description: "Generate a structured overview of the themes and custody factors across your conversations and documents.",
     ctaLabel: "Summarize My Situation", ctaHref: "#case-summary", secondaryLabel: "Maybe later",
+  },
+  "ask-about-docs": {
+    icon: MessageSquare, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
+    title: "Ask Atlas about your analyzed documents",
+    description: "Your documents are ready. Ask Atlas to explain key terms, flag obligations, or summarize what they mean for your case.",
+    ctaLabel: "Ask About Your Documents", ctaHref: "/ask", secondaryLabel: "Maybe later",
+  },
+  "review-risks": {
+    icon: AlertCircle, iconBg: "bg-amber-50 dark:bg-amber-950/40", iconColor: "text-amber-600 dark:text-amber-400",
+    title: "Your documents contain items to review",
+    description: "Atlas detected potential deadlines, compliance requirements, or time-sensitive items in your uploaded documents.",
+    ctaLabel: "Review with Atlas", ctaHref: "/ask", secondaryLabel: "Dismiss",
+  },
+  "continue-case": {
+    icon: Sparkles, iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40", iconColor: "text-[#b5922f] dark:text-amber-400",
+    title: "Continue your custody case",
+    description: "Pick up where you left off — ask a follow-up question, review flagged items, or analyze a new document.",
+    ctaLabel: "Resume Conversation", ctaHref: "/ask", secondaryLabel: "Maybe later",
+  },
+  "intake-pending": {
+    icon: FileSearch, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
+    title: "Finish analyzing your uploaded documents",
+    description: "You have documents that haven't been fully analyzed yet. Open them to extract key dates, obligations, and insights.",
+    ctaLabel: "Analyze Document", ctaHref: "/upload-document", secondaryLabel: "Skip for now",
   },
 };
 
@@ -1245,38 +1403,118 @@ export default function WorkspacePage() {
   const documents: WorkspaceDocument[] = workspaceData?.documents ?? [];
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
 
-  const hasQuestions = threads.length > 0;
-  const hasDocuments = documents.length > 0;
-
-  // Page-level workspace state — drives top-area layout and de-duplication.
-  const workspaceState: WorkspaceState = isLoadingWorkspace
-    ? "new_user"
-    : resolveWorkspaceState({ hasQuestions, hasDocuments });
-
-  function resolveScenario(): StepScenario {
-    if (!jurisdiction) return "no-jurisdiction";
-    if (!hasQuestions) return "no-questions";
-    if (!hasDocuments) return "no-document";
-    if (isProUser) return "pro-summarize";
-    return "review-conversations";
-  }
-  const scenario = resolveScenario();
-
-  const scenarioCta = ((): string => {
-    if (scenario === "review-conversations") {
-      const threadParam = threads[0] ? `thread=${threads[0].id}` : null;
-      if (jurisdiction) {
-        const jParams = `state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`;
-        return threadParam ? `/ask?${threadParam}&${jParams}` : `/ask?${jParams}`;
+  // ── Workspace signals ────────────────────────────────────────────────────
+  // Count unique analyzed docs (de-duplicate by fileName, keep latest per file
+  // so re-analysis of the same document does not regress to "new user" state).
+  // Note: plain Record used because the lucide Map icon shadows the built-in Map.
+  const uniqueAnalyzed: Record<string, WorkspaceDocument> = {};
+  for (const doc of documents) {
+    if (isDocAnalyzed(doc)) {
+      const existing = uniqueAnalyzed[doc.fileName];
+      if (!existing || new Date(doc.createdAt) > new Date(existing.createdAt)) {
+        uniqueAnalyzed[doc.fileName] = doc;
       }
-      return threadParam ? `/ask?${threadParam}` : "/ask";
     }
+  }
+
+  const documentCount = documents.length;
+  const analyzedCount = Object.keys(uniqueAnalyzed).length;
+  const conversationCount = threads.length;
+  const hasJurisdiction = !!jurisdiction;
+  const hasRisks = documents.some(docHasRiskSignals);
+
+  const allTimestamps = [
+    ...documents.map((d) => d.createdAt),
+    ...threads.map((t) => t.createdAt),
+  ];
+  const latestActivityIso = allTimestamps.length > 0
+    ? allTimestamps.reduce((a, b) => (a > b ? a : b))
+    : null;
+
+  // Primary state — single source of truth for the whole page
+  const workspaceState: WorkspaceState = resolveWorkspaceState({
+    isLoading: isLoadingWorkspace && !!user,
+    documentCount,
+    analyzedCount,
+    conversationCount,
+    hasJurisdiction,
+    hasRisks,
+  });
+
+  // ── Scenario + recommended action ────────────────────────────────────────
+  function resolveScenario(): { scenario: StepScenario; reason: string } {
+    switch (workspaceState) {
+      case "loading":
+      case "empty":
+        if (!hasJurisdiction) return { scenario: "no-jurisdiction", reason: "no_jurisdiction_and_empty" };
+        return { scenario: "no-questions", reason: "no_data_at_all" };
+
+      case "needs_attention":
+        return { scenario: "review-risks", reason: "risk_signals_detected" };
+
+      case "stale_incomplete":
+        return { scenario: "no-jurisdiction", reason: "missing_jurisdiction_with_data" };
+
+      case "intake_started":
+        return { scenario: "intake-pending", reason: "docs_not_analyzed" };
+
+      case "analyzed_no_questions":
+        return { scenario: "ask-about-docs", reason: "analyzed_no_questions" };
+
+      case "active_case":
+        if (isProUser) return { scenario: "pro-summarize", reason: "pro_user_active" };
+        return { scenario: "continue-case", reason: "active_healthy_case" };
+
+      default:
+        return { scenario: "no-questions", reason: "fallback" };
+    }
+  }
+
+  const { scenario, reason: recommendedActionReason } = resolveScenario();
+
+  // ── Debug inspection (remove after verification) ──────────────────────────
+  useEffect(() => {
+    const signals: WorkspaceSignals = {
+      documentCount,
+      analyzedCount,
+      conversationCount,
+      hasJurisdiction,
+      hasRisks,
+      primaryState: workspaceState,
+      recommendedActionReason,
+      latestActivityIso,
+    };
+    console.debug("[Workspace state]", signals);
+  // Intentionally omit stable refs — fires whenever meaningful signals change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceState, documentCount, analyzedCount, conversationCount, hasRisks, hasJurisdiction, recommendedActionReason]);
+
+  // ── CTA href for the recommended action card ──────────────────────────────
+  const scenarioCta = ((): string => {
+    const jParams = jurisdiction
+      ? `state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`
+      : null;
+
+    if (scenario === "no-jurisdiction") return "/location";
     if (scenario === "pro-summarize") return "#case-summary";
-    const base = STEP_CONFIGS[scenario].ctaHref;
-    if (scenario === "no-questions" && jurisdiction) {
-      return `/ask?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`;
+    if (scenario === "intake-pending") return "/upload-document";
+
+    if (scenario === "ask-about-docs") {
+      // Pre-select the most recently analyzed doc in Ask Atlas
+      const latestDoc = Object.values(uniqueAnalyzed).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )[0];
+      const base = jParams ? `/ask?${jParams}` : "/ask";
+      return latestDoc ? `${base}${base.includes("?") ? "&" : "?"}document=${latestDoc.id}` : base;
     }
-    return base;
+
+    // All conversation-resume scenarios
+    const lastThread = threads[0];
+    const threadParam = lastThread ? `thread=${lastThread.id}` : null;
+    if (jParams) {
+      return threadParam ? `/ask?${threadParam}&${jParams}` : `/ask?${jParams}`;
+    }
+    return threadParam ? `/ask?${threadParam}` : "/ask";
   })();
 
   const lawPagePath = jurisdiction
@@ -1346,6 +1584,8 @@ export default function WorkspacePage() {
             documents={documents}
             resumeHref={resumeHref}
             askAIPath={askAIPath}
+            conversationCount={conversationCount}
+            analyzedCount={analyzedCount}
           />
         </div>
         <div className="lg:col-span-1">
