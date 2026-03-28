@@ -777,6 +777,7 @@ function PagesReviewView({
   onAnalyze: () => void;
 }) {
   const canAddMore = !isPDF && pages.length < MAX_PAGES;
+  const isDocx = pages.length === 1 && pages[0].type === DOCX_MIME;
 
   return (
     <div className="space-y-4" data-testid="pages-review">
