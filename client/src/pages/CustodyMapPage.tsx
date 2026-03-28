@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+import { useTheme } from "next-themes";
 import { Link } from "wouter";
 import {
   Search, X, MessageSquare, Scale, Users, Gavel, MapPin,
@@ -102,23 +103,28 @@ function getStateFill(opts: {
   stateA: string | null;
   stateB: string | null;
   hoveredState: string | null;
+  isDark?: boolean;
 }) {
-  const { mode, stateName, selectedState, stateA, stateB, hoveredState } = opts;
+  const { mode, stateName, selectedState, stateA, stateB, hoveredState, isDark } = opts;
   const hasData = STATES_WITH_DATA.has(stateName);
 
   if (mode === "explore") {
-    if (selectedState === stateName) return "#0f172a";
-    if (hoveredState === stateName) return hasData ? "#334155" : "#94a3b8";
-    if (hasData) return "#c7d5f0";
-    return "#e2e8f0";
+    if (selectedState === stateName) return isDark ? "#2563eb" : "#0f172a";
+    if (hoveredState === stateName) return hasData
+      ? (isDark ? "#1d4ed8" : "#334155")
+      : (isDark ? "#334155" : "#94a3b8");
+    if (hasData) return isDark ? "#1e3a6e" : "#c7d5f0";
+    return isDark ? "#1a2540" : "#e2e8f0";
   }
 
   // Compare mode
-  if (stateA === stateName) return "#0f172a";
-  if (stateB === stateName) return "#b5922f";
-  if (hoveredState === stateName) return hasData ? "#334155" : "#94a3b8";
-  if (hasData) return "#c7d5f0";
-  return "#e2e8f0";
+  if (stateA === stateName) return isDark ? "#1d4ed8" : "#0f172a";
+  if (stateB === stateName) return isDark ? "#d97706" : "#b5922f";
+  if (hoveredState === stateName) return hasData
+    ? (isDark ? "#1d4ed8" : "#334155")
+    : (isDark ? "#334155" : "#94a3b8");
+  if (hasData) return isDark ? "#1e3a6e" : "#c7d5f0";
+  return isDark ? "#1a2540" : "#e2e8f0";
 }
 
 /* ── StateInfoPanel ────────────────────────────────────────────────────
@@ -818,6 +824,9 @@ function StateSelectDropdown({ value, onChange, placeholder, accentClass, testId
 
 /* ── Main page ────────────────────────────────────────────────────────── */
 export default function CustodyMapPage() {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
   const [mode, setMode] = useState<Mode>("explore");
 
   // Explore mode state
@@ -965,15 +974,15 @@ export default function CustodyMapPage() {
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#c7d5f0] border border-[#9aafd8] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#c7d5f0] border border-[#9aafd8] dark:bg-[#1e3a6e] dark:border-[#2563eb] inline-block" />
               <span className="text-xs text-muted-foreground">Data available ({STATES_WITH_DATA.size} states)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] dark:bg-[#1a2540] dark:border-[#334155] inline-block" />
               <span className="text-xs text-muted-foreground">Coming soon</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#0f172a] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#0f172a] dark:bg-[#2563eb] inline-block" />
               <span className="text-xs text-muted-foreground">Selected</span>
             </div>
           </div>
@@ -1016,7 +1025,7 @@ export default function CustodyMapPage() {
                   >
                     <span>{state}</span>
                     {STATES_WITH_DATA.has(state) ? (
-                      <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200 ml-2">Data</Badge>
+                      <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700/60 ml-2">Data</Badge>
                     ) : (
                       <span className="text-xs text-muted-foreground ml-2">Soon</span>
                     )}
@@ -1063,7 +1072,7 @@ export default function CustodyMapPage() {
 
           <div className="flex items-center gap-4 flex-wrap text-xs">
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#bfdbfe] border border-[#93c5fd] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#bfdbfe] border border-[#93c5fd] dark:bg-[#1e3a6e] dark:border-[#2563eb] inline-block" />
               <span className="text-muted-foreground">Data available</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -1075,7 +1084,7 @@ export default function CustodyMapPage() {
               <span className="text-muted-foreground">State B</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] dark:bg-[#1a2540] dark:border-[#334155] inline-block" />
               <span className="text-muted-foreground">Coming soon</span>
             </div>
             {!stateA && !stateB && (
@@ -1140,6 +1149,7 @@ export default function CustodyMapPage() {
                       stateA,
                       stateB,
                       hoveredState,
+                      isDark,
                     });
                     return (
                       <Geography

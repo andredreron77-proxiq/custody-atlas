@@ -275,7 +275,7 @@ function WhatMattersNowPanel({
             <Icon className={`w-5 h-5 ${iconColor}`} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5" style={{ color: "#b5922f" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5 text-[#b5922f] dark:text-amber-400">
               Recommended action
             </p>
             <h3 className="font-semibold text-foreground text-[15px] leading-tight mb-1.5" data-testid="text-wmn-action-title">
