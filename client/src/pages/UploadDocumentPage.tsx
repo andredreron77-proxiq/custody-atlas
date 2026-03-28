@@ -7,6 +7,7 @@ import {
   MapPin, Send, BookOpen, TriangleAlert, ShieldAlert,
   Camera, RotateCcw, Check, Plus, ArrowUp, ArrowDown,
   ScanLine, GripVertical, Bot, User, ShieldCheck,
+  RefreshCw, UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -754,6 +755,7 @@ function PagesReviewView({
   sourceType,
   isAnalyzing,
   analyzeDisabled = false,
+  hasResult = false,
   onAddCamera,
   onAddImage,
   onMoveUp,
@@ -761,6 +763,8 @@ function PagesReviewView({
   onRemovePage,
   onClear,
   onAnalyze,
+  onReanalyze,
+  onUploadAnother,
 }: {
   pages: File[];
   previews: string[];
@@ -768,6 +772,7 @@ function PagesReviewView({
   sourceType: SourceType;
   isAnalyzing: boolean;
   analyzeDisabled?: boolean;
+  hasResult?: boolean;
   onAddCamera: () => void;
   onAddImage: () => void;
   onMoveUp: (index: number) => void;
@@ -775,8 +780,10 @@ function PagesReviewView({
   onRemovePage: (index: number) => void;
   onClear: () => void;
   onAnalyze: () => void;
+  onReanalyze: () => void;
+  onUploadAnother: () => void;
 }) {
-  const canAddMore = !isPDF && pages.length < MAX_PAGES;
+  const canAddMore = !isPDF && pages.length < MAX_PAGES && !hasResult;
   const isDocx = pages.length === 1 && pages[0].type === DOCX_MIME;
 
   return (
@@ -937,26 +944,61 @@ function PagesReviewView({
         </>
       )}
 
-      {/* Analyze CTA */}
-      <Button
-        onClick={onAnalyze}
-        disabled={pages.length === 0 || isAnalyzing || analyzeDisabled}
-        className="w-full gap-2"
-        data-testid="button-analyze-document"
-        size="lg"
-      >
-        {isAnalyzing ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Analyzing document…
-          </>
-        ) : (
-          <>
-            <FileSearch className="w-4 h-4" />
-            Analyze Document{pages.length > 1 ? ` (${pages.length} pages)` : ""}
-          </>
-        )}
-      </Button>
+      {/* Analyze CTA — changes based on whether a result already exists */}
+      {hasResult ? (
+        <div className="flex flex-col gap-2">
+          <Button
+            onClick={onReanalyze}
+            disabled={isAnalyzing || analyzeDisabled}
+            variant="outline"
+            className="w-full gap-2"
+            data-testid="button-reanalyze-document"
+            size="lg"
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Re-analyzing…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                Analyze Again
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={onUploadAnother}
+            disabled={isAnalyzing}
+            className="w-full gap-2"
+            data-testid="button-upload-another"
+            size="lg"
+          >
+            <UploadCloud className="w-4 h-4" />
+            Upload a Different Document
+          </Button>
+        </div>
+      ) : (
+        <Button
+          onClick={onAnalyze}
+          disabled={pages.length === 0 || isAnalyzing || analyzeDisabled}
+          className="w-full gap-2"
+          data-testid="button-analyze-document"
+          size="lg"
+        >
+          {isAnalyzing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Analyzing document…
+            </>
+          ) : (
+            <>
+              <FileSearch className="w-4 h-4" />
+              Analyze Document{pages.length > 1 ? ` (${pages.length} pages)` : ""}
+            </>
+          )}
+        </Button>
+      )}
     </div>
   );
 }
@@ -985,6 +1027,8 @@ export default function UploadDocumentPage() {
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [docLimitReached, setDocLimitReached] = useState(false);
+  // Stored after a successful analysis — used for re-analysis without creating a duplicate record
+  const [documentId, setDocumentId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   // Hidden file input refs
@@ -1186,6 +1230,7 @@ export default function UploadDocumentPage() {
     setSourceType("images");
     setResult(null);
     setError(null);
+    setDocumentId(null);
   };
 
   /* ── Drag and drop ───────────────────────────────────────────────────── */
@@ -1283,6 +1328,7 @@ export default function UploadDocumentPage() {
       }
 
       setResult(data as DocumentAnalysisResult);
+      if (data.documentId) setDocumentId(data.documentId as string);
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
     } catch (err: any) {
       const message = err?.message || "Failed to analyze document. Please try again.";
@@ -1291,6 +1337,54 @@ export default function UploadDocumentPage() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  /* ── Re-analysis (uses stored documentId — no new document created) ──── */
+
+  const reanalyzeDocument = async () => {
+    if (!documentId) {
+      // Fall back to a fresh upload-based analysis if no ID (e.g. anonymous session)
+      return analyzeDocument();
+    }
+    setIsAnalyzing(true);
+    setError(null);
+    setResult(null);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/documents/${documentId}/reanalyze`, {
+        method: "POST",
+        headers,
+      });
+
+      if (res.status === 429) {
+        setDocLimitReached(true);
+        queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
+
+      setResult(data as DocumentAnalysisResult);
+      // documentId stays the same — no new record was created
+    } catch (err: any) {
+      const message = err?.message || "Re-analysis failed. Please try again.";
+      setError(message);
+      toast({ title: "Re-analysis Failed", description: message, variant: "destructive" });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  /* ── Upload another document — reset all state ────────────────────────── */
+
+  const handleUploadAnother = () => {
+    clearAll();
+    // clearAll already resets result, documentId, pages, error — just scroll to top
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   /* ── Render ──────────────────────────────────────────────────────────── */
@@ -1407,6 +1501,7 @@ export default function UploadDocumentPage() {
               sourceType={sourceType}
               isAnalyzing={isAnalyzing}
               analyzeDisabled={docLimitReached}
+              hasResult={!!result}
               onAddCamera={() => addCameraInputRef.current?.click()}
               onAddImage={() => addImageInputRef.current?.click()}
               onMoveUp={(i) => movePage(i, i - 1)}
@@ -1414,6 +1509,8 @@ export default function UploadDocumentPage() {
               onRemovePage={removePage}
               onClear={clearAll}
               onAnalyze={analyzeDocument}
+              onReanalyze={reanalyzeDocument}
+              onUploadAnother={handleUploadAnother}
             />
           )}
 
@@ -1459,9 +1556,35 @@ export default function UploadDocumentPage() {
               {isAnalyzing ? "Analyzing your document…" : "Analysis Results"}
             </p>
             {result && !isAnalyzing && (
-              <Badge variant="secondary" className="text-xs font-normal ml-auto" data-testid="text-document-type">
-                {result.document_type}
-              </Badge>
+              <>
+                <Badge variant="secondary" className="text-xs font-normal" data-testid="text-document-type">
+                  {result.document_type}
+                </Badge>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={reanalyzeDocument}
+                    disabled={isAnalyzing}
+                    className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                    data-testid="button-reanalyze-header"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Re-analyze
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUploadAnother}
+                    disabled={isAnalyzing}
+                    className="h-7 gap-1.5 text-xs"
+                    data-testid="button-upload-another-header"
+                  >
+                    <UploadCloud className="w-3 h-3" />
+                    New Document
+                  </Button>
+                </div>
+              </>
             )}
           </div>
 

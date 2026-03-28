@@ -230,6 +230,27 @@ export async function updateDocumentType(
 }
 
 /**
+ * Update the analysis JSON of an existing document (for re-analysis without creating a duplicate row).
+ */
+export async function updateDocumentAnalysis(
+  documentId: string,
+  userId: string,
+  analysisJson: Record<string, unknown>,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+  try {
+    const { error } = await supabaseAdmin
+      .from("documents")
+      .update({ analysis_json: analysisJson })
+      .eq("id", documentId)
+      .eq("user_id", userId);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Generate a short-lived signed URL for a document stored in Supabase Storage.
  *
  * Security model:

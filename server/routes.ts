@@ -28,7 +28,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, createDocumentSignedUrl, deleteDocument, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, type DocumentType, type SavedDocument } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import { deriveCaseTimeline } from "./services/caseTimeline";
@@ -1248,14 +1248,14 @@ CRITICAL RULES:
       const docUserId = (req as any).user?.id as string | undefined;
       const docCaseId: string | undefined = req.body?.caseId || undefined;
 
+      let savedDocumentId: string | null = null;
+
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
         const documentName = req.file.originalname || "document";
 
-        // Await the save so we have the document ID for case_facts population.
-        // Pass caseId so the document row is linked to the case in Supabase.
-        // (Requires the case_id column — saveDocument degrades gracefully if missing.)
-        saveDocument(docUserId, {
+        // Await the save so we can return the document ID and use it for case_facts population.
+        const savedDoc = await saveDocument(docUserId, {
           fileName: documentName,
           storagePath: null,
           caseId: docCaseId ?? null,
@@ -1264,25 +1264,27 @@ CRITICAL RULES:
           analysisJson: validated.data as Record<string, unknown>,
           extractedText: truncatedText,
           docType: "other",
-        }).then((savedDoc) => {
+        }).catch(() => null);
+
+        if (savedDoc) {
+          savedDocumentId = savedDoc.id;
           // If the request was tied to a case, upsert extracted_facts into case_facts,
-          // then trigger deterministic action generation from the full fact set (fire-and-forget).
-          if (docCaseId && docUserId && savedDoc && validated.data.extracted_facts) {
+          // then trigger deterministic action generation (fire-and-forget).
+          if (docCaseId && validated.data.extracted_facts) {
             const factsDict = validated.data.extracted_facts as Record<string, string | null>;
             const docType = validated.data.document_type as string | null | undefined;
             upsertFactsFromDocument(
               docCaseId, docUserId, savedDoc.id, documentName, factsDict, docType,
             ).then(() => {
-              // Build normalized facts dict for action generation
               const merged: Record<string, string | null | undefined> = { ...factsDict };
               if (docType) merged.document_type = docType;
               return generateActionsFromFacts(docCaseId, docUserId!, merged);
             }).catch((err) => console.error("[analyze-document] post-upsert action generation error:", err));
           }
-        }).catch(() => {});
+        }
       }
 
-      return res.json({ ...validated.data, extractedText: truncatedText });
+      return res.json({ ...validated.data, extractedText: truncatedText, documentId: savedDocumentId });
     } catch (err: any) {
       console.error("Document analysis error:", err);
       return res.status(500).json({
@@ -1736,6 +1738,120 @@ ${userQuestion}`;
    * PATCH /api/documents/:documentId/type
    * Update the document type label. Body: { docType }.
    */
+
+  /**
+   * POST /api/documents/:documentId/reanalyze
+   * Re-run AI analysis on an already-uploaded document using its stored extracted text.
+   * Updates the existing document row — does NOT create a duplicate record.
+   */
+  app.post("/api/documents/:documentId/reanalyze", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { documentId } = req.params;
+    try {
+      const doc = await getDocumentById(documentId, user.id);
+      if (!doc) return res.status(404).json({ error: "Document not found." });
+
+      const truncatedText = doc.extractedText.slice(0, 14000);
+      if (truncatedText.trim().length < 20) {
+        return res.status(422).json({ error: "This document has no stored text to re-analyze." });
+      }
+
+      const systemPrompt = `You are an assistant that analyzes custody-related legal documents and explains them in plain English.
+
+Rules:
+- You are NOT a lawyer. Do not give legal advice.
+- Explain legal terms in simple, accessible language.
+- Be accurate and thorough in identifying key information.
+- Always remind users to consult a licensed family law attorney.
+- CRITICAL EXTRACTION RULE: For every field in "extracted_facts", return the exact value as it appears in the document text — copy it verbatim. If a value is not clearly and explicitly stated in the document, return null. NEVER guess, infer, or invent a court name, address, case number, judge name, or date.
+
+You MUST respond with valid JSON in exactly this structure:
+{
+  "document_type": "The type of legal document (e.g., Custody Order, Parenting Plan, Visitation Agreement, Motion to Modify, etc.)",
+  "summary": "A 2-4 sentence plain-English summary of what this document is and what it does",
+  "important_terms": ["Format each item as: 'Term or Provision: plain-English explanation.' Include 3-6 items. Every item must be a single string."],
+  "key_dates": ["Each item is a plain text string. Example: 'March 15, 2024 – Order effective date'. Empty array if no dates found."],
+  "possible_implications": ["Each item is a plain text string explaining what this document means for the people involved. 3-5 items."],
+  "questions_to_ask_attorney": ["Each item is a plain text string — a specific question to ask an attorney. 3-5 items."],
+  "extracted_facts": {
+    "document_title": "null if not clearly stated",
+    "court_name": "null if not found",
+    "court_address": "null if not found",
+    "case_number": "null if not found",
+    "judge_name": "null if not found",
+    "hearing_date": "null if not found",
+    "filing_party": "null if not found",
+    "opposing_party": "null if not found"
+  }
+}
+
+CRITICAL RULES:
+1. Every array value must be a plain string. Do NOT use nested objects inside arrays.
+2. In extracted_facts, return verbatim text from the document or null — never guess or invent values.`;
+
+      const openai = getOpenAIClient();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Re-analyze the following custody document text:\n\n${truncatedText}` },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1500,
+        temperature: 0.3,
+      });
+
+      const rawContent = completion.choices[0]?.message?.content;
+      if (!rawContent) {
+        return res.status(500).json({ error: "No response from AI service." });
+      }
+
+      let parsedResponse: unknown;
+      try {
+        parsedResponse = JSON.parse(rawContent);
+      } catch {
+        return res.status(500).json({ error: "AI returned an invalid response format. Please try again." });
+      }
+
+      // Normalize string arrays (same defensive logic as analyze-document)
+      const normalizeStringArray = (arr: unknown): string[] => {
+        if (!Array.isArray(arr)) return [];
+        return arr.map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") {
+            const obj = item as Record<string, unknown>;
+            const label = obj.term ?? obj.name ?? obj.title ?? obj.provision ?? "";
+            const detail = obj.explanation ?? obj.definition ?? obj.description ?? obj.meaning ?? obj.value ?? "";
+            if (label && detail) return `${label}: ${detail}`;
+            if (label) return String(label);
+            if (detail) return String(detail);
+            return JSON.stringify(item);
+          }
+          return String(item);
+        });
+      };
+
+      if (parsedResponse && typeof parsedResponse === "object") {
+        const r = parsedResponse as Record<string, unknown>;
+        for (const field of ["important_terms", "key_dates", "possible_implications", "questions_to_ask_attorney"] as const) {
+          if (Array.isArray(r[field])) r[field] = normalizeStringArray(r[field]);
+        }
+      }
+
+      const validated = documentAnalysisResultSchema.safeParse(parsedResponse);
+      if (!validated.success) {
+        return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
+      }
+
+      // Update the existing document row — no new row created
+      await updateDocumentAnalysis(documentId, user.id, validated.data as Record<string, unknown>).catch(() => {});
+
+      return res.json({ ...validated.data, extractedText: truncatedText, documentId });
+    } catch (err: any) {
+      console.error("[reanalyze] error:", err);
+      return res.status(500).json({ error: err.message || "Failed to re-analyze document. Please try again." });
+    }
+  });
 
   /**
    * GET /api/documents/:documentId
