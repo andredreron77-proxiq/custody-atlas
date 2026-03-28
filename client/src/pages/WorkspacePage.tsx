@@ -281,7 +281,7 @@ function WhatMattersNowPanel({
             <h3 className="font-semibold text-foreground text-[15px] leading-tight mb-1.5" data-testid="text-wmn-action-title">
               {title}
             </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed" data-testid="text-wmn-action-description">
+            <p className="text-[14px] text-foreground/75 leading-relaxed" data-testid="text-wmn-action-description">
               {description}
             </p>
           </div>
@@ -408,7 +408,7 @@ function NextBestStepPanel({ scenario, ctaHref }: { scenario: StepScenario; ctaH
             <h2 className="font-semibold text-foreground text-base leading-tight mb-1" data-testid="text-next-step-title">
               {title}
             </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed mb-3.5" data-testid="text-next-step-description">
+            <p className="text-[14px] text-foreground/75 leading-relaxed mb-3.5" data-testid="text-next-step-description">
               {description}
             </p>
             <div className="flex items-center gap-3 flex-wrap">

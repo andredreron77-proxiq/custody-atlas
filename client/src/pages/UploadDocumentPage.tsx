@@ -175,26 +175,26 @@ function ExtractedFactsCard({ facts }: { facts: ExtractedFacts }) {
 
 function QAResponseCard({ response }: { response: DocumentQAResponse }) {
   return (
-    <div className="space-y-4 pt-1" data-testid="card-qa-response">
+    <div className="space-y-5 pt-1" data-testid="card-qa-response">
       <div>
-        <p className="text-sm leading-relaxed text-foreground" data-testid="text-qa-answer">
+        <p className="text-[14.5px] leading-[1.75] text-foreground" data-testid="text-qa-answer">
           {response.answer}
         </p>
       </div>
 
       {response.keyPoints.length > 0 && (
         <div>
-          <div className="flex items-center gap-1.5 mb-2">
+          <div className="flex items-center gap-1.5 mb-2.5">
             <BookOpen className="w-3.5 h-3.5 text-primary" />
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
               Key Points from the Document
             </h4>
           </div>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2.5">
             {response.keyPoints.map((point, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`qa-key-point-${i}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                <span className="leading-relaxed text-muted-foreground">{point}</span>
+              <li key={i} className="flex items-start gap-2.5" data-testid={`qa-key-point-${i}`}>
+                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-primary/60 flex-shrink-0" />
+                <span className="text-[14.5px] leading-[1.75] text-foreground/85">{point}</span>
               </li>
             ))}
           </ul>
@@ -202,13 +202,13 @@ function QAResponseCard({ response }: { response: DocumentQAResponse }) {
       )}
 
       {response.documentReferences.length > 0 && (
-        <div className="rounded-md border border-muted bg-muted/30 p-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+        <div className="rounded-md border border-border bg-muted/20 p-3.5">
+          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55 mb-2.5">
             From the Document
           </h4>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {response.documentReferences.map((ref, i) => (
-              <li key={i} className="text-sm text-muted-foreground italic leading-relaxed" data-testid={`qa-doc-ref-${i}`}>
+              <li key={i} className="text-[14px] text-foreground/70 italic leading-relaxed" data-testid={`qa-doc-ref-${i}`}>
                 "{ref}"
               </li>
             ))}
@@ -217,18 +217,18 @@ function QAResponseCard({ response }: { response: DocumentQAResponse }) {
       )}
 
       {response.questionsToAskAttorney.length > 0 && (
-        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3">
-          <div className="flex items-center gap-1.5 mb-2">
+        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3.5">
+          <div className="flex items-center gap-1.5 mb-2.5">
             <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80 dark:text-blue-300/80">
               Questions to Ask an Attorney
             </h4>
           </div>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2.5">
             {response.questionsToAskAttorney.map((q, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200" data-testid={`qa-attorney-q-${i}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                <span className="leading-relaxed">{q}</span>
+              <li key={i} className="flex items-start gap-2.5" data-testid={`qa-attorney-q-${i}`}>
+                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                <span className="text-[14.5px] leading-[1.75] text-blue-900 dark:text-blue-100">{q}</span>
               </li>
             ))}
           </ul>
@@ -236,17 +236,17 @@ function QAResponseCard({ response }: { response: DocumentQAResponse }) {
       )}
 
       {response.caution && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5">
+        <div className="flex items-start gap-2.5 rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 px-3.5 py-3">
           <TriangleAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-800 dark:text-amber-200 leading-relaxed" data-testid="text-qa-caution">
+          <p className="text-[14px] text-amber-900 dark:text-amber-100 leading-relaxed" data-testid="text-qa-caution">
             {response.caution}
           </p>
         </div>
       )}
 
-      <div className="flex items-start gap-1.5 pt-2 border-t border-border">
-        <ShieldAlert className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground italic leading-relaxed" data-testid="text-qa-disclaimer">
+      <div className="flex items-start gap-1.5 pt-3 border-t border-border">
+        <ShieldAlert className="w-3 h-3 text-foreground/35 flex-shrink-0 mt-0.5" />
+        <p className="text-[12px] text-foreground/50 italic leading-relaxed" data-testid="text-qa-disclaimer">
           {response.disclaimer}
         </p>
       </div>

@@ -92,34 +92,34 @@ function CountyProceduresSection({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="px-5 pb-4 space-y-3">
+      <CardContent className="px-5 pb-4 space-y-4">
 
         {procedure.court_name && (
           <div className="flex items-start gap-2.5" data-testid="text-court-name">
-            <Landmark className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+            <Landmark className="w-3.5 h-3.5 text-foreground/40 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Court</p>
-              <p className="text-sm">{procedure.court_name}</p>
+              <p className="text-[11px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Court</p>
+              <p className="text-[14px] leading-relaxed text-foreground/90">{procedure.court_name}</p>
             </div>
           </div>
         )}
 
         {procedure.mediation_notes && (
           <div className="flex items-start gap-2.5" data-testid="text-mediation-notes">
-            <Handshake className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+            <Handshake className="w-3.5 h-3.5 text-foreground/40 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Local Mediation</p>
-              <p className="text-sm leading-relaxed">{procedure.mediation_notes}</p>
+              <p className="text-[11px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Local Mediation</p>
+              <p className="text-[14px] leading-[1.7] text-foreground/90">{procedure.mediation_notes}</p>
             </div>
           </div>
         )}
 
         {procedure.parenting_class_required !== undefined && (
           <div className="flex items-start gap-2.5" data-testid="text-parenting-class">
-            <GraduationCap className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+            <GraduationCap className="w-3.5 h-3.5 text-foreground/40 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Parenting Class</p>
-              <p className="text-sm">
+              <p className="text-[11px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Parenting Class</p>
+              <p className="text-[14px] leading-relaxed text-foreground/90">
                 {procedure.parenting_class_required
                   ? `Required${procedure.parenting_class_name ? ` — ${procedure.parenting_class_name}` : ""}`
                   : "Not required in this county"}
@@ -130,10 +130,10 @@ function CountyProceduresSection({
 
         {procedure.local_procedure_notes && (
           <div className="flex items-start gap-2.5" data-testid="text-local-procedure-notes">
-            <AlertCircle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-3.5 h-3.5 text-foreground/40 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Local Practice Notes</p>
-              <p className="text-sm leading-relaxed">{procedure.local_procedure_notes}</p>
+              <p className="text-[11px] font-semibold text-foreground/50 uppercase tracking-wider mb-1">Local Practice Notes</p>
+              <p className="text-[14px] leading-[1.7] text-foreground/90">{procedure.local_procedure_notes}</p>
             </div>
           </div>
         )}

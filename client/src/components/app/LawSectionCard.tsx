@@ -59,7 +59,7 @@ export function LawSectionCard({
       data-testid={cardTestId}
     >
       <CardHeader
-        className="py-4 px-5 cursor-pointer select-none hover:bg-muted/30 transition-colors"
+        className="py-4 px-5 cursor-pointer select-none hover:bg-muted/30 transition-colors group"
         onClick={() => setExpanded((v) => !v)}
         role="button"
         aria-expanded={expanded}
@@ -86,27 +86,27 @@ export function LawSectionCard({
 
       {expanded && (
         <CardContent className="px-5 pb-5 pt-0 animate-fade-in">
-          <div className="h-px bg-border mb-4" />
+          <div className="h-px bg-border mb-5" />
 
           {rest.length === 0 ? (
             /* Short content — render as a plain paragraph */
             <p
-              className="text-sm leading-relaxed text-muted-foreground"
+              className="text-[14.5px] leading-[1.75] text-foreground/85"
               data-testid={`${cardTestId}-content`}
             >
               {content}
             </p>
           ) : (
             /* Long content — lead sentence + sentence-level bullet list */
-            <div data-testid={`${cardTestId}-content`} className="space-y-3">
-              <p className="text-sm font-medium text-foreground leading-relaxed">
+            <div data-testid={`${cardTestId}-content`} className="space-y-4">
+              <p className="text-[14.5px] font-medium text-foreground leading-[1.75]">
                 {lead}
               </p>
-              <ul className="space-y-2 pl-1">
+              <ul className="space-y-3 pl-1">
                 {rest.map((sentence, i) => (
                   <li key={i} className="flex items-start gap-2.5">
-                    <span className="mt-2 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
-                    <span className="text-sm leading-relaxed text-muted-foreground">
+                    <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-foreground/30 flex-shrink-0" />
+                    <span className="text-[14.5px] leading-[1.75] text-foreground/80">
                       {sentence}
                     </span>
                   </li>

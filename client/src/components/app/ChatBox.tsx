@@ -264,16 +264,16 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
 
       {/* ── Default summary (non-FACT) ── */}
       {!isFact && (
-        <div className="text-sm leading-relaxed text-foreground">{data.summary}</div>
+        <div className="text-[14.5px] leading-[1.75] text-foreground">{data.summary}</div>
       )}
 
       {/* ── ACTION mode: numbered steps header ── */}
       {isAction && data.key_points.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
                 Steps to Take
               </span>
             </div>
@@ -286,9 +286,9 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
               />
             )}
           </div>
-          <ol className="space-y-1.5 list-decimal list-inside">
+          <ol className="space-y-2.5 list-decimal list-inside">
             {data.key_points.map((point, i) => (
-              <li key={i} className="text-sm leading-relaxed pl-1" data-testid={`key-point-${i}`}>
+              <li key={i} className="text-[14.5px] leading-[1.75] text-foreground/85 pl-1" data-testid={`key-point-${i}`}>
                 {point}
               </li>
             ))}
@@ -298,18 +298,18 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
 
       {/* ── FACT / EXPLANATION: bullet key points ── */}
       {!isAction && data.key_points.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
               {isFact ? "Details" : "Key Points"}
             </span>
           </div>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2.5">
             {data.key_points.map((point, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`key-point-${i}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                <span className="leading-relaxed">{point}</span>
+              <li key={i} className="flex items-start gap-2.5" data-testid={`key-point-${i}`}>
+                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                <span className="text-[14.5px] leading-[1.75] text-foreground/85">{point}</span>
               </li>
             ))}
           </ul>
@@ -319,31 +319,31 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
       <CautionsList cautions={data.cautions} />
 
       {data.questions_to_ask_attorney.length > 0 && (
-        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3 space-y-2">
+        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3.5 space-y-2.5">
           <div className="flex items-center gap-1.5">
             <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80 dark:text-blue-300/80">
               Questions to Ask Your Attorney
             </span>
           </div>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2.5">
             {data.questions_to_ask_attorney.map((q, i) => (
               <li
                 key={i}
-                className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200"
+                className="flex items-start gap-2.5"
                 data-testid={`attorney-question-${i}`}
               >
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                <span className="leading-relaxed">{q}</span>
+                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                <span className="text-[14.5px] leading-[1.75] text-blue-900 dark:text-blue-100">{q}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="flex items-start gap-1.5 pt-1 border-t border-border">
-        <Scale className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground italic leading-relaxed">{data.disclaimer}</p>
+      <div className="flex items-start gap-1.5 pt-2 border-t border-border">
+        <Scale className="w-3 h-3 text-foreground/35 flex-shrink-0 mt-0.5" />
+        <p className="text-[12px] text-foreground/50 italic leading-relaxed">{data.disclaimer}</p>
       </div>
     </div>
   );
@@ -771,7 +771,7 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
       {/* ── Suggested questions — visible on empty state, hidden when case is active ─ */}
       {!hasMessages && !caseId && (
         <div className="space-y-2" data-testid="suggested-questions">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide px-0.5">
+          <p className="text-[11px] text-foreground/50 font-semibold uppercase tracking-wider px-0.5">
             Common questions
           </p>
           <div className="flex flex-col gap-1.5">
@@ -780,10 +780,10 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
                 key={i}
                 onClick={() => sendMessage(q)}
                 disabled={isLoading}
-                className="text-left text-sm px-4 py-2.5 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 group"
+                className="text-left text-[14px] leading-snug px-4 py-2.5 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors text-foreground/70 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 group"
                 data-testid={`button-suggested-${i}`}
               >
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
+                <ChevronRight className="w-3.5 h-3.5 text-foreground/30 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
                 {q}
               </button>
             ))}
