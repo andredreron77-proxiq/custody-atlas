@@ -161,6 +161,13 @@ export const askAIRequestSchema = z.object({
    * full text + analysis into the prompt BEFORE jurisdiction law context.
    */
   documentId: z.string().uuid().optional(),
+  /**
+   * Multi-document context selection. When provided, the server uses ONLY
+   * the listed document IDs for context injection (summaries + fact lookup).
+   * Empty array = no document context (general response).
+   * Omitted = use all user documents (backward compat).
+   */
+  selectedDocumentIds: z.array(z.string().uuid()).optional(),
 });
 
 export type AskAIRequest = z.infer<typeof askAIRequestSchema>;

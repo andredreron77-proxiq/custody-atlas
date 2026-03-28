@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { MessageSquare, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar, ClipboardList, CircleCheck, X, FileText, AlertTriangle, FileSearch } from "lucide-react";
+import { MessageSquare, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar, ClipboardList, CircleCheck, X, FileText, AlertTriangle, Check, ChevronRight, Files } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChatBox } from "@/components/app/ChatBox";
@@ -354,53 +354,130 @@ function CasePickerMenu({
   );
 }
 
-function DocPickerMenu({
+/**
+ * Collapsible document context panel — shows which documents Atlas is using,
+ * lets users toggle individual documents in/out of context.
+ */
+function DocumentContextPanel({
   documents,
-  activeDocumentId,
-  onSelect,
+  selectedDocIds,
+  initialized,
+  onToggle,
+  onSelectAll,
+  onClearAll,
 }: {
   documents: DocumentRecord[];
-  activeDocumentId: string | undefined;
-  onSelect: (id: string | undefined) => void;
+  selectedDocIds: Set<string>;
+  initialized: boolean;
+  onToggle: (id: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (documents.length === 0) return null;
+
+  const total = documents.length;
+  const selected = initialized ? selectedDocIds.size : total;
+  const noneSelected = initialized && selectedDocIds.size === 0;
+  const allSelected = !initialized || selectedDocIds.size === total;
+
   return (
-    <div className="absolute right-0 top-full mt-1 z-30 w-72 rounded-lg border bg-popover shadow-lg py-1 text-sm">
+    <div className="rounded-lg border bg-card overflow-hidden" data-testid="document-context-panel">
+      {/* ── Trigger row ────────────────────────────────────────────────── */}
       <button
-        className="w-full text-left px-3 py-2 hover:bg-muted/60 text-muted-foreground text-xs"
-        onClick={() => onSelect(undefined)}
-        data-testid="option-no-document"
+        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-muted/40 transition-colors text-left"
+        onClick={() => setExpanded((v) => !v)}
+        data-testid="button-toggle-document-panel"
+        aria-expanded={expanded}
       >
-        No document (General questions)
+        <Files className={cn(
+          "w-3.5 h-3.5 flex-shrink-0 transition-colors",
+          noneSelected ? "text-amber-500 dark:text-amber-400" : "text-primary/70"
+        )} />
+        <span className={cn(
+          "text-xs font-medium flex-1 min-w-0 truncate",
+          noneSelected ? "text-amber-700 dark:text-amber-300" : "text-foreground"
+        )}>
+          {noneSelected
+            ? "No documents selected — Atlas will respond generally"
+            : `Using ${selected} of ${total} document${total !== 1 ? "s" : ""} from your case`}
+        </span>
+        <ChevronRight className={cn(
+          "w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 transition-transform duration-150",
+          expanded && "rotate-90"
+        )} />
       </button>
-      {documents.length === 0 && (
-        <p className="px-3 py-2 text-xs text-muted-foreground italic">
-          No documents yet — upload one via Document Analysis.
-        </p>
-      )}
-      {documents.map((doc) => (
-        <button
-          key={doc.id}
-          className={cn(
-            "w-full text-left px-3 py-2 hover:bg-muted/60 flex flex-col gap-0.5",
-            doc.id === activeDocumentId && "bg-primary/8 font-medium text-primary"
-          )}
-          onClick={() => onSelect(doc.id)}
-          data-testid={`option-document-${doc.id}`}
-        >
-          <span className="block truncate text-sm">{doc.fileName}</span>
-          <span className="text-xs text-muted-foreground">{doc.docType}</span>
-        </button>
-      ))}
-      {documents.length > 0 && (
-        <div className="border-t mt-1 pt-1">
-          <Link href="/upload">
-            <button
-              className="w-full text-left px-3 py-2 hover:bg-muted/60 text-xs text-primary/70 hover:text-primary transition-colors"
-              data-testid="link-upload-new-document"
+
+      {/* ── Expanded document list ──────────────────────────────────────── */}
+      {expanded && (
+        <div className="border-t bg-muted/20">
+          {/* Controls row */}
+          <div className="flex items-center justify-between px-3.5 py-2 border-b border-border/60">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Documents in context
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                className="text-xs text-primary/70 hover:text-primary transition-colors"
+                onClick={onSelectAll}
+                disabled={allSelected}
+                data-testid="button-select-all-docs"
+              >
+                Select all
+              </button>
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={onClearAll}
+                disabled={noneSelected}
+                data-testid="button-clear-all-docs"
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+
+          {/* Document rows */}
+          <div className="divide-y divide-border/40 max-h-56 overflow-y-auto">
+            {documents.map((doc) => {
+              const isSelected = !initialized || selectedDocIds.has(doc.id);
+              return (
+                <button
+                  key={doc.id}
+                  className="w-full flex items-center gap-3 px-3.5 py-2.5 hover:bg-muted/60 transition-colors text-left"
+                  onClick={() => onToggle(doc.id)}
+                  data-testid={`toggle-document-${doc.id}`}
+                >
+                  {/* Checkbox visual */}
+                  <span className={cn(
+                    "w-4 h-4 rounded flex-shrink-0 border flex items-center justify-center transition-colors",
+                    isSelected
+                      ? "bg-primary border-primary"
+                      : "border-border bg-background"
+                  )}>
+                    {isSelected && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
+                  </span>
+
+                  {/* Doc info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground truncate">{doc.fileName}</p>
+                    <p className="text-[11px] text-muted-foreground">{doc.docType}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Upload link */}
+          <div className="border-t border-border/60 px-3.5 py-2">
+            <Link
+              href="/upload"
+              className="text-xs text-primary/70 hover:text-primary transition-colors"
+              data-testid="link-upload-document"
             >
-              + Upload a new document
-            </button>
-          </Link>
+              + Upload another document
+            </Link>
+          </div>
         </div>
       )}
     </div>
@@ -469,22 +546,12 @@ export default function AskAIPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [activeCaseId, setActiveCaseId] = useState<string | undefined>(caseIdParam);
   const [showCasePicker, setShowCasePicker] = useState(false);
-  const [activeDocumentId, setActiveDocumentId] = useState<string | undefined>(undefined);
-  const [showDocPicker, setShowDocPicker] = useState(false);
-  const docPickerRef = useRef<HTMLDivElement>(null);
   const { user } = useCurrentUser();
 
-  // Close doc picker when clicking outside
-  useEffect(() => {
-    if (!showDocPicker) return;
-    const handler = (e: MouseEvent) => {
-      if (docPickerRef.current && !docPickerRef.current.contains(e.target as Node)) {
-        setShowDocPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showDocPicker]);
+  // Multi-document context selection: tracks which docs are included in Atlas context.
+  // null = not yet initialized (treat as "all selected" for API calls).
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [docSelectionInitialized, setDocSelectionInitialized] = useState(false);
 
   // Legacy thread resume: fetch saved messages when ?thread= is in URL
   const { data: threadData, isLoading: isLoadingThread } = useQuery<ThreadWithMessages | null>({
@@ -523,29 +590,6 @@ export default function AskAIPage() {
     },
   });
 
-  // Document scope: fetch the selected document's metadata so we can show the
-  // scope indicator when a URL-param doc is selected (not needed when picker-selected,
-  // since the picker already has full doc metadata from the list query).
-  interface ScopedDocMeta {
-    id: string;
-    fileName: string;
-    docType: string;
-    pageCount: number;
-    analysisJson: Record<string, unknown>;
-  }
-  const { data: scopedDocMeta } = useQuery<ScopedDocMeta | null>({
-    queryKey: ["/api/documents", documentIdParam],
-    enabled: !!documentIdParam && !activeDocumentId,
-    staleTime: 120_000,
-    retry: false,
-    queryFn: async () => {
-      if (!documentIdParam) return null;
-      const res = await apiRequestRaw("GET", `/api/documents/${documentIdParam}`);
-      if (!res.ok) return null;
-      const json = await res.json();
-      return json.document ?? json;
-    },
-  });
 
   // Usage/plan info — must be declared before any early returns (Rules of Hooks)
   const { data: usage } = useQuery<UsageState>({
@@ -577,15 +621,24 @@ export default function AskAIPage() {
   });
   const userDocuments = documentsData?.documents ?? [];
 
-  // effectiveDocumentId: state-picked doc takes precedence over URL param.
-  // URL param is for deep-linking (e.g., from Upload page). State is for in-page picker.
-  const effectiveDocumentId = activeDocumentId ?? documentIdParam;
-  const activeDoc = userDocuments.find((d) => d.id === effectiveDocumentId) ?? null;
+  // Initialize selectedDocIds once documents load.
+  // If ?document= URL param is present (deep-link from Upload page), pre-select just that doc.
+  // Otherwise select all documents by default.
+  useEffect(() => {
+    if (docSelectionInitialized || userDocuments.length === 0) return;
+    if (documentIdParam && userDocuments.some((d) => d.id === documentIdParam)) {
+      setSelectedDocIds(new Set([documentIdParam]));
+    } else {
+      setSelectedDocIds(new Set(userDocuments.map((d) => d.id)));
+    }
+    setDocSelectionInitialized(true);
+  }, [userDocuments, docSelectionInitialized, documentIdParam]);
 
-  // Derive the display name for the scope indicator:
-  // - If the user picked a doc via the picker, use its fileName from the list
-  // - If it came from a URL param, use scopedDocMeta.fileName
-  const scopedDocName = activeDoc?.fileName ?? scopedDocMeta?.fileName ?? null;
+  // Compute selectedDocumentIds for the API — undefined when not yet initialized
+  // (server falls back to "use all docs"). Array once the user has made a selection.
+  const chatSelectedDocumentIds = docSelectionInitialized
+    ? Array.from(selectedDocIds)
+    : undefined;
 
   // Page-level actions query — same cache key as CaseActionsPanel, zero extra requests.
   // Used to derive urgent_case state for the priority strip.
@@ -831,72 +884,30 @@ export default function AskAIPage() {
         </div>
       )}
 
-      {/* Document scope indicator — shown when a document is selected (URL param or picker) */}
-      {effectiveDocumentId && (
-        <div
-          className="rounded-lg border border-primary/20 dark:border-primary/30 bg-primary/[0.06] dark:bg-primary/[0.12] px-3 py-2 flex items-center gap-2.5"
-          data-testid="document-scope-indicator"
-        >
-          <FileText className="w-4 h-4 text-primary flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <span className="text-xs font-semibold text-primary">Document scope active</span>
-            {scopedDocName ? (
-              <span className="ml-1.5 text-xs text-foreground/70 truncate">
-                — {scopedDocName}
-              </span>
-            ) : (
-              <span className="ml-1.5 text-xs text-muted-foreground/60">Loading…</span>
-            )}
-          </div>
-          <span className="text-xs text-foreground/50 flex-shrink-0 hidden sm:inline">
-            Questions answered from this document first
-          </span>
-          <button
-            onClick={() => {
-              setActiveDocumentId(undefined);
-              if (documentIdParam) {
-                // Clear URL param by navigating without it
-                const baseUrl = `/ask${jurisdiction ? `?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}` : ""}`;
-                window.history.replaceState(null, "", baseUrl);
-              }
-            }}
-            className="p-1 rounded hover:bg-primary/10 transition-colors"
-            data-testid="button-clear-document-scope"
-            aria-label="Clear document scope"
-          >
-            <X className="w-3.5 h-3.5 text-primary/60" />
-          </button>
-        </div>
-      )}
-
-      {/* Document picker — shown when user is logged in and no document is currently scoped */}
-      {user && !effectiveDocumentId && (
-        <div className="rounded-lg border border-border bg-muted/20 px-3.5 py-2.5 flex items-center gap-2.5" data-testid="document-context-bar">
-          <FileSearch className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
-          <span className="text-xs text-muted-foreground flex-1 min-w-0">
-            Scope questions to an uploaded document for document-specific answers.
-          </span>
-          <div className="relative flex-shrink-0" ref={docPickerRef}>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5 h-7 text-xs"
-              onClick={() => setShowDocPicker((v) => !v)}
-              data-testid="button-pick-document"
-            >
-              <FileText className="w-3 h-3" />
-              {userDocuments.length > 0 ? "Select Document" : "Upload Document"}
-              <ChevronDown className="w-3 h-3" />
-            </Button>
-            {showDocPicker && (
-              <DocPickerMenu
-                documents={userDocuments}
-                activeDocumentId={effectiveDocumentId}
-                onSelect={(id) => { setActiveDocumentId(id); setShowDocPicker(false); }}
-              />
-            )}
-          </div>
-        </div>
+      {/* ── Document context panel — multi-select, always shown when user has docs ── */}
+      {user && userDocuments.length > 0 && (
+        <DocumentContextPanel
+          documents={userDocuments}
+          selectedDocIds={selectedDocIds}
+          initialized={docSelectionInitialized}
+          onToggle={(id) => {
+            setSelectedDocIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            });
+            if (!docSelectionInitialized) setDocSelectionInitialized(true);
+          }}
+          onSelectAll={() => {
+            setSelectedDocIds(new Set(userDocuments.map((d) => d.id)));
+            if (!docSelectionInitialized) setDocSelectionInitialized(true);
+          }}
+          onClearAll={() => {
+            setSelectedDocIds(new Set());
+            if (!docSelectionInitialized) setDocSelectionInitialized(true);
+          }}
+        />
       )}
 
       {/* Case facts quick-view — shows court, case number, hearing date for active case */}
@@ -916,7 +927,7 @@ export default function AskAIPage() {
         initialThreadId={threadIdParam}
         initialConversationId={conversationIdParam}
         caseId={activeCaseId}
-        documentId={effectiveDocumentId}
+        selectedDocumentIds={chatSelectedDocumentIds}
       />
 
       {/* Trust signal footer */}

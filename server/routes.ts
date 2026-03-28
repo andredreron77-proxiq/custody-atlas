@@ -660,7 +660,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId, documentId } = parsed.data;
+      const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId, documentId, selectedDocumentIds } = parsed.data;
       const userId = (req as any).user?.id as string | undefined;
 
       if (!jurisdiction.state || !jurisdiction.county) {
@@ -837,7 +837,12 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
         if (scopedDocument) {
           intentUserDocs = [scopedDocument];
         } else {
-          intentUserDocs = await getDocuments(userId);
+          const allDocs = await getDocuments(userId);
+          // If selectedDocumentIds is provided, filter to only those docs.
+          // Empty array = no docs selected = skip doc context.
+          intentUserDocs = selectedDocumentIds !== undefined
+            ? (selectedDocumentIds.length === 0 ? [] : allDocs.filter((d) => selectedDocumentIds.includes(d.id)))
+            : allDocs;
         }
         const resolverResult = await resolveFactDeterministically(
           factFields, intentUserDocs, resolvedCaseMemories, caseId, userId,
@@ -886,8 +891,16 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
       // so we can inject a compact summary block into the system prompt.
       let generalDocSummaryAddendum = "";
 
-      if (intent !== "FACT" && !scopedDocument && userId) {
-        const recentDocs = await getDocuments(userId).catch(() => []);
+      // When selectedDocumentIds is an empty array, the user has deselected all docs —
+      // skip general doc context entirely, regardless of intent.
+      const noDocsSelected = Array.isArray(selectedDocumentIds) && selectedDocumentIds.length === 0;
+
+      if (intent !== "FACT" && !scopedDocument && !noDocsSelected && userId) {
+        const allRecentDocs = await getDocuments(userId).catch(() => []);
+        // Filter to selected docs if provided; otherwise use all
+        const recentDocs = selectedDocumentIds !== undefined && selectedDocumentIds.length > 0
+          ? allRecentDocs.filter((d) => selectedDocumentIds.includes(d.id))
+          : allRecentDocs;
         if (recentDocs.length > 0) {
           const docSummaries = recentDocs.slice(0, 5).map((doc, i) => {
             const analysis = doc.analysisJson as any;

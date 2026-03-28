@@ -47,6 +47,13 @@ interface ChatBoxProps {
    * Answers for date/fact questions come from this document first.
    */
   documentId?: string;
+  /**
+   * IDs of documents selected by the user in the DocumentContextPanel.
+   * The server uses only these documents for context injection.
+   * Empty array = no documents → general response (server skips doc context).
+   * Undefined = use all user documents (backward compat / legacy).
+   */
+  selectedDocumentIds?: string[];
 }
 
 function getSuggestedQuestions(state: string): string[] {
@@ -379,7 +386,7 @@ function FollowUpChips({
   );
 }
 
-export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, initialConversationId, caseId, documentId }: ChatBoxProps) {
+export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, initialConversationId, caseId, documentId, selectedDocumentIds }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -520,6 +527,8 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
         // Document scope — when present, the server loads this specific document
         // and answers from its text/analysis before falling back to jurisdiction law.
         ...(documentId ? { documentId } : {}),
+        // Multi-document context selection — when provided, server uses only these docs.
+        ...(selectedDocumentIds !== undefined ? { selectedDocumentIds } : {}),
       });
 
       if (res.status === 429) {
