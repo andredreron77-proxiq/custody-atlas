@@ -72,10 +72,7 @@ export function PageIntro({ eyebrow, title, description, right, className, title
     <div className={cn("flex items-start justify-between gap-4", className)}>
       <div className="min-w-0 flex-1">
         {eyebrow && (
-          <span
-            className="inline-flex items-center text-[11px] font-semibold uppercase tracking-[0.14em] px-2.5 py-0.5 rounded-full border mb-3"
-            style={{ color: "#b5922f", borderColor: "#dcc98a", background: "#fdf9ee" }}
-          >
+          <span className="inline-flex items-center text-[11px] font-semibold uppercase tracking-[0.14em] px-2.5 py-0.5 rounded-full border mb-3 bg-[#fdf9ee] border-[#dcc98a] text-[#b5922f] dark:bg-amber-950/50 dark:border-amber-800/60 dark:text-amber-400">
             {eyebrow}
           </span>
         )}

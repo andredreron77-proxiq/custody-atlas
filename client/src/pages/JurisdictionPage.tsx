@@ -260,7 +260,7 @@ export default function JurisdictionPage() {
       />
 
       <div>
-        <span className="inline-flex items-center rounded-full border border-[#dcc98a] bg-[#fdf9ee] px-2.5 py-0.5 text-[11px] font-semibold tracking-widest text-[#b5922f] uppercase mb-2.5">
+        <span className="inline-flex items-center rounded-full border border-[#dcc98a] bg-[#fdf9ee] px-2.5 py-0.5 text-[11px] font-semibold tracking-widest text-[#b5922f] uppercase mb-2.5 dark:bg-amber-950/50 dark:border-amber-800/60 dark:text-amber-400">
           {isStateOnly ? "State Law Overview" : "Jurisdiction"}
         </span>
         <h1 className="font-serif text-2xl md:text-3xl font-semibold text-foreground leading-tight mb-1" data-testid="heading-jurisdiction">

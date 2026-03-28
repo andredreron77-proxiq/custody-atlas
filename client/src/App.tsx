@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/components/app/Header";
 import { MinimalFooter } from "@/components/app/Footer";
+import { ThemeProvider } from "@/components/app/ThemeProvider";
 import { AuthRequiredCard } from "@/components/app/AuthRequiredCard";
 import { OnboardingModal } from "@/components/app/OnboardingModal";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -142,6 +143,7 @@ function Router() {
 
 function App() {
   return (
+    <ThemeProvider>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <ScrollToTop />
@@ -156,6 +158,7 @@ function App() {
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

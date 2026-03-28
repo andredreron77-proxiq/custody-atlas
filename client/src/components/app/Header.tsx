@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Home, Map, MessageSquare, FileSearch, Menu, X, LayoutDashboard, Lock, ShieldCheck, HelpCircle } from "lucide-react";
+import { ThemeToggle } from "./ThemeToggle";
 import { LogoMark } from "./LogoMark";
 import { useQuery } from "@tanstack/react-query";
 import { AuthButton } from "./AuthButton";
@@ -127,8 +128,9 @@ export function Header() {
             )}
           </nav>
 
-          {/* Desktop: usage indicator + auth button */}
-          <div className="hidden md:flex items-center gap-4 ml-auto">
+          {/* Desktop: theme toggle + usage indicator + auth button */}
+          <div className="hidden md:flex items-center gap-2 ml-auto">
+            <ThemeToggle />
             <UsageIndicator />
             <AuthButton />
           </div>
@@ -237,6 +239,11 @@ export function Header() {
                   </span>
                   <span className="flex-1">Getting Started</span>
                 </button>
+              </li>
+
+              {/* Theme toggle */}
+              <li>
+                <ThemeToggle compact />
               </li>
             </ul>
 

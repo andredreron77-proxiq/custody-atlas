@@ -69,7 +69,7 @@ export function PageHeader({
     >
       <div className={`min-w-0 ${center ? "" : "flex-1"}`}>
         {eyebrow && (
-          <span className="inline-flex items-center rounded-full border border-[#dcc98a] bg-[#fdf9ee] px-2.5 py-0.5 text-[11px] font-semibold tracking-widest text-[#b5922f] uppercase mb-2.5">
+          <span className="inline-flex items-center rounded-full border border-[#dcc98a] bg-[#fdf9ee] px-2.5 py-0.5 text-[11px] font-semibold tracking-widest text-[#b5922f] uppercase mb-2.5 dark:bg-amber-950/50 dark:border-amber-800/60 dark:text-amber-400">
             {eyebrow}
           </span>
         )}
