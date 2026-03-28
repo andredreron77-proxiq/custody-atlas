@@ -6,7 +6,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import multer from "multer";
 import OpenAI from "openai";
-import { extractTextFromDocument } from "./documentai";
+import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtractor";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
@@ -1084,9 +1084,8 @@ The user is asking what they should do or how to take a specific action. Focus y
         return res.status(400).json({ error: "No file uploaded. Please attach a PDF, JPG, or PNG." });
       }
 
-      const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
-      if (!allowedTypes.includes(req.file.mimetype)) {
-        return res.status(400).json({ error: "Unsupported file type. Please upload a PDF, JPG, or PNG." });
+      if (!SUPPORTED_MIME_TYPES.includes(req.file.mimetype)) {
+        return res.status(400).json({ error: "Unsupported file type. Please upload a PDF, Word document (.docx), JPG, or PNG." });
       }
 
       if (req.file.size > 10 * 1024 * 1024) {
@@ -1098,28 +1097,34 @@ The user is asking what they should do or how to take a specific action. Focus y
         return res.status(503).json({ error: "AI service not configured." });
       }
 
-      const hasDocAI =
-        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON &&
-        process.env.GOOGLE_PROJECT_ID &&
-        process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID;
-      if (!hasDocAI) {
-        return res.status(503).json({ error: "Google Document AI is not configured." });
+      const isDocx = req.file.mimetype === DOCX_MIME;
+
+      if (!isDocx) {
+        const hasDocAI =
+          process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON &&
+          process.env.GOOGLE_PROJECT_ID &&
+          process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID;
+        if (!hasDocAI) {
+          return res.status(503).json({ error: "Google Document AI is not configured." });
+        }
       }
 
       const fileBuffer = readFileSync(filePath!);
       let extractedText: string;
       try {
-        extractedText = await extractTextFromDocument(fileBuffer, req.file.mimetype);
-      } catch (ocrErr: any) {
-        console.error("Document AI OCR error:", ocrErr);
+        extractedText = await extractText(fileBuffer, req.file.mimetype);
+      } catch (extractErr: any) {
+        console.error("Document extraction error:", extractErr);
         return res.status(422).json({
-          error: `OCR failed: ${ocrErr.message || "Could not extract text from this document. Please ensure the file is readable."}`,
+          error: extractErr.message || "Could not extract text from this document. Please ensure the file is readable and not password-protected.",
         });
       }
 
       if (extractedText.trim().length < 20) {
         return res.status(422).json({
-          error: "The document appears to be blank or could not be read. Please upload a clearer image or a text-based PDF.",
+          error: isDocx
+            ? "The Word document appears to be blank or contains only images. Please ensure it contains text content."
+            : "The document appears to be blank or could not be read. Please upload a clearer image or a text-based PDF.",
         });
       }
 

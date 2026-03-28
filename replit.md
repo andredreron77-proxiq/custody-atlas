@@ -10,6 +10,9 @@ Custody Atlas is a production-ready web application providing users with jurisdi
 
 The application aims to be a comprehensive resource for understanding child custody laws, with future ambitions for broader state coverage and enhanced AI capabilities.
 
+Additional features:
+- **Document Analyzer**: Upload court orders and legal documents (PDF, Word .docx, JPG, PNG) for AI-powered OCR and analysis. DOCX files are processed via `mammoth` (native Word extraction, no OCR required); PDFs and images go through Google Document AI. Unified extractor lives at `server/documentExtractor.ts`.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

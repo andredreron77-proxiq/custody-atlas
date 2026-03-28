@@ -30,9 +30,11 @@ import type { DocumentAnalysisResult, DocumentQAResponse, ExtractedFacts } from 
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const ACCEPTED_PDF_TYPES = ["application/pdf"];
+const ACCEPTED_DOCX_TYPES = [DOCX_MIME];
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
-const ACCEPTED_ALL_TYPES = [...ACCEPTED_PDF_TYPES, ...ACCEPTED_IMAGE_TYPES];
+const ACCEPTED_ALL_TYPES = [...ACCEPTED_PDF_TYPES, ...ACCEPTED_DOCX_TYPES, ...ACCEPTED_IMAGE_TYPES];
 const MAX_SIZE_MB = 10;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 const MAX_PAGES = 5;
@@ -606,8 +608,8 @@ function UploadSelector({
         icon={FileText}
         iconBg="bg-primary/[0.08] dark:bg-primary/20"
         iconColor="text-primary"
-        title="Upload PDF"
-        description={`Court orders, parenting plans, or notices — up to ${MAX_SIZE_MB}MB`}
+        title="Upload PDF or Word Document"
+        description={`Court orders, parenting plans, or notices — PDF or .docx, up to ${MAX_SIZE_MB}MB`}
         testId="button-upload-pdf"
       />
 
@@ -813,7 +815,7 @@ function PagesReviewView({
               {pages[0].name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {(pages[0].size / 1024 / 1024).toFixed(2)} MB · PDF
+              {(pages[0].size / 1024 / 1024).toFixed(2)} MB · {isDocx ? "Word Document" : "PDF"}
             </p>
           </div>
           <Button
@@ -995,14 +997,19 @@ export default function UploadDocumentPage() {
   const { jurisdiction } = useJurisdiction();
 
   // Derived state — drives which sub-view renders
-  const isPDF = pages.length === 1 && pages[0].type === "application/pdf";
+  const isDocx = pages.length === 1 && pages[0].type === DOCX_MIME;
+  // isPDF covers both PDF and DOCX: both are single-file, non-image uploads
+  const isPDF = pages.length === 1 && (pages[0].type === "application/pdf" || isDocx);
   const hasPages = pages.length > 0;
   const showCameraPreview = pendingPhoto !== null;
   const showSelector = !hasPages && !showCameraPreview;
   const showReview = hasPages && !showCameraPreview;
 
   // The page number the pending photo would become (1-indexed)
-  const pendingPageNumber = pages.filter((p) => p.type !== "application/pdf").length + 1;
+  // Exclude both PDF and DOCX files from the image count
+  const pendingPageNumber = pages.filter(
+    (p) => p.type !== "application/pdf" && p.type !== DOCX_MIME
+  ).length + 1;
   // Whether "Add Another Page" should be offered in camera preview
   const cameraCanAddMore = pendingPageNumber < MAX_PAGES;
 
@@ -1010,7 +1017,7 @@ export default function UploadDocumentPage() {
 
   const validateFile = (file: File): string | null => {
     if (!ACCEPTED_ALL_TYPES.includes(file.type)) {
-      return `Unsupported file type "${file.type}". Please upload a PDF, JPG, or PNG.`;
+      return `Unsupported file type. Please upload a PDF, Word document (.docx), JPG, or PNG.`;
     }
     if (file.size > MAX_SIZE_BYTES) {
       return `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum size is ${MAX_SIZE_MB} MB.`;
@@ -1192,13 +1199,15 @@ export default function UploadDocumentPage() {
       if (err) { setError(err); return; }
       setError(null);
       setResult(null);
-      if (file.type === "application/pdf") {
+      if (file.type === "application/pdf" || file.type === DOCX_MIME) {
         pagePreviews.forEach((url) => URL.revokeObjectURL(url));
         setPages([file]);
         setPagePreviews([]);
         setSourceType("pdf");
       } else {
-        const imageCount = pages.filter((p) => p.type !== "application/pdf").length;
+        const imageCount = pages.filter(
+          (p) => p.type !== "application/pdf" && p.type !== DOCX_MIME
+        ).length;
         if (imageCount >= MAX_PAGES) {
           setError(`Maximum ${MAX_PAGES} pages allowed.`);
           return;
@@ -1209,7 +1218,7 @@ export default function UploadDocumentPage() {
           const clean = pages.some((p) => p.type === "application/pdf") ? [] : prev;
           return [...clean, url];
         });
-        if (pages.length === 0 || pages.every((p) => p.type === "application/pdf")) {
+        if (pages.length === 0 || pages.every((p) => p.type === "application/pdf" || p.type === DOCX_MIME)) {
           setSourceType("images");
         }
       }
@@ -1357,7 +1366,7 @@ export default function UploadDocumentPage() {
         <HeroPanelContent className="space-y-4">
 
           {/* Hidden file inputs */}
-          <input ref={pdfInputRef} type="file" accept=".pdf" onChange={handlePdfInput} className="hidden" data-testid="input-file-pdf" />
+          <input ref={pdfInputRef} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handlePdfInput} className="hidden" data-testid="input-file-pdf" />
           <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageInput} className="hidden" data-testid="input-file-image" />
           <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleCameraInput} className="hidden" data-testid="input-camera" />
           <input ref={addImageInputRef} type="file" accept="image/*" onChange={handleImageInput} className="hidden" data-testid="input-add-image" />
