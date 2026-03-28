@@ -542,7 +542,7 @@ export default function AskAIPage() {
         }
       : null;
 
-  const { jurisdiction, setJurisdiction, clearJurisdiction } = useJurisdiction(urlJurisdiction);
+  const { jurisdiction, setJurisdiction } = useJurisdiction(urlJurisdiction);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [activeCaseId, setActiveCaseId] = useState<string | undefined>(caseIdParam);
   const [showCasePicker, setShowCasePicker] = useState(false);
@@ -669,13 +669,33 @@ export default function AskAIPage() {
     !activeCaseId   ? "no_case" :
     isUrgentCase    ? "urgent_case" : "active_case";
 
+  // ── Auto-populate jurisdiction from the active case ───────────────────────
+  // If no jurisdiction is stored (new session, incognito, first visit) but
+  // the user navigated here via ?case=..., use the case's saved jurisdiction
+  // so they don't have to re-enter location every time.
+  const [caseJurisdictionApplied, setCaseJurisdictionApplied] = useState(false);
+  useEffect(() => {
+    if (caseJurisdictionApplied) return;
+    if (jurisdiction) { setCaseJurisdictionApplied(true); return; } // already have one
+    if (!activeCase?.jurisdictionState) return;
+    const caseJ: Jurisdiction = {
+      state: activeCase.jurisdictionState,
+      county: activeCase.jurisdictionCounty ?? "",
+      country: "United States",
+    };
+    setJurisdiction(caseJ);
+    setCaseJurisdictionApplied(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase?.jurisdictionState, activeCase?.jurisdictionCounty, jurisdiction, caseJurisdictionApplied]);
+
   const handleJurisdictionFound = (j: Jurisdiction) => {
     setJurisdiction(j);
     setShowLocationPicker(false);
   };
 
   const handleChangeLocation = () => {
-    clearJurisdiction();
+    // Do NOT clear jurisdiction here — we keep it so the current jurisdiction
+    // is shown as a "quick reuse" option in the picker.
     setShowLocationPicker(true);
   };
 
@@ -704,23 +724,59 @@ export default function AskAIPage() {
       structured: (m.structuredResponseJson as any) ?? undefined,
     }));
 
-  /* ── Location picker (no jurisdiction yet) ───────────────────────────── */
+  /* ── Location picker ─────────────────────────────────────────────────── */
   if (!jurisdiction || showLocationPicker) {
+    // If the user clicked "Change location" but still has a valid jurisdiction
+    // in memory, surface it as a one-click "keep this" option so they don't
+    // have to re-enter location unless they actually want to change it.
+    const previousJurisdiction = showLocationPicker ? jurisdiction : null;
+
     return (
       <PageShell className="max-w-2xl">
         <PageHeader
           eyebrow="Ask Atlas"
-          title="What custody question can we help you with?"
-          subtitle="Share your location and we'll provide guidance specific to your state's custody laws."
+          title={previousJurisdiction ? "Change your location?" : "What custody question can we help you with?"}
+          subtitle={previousJurisdiction
+            ? "Your current location is shown below. Update it only if you need a different jurisdiction."
+            : "Share your location and we'll provide guidance specific to your state's custody laws."}
           center
         />
+
+        {/* Quick-reuse panel — shown when user clicked "Change location" */}
+        {previousJurisdiction && (
+          <div className="rounded-lg border bg-card px-4 py-3.5 flex items-center gap-3 mb-1" data-testid="panel-current-jurisdiction">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground font-medium mb-0.5">Current location</p>
+              <p className="text-sm font-semibold text-foreground truncate">
+                {previousJurisdiction.county && previousJurisdiction.county !== "General"
+                  ? `${previousJurisdiction.county} County, ${previousJurisdiction.state}`
+                  : previousJurisdiction.state}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowLocationPicker(false)}
+              className="flex-shrink-0 text-xs font-medium text-primary hover:text-primary/80 transition-colors px-3 py-1.5 rounded-md border border-primary/30 hover:bg-primary/5"
+              data-testid="button-keep-jurisdiction"
+            >
+              Keep this location
+            </button>
+          </div>
+        )}
+
+        {previousJurisdiction && (
+          <div className="flex items-center gap-3 my-2">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-muted-foreground">or select a different location</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+        )}
 
         <LocationSelector onJurisdictionFound={handleJurisdictionFound} />
 
         <div className="flex flex-col items-center gap-2 mt-6">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Lock className="w-3 h-3" />
-            <span>Your location is only used to identify applicable laws — never stored.</span>
+            <span>Your location is only used to identify applicable laws.</span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Shield className="w-3 h-3" />
