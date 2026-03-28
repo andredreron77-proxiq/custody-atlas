@@ -296,25 +296,29 @@ function WhatMattersNowPanel({
         </CtaLink>
       </HeroPanelContent>
 
-      <HeroPanelFooter>
-        <div className="flex items-center gap-5 flex-wrap">
+      <HeroPanelFooter className="py-4">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <Link href={askAIPath}>
-            <button
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-8 text-xs"
               data-testid="wmn-footer-ask"
             >
               <MessageSquare className="w-3.5 h-3.5" />
               Ask Atlas a question
-            </button>
+            </Button>
           </Link>
           <Link href="/upload-document">
-            <button
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-8 text-xs"
               data-testid="wmn-footer-analyze"
             >
               <FileSearch className="w-3.5 h-3.5" />
               Analyze a document
-            </button>
+            </Button>
           </Link>
         </div>
       </HeroPanelFooter>
@@ -873,8 +877,8 @@ function CaseSnapshotPanel({
       <PanelContent className="space-y-5">
 
         {/* Jurisdiction */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Jurisdiction</p>
+        <div className="rounded-lg border border-border/40 bg-muted/20 px-3.5 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-2">Jurisdiction</p>
           {jurisdiction ? (
             <div className="flex items-start gap-2">
               <MapPin className="w-3.5 h-3.5 text-primary/60 mt-0.5 flex-shrink-0" />
@@ -942,34 +946,34 @@ function CaseSnapshotPanel({
         )}
 
         {/* Quick links */}
-        <div className="space-y-0.5 pt-1 border-t border-border/40">
+        <div className="space-y-1.5 pt-3 border-t border-border/40">
           {lawPagePath && (
             <Link href={lawPagePath}>
-              <button className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group" data-testid="button-view-law-summary">
+              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-view-law-summary">
                 <BookOpen className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
                 <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors flex-1">
                   {jurisdiction?.state} law summary
                 </span>
-                <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors" />
+                <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/60 group-hover:translate-x-0.5 transition-all" />
               </button>
             </Link>
           )}
           <Link href="/custody-map">
-            <button className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group" data-testid="button-open-map">
+            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-open-map">
               <Map className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
               <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors flex-1">Explore custody map</span>
-              <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors" />
+              <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/60 group-hover:translate-x-0.5 transition-all" />
             </button>
           </Link>
           <Link href="/custody-map?mode=compare">
-            <button className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group" data-testid="button-compare-states-map">
+            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-compare-states-map">
               <GitCompare className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
               <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors flex-1">Compare states</span>
-              <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors" />
+              <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/60 group-hover:translate-x-0.5 transition-all" />
             </button>
           </Link>
           <Link href="/location">
-            <button className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group" data-testid="button-change-location-workspace">
+            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-change-location-workspace">
               <MapPin className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
               <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors flex-1">
                 {jurisdiction ? "Change location" : "Set location"}

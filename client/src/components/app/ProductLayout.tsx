@@ -45,9 +45,9 @@ export function PageContainer({ children, size = "wide", className, testId }: Pa
       data-testid={testId}
       className={cn(
         "mx-auto px-4 sm:px-6 animate-fade-in",
-        size === "wide"   && "max-w-[1200px] py-8 space-y-10",
-        size === "medium" && "max-w-3xl py-9 space-y-8",
-        size === "narrow" && "max-w-2xl py-10 space-y-7",
+        size === "wide"   && "max-w-[1200px] py-10 space-y-12",
+        size === "medium" && "max-w-3xl py-10 space-y-10",
+        size === "narrow" && "max-w-2xl py-12 space-y-8",
         className
       )}
     >
@@ -83,7 +83,7 @@ export function PageIntro({ eyebrow, title, description, right, className, title
           {title}
         </h1>
         {description && (
-          <p className="text-sm text-muted-foreground mt-2.5 leading-relaxed max-w-md">
+          <p className="text-[15px] text-muted-foreground mt-3 leading-relaxed max-w-xl">
             {description}
           </p>
         )}
@@ -129,7 +129,7 @@ export function HeroPanel({ children, className, testId }: HeroPanelProps) {
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card shadow-sm overflow-hidden",
+        "rounded-2xl border border-border/70 bg-card shadow-md overflow-hidden",
         className
       )}
       data-testid={testId}
@@ -146,7 +146,7 @@ interface HeroPanelHeaderProps {
 
 export function HeroPanelHeader({ children, className }: HeroPanelHeaderProps) {
   return (
-    <div className={cn("px-6 pt-6 pb-5 border-b border-border/60", className)}>
+    <div className={cn("px-6 pt-7 pb-6 border-b border-border/50", className)}>
       {children}
     </div>
   );
@@ -190,7 +190,7 @@ export function Panel({ children, className, testId }: PanelProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-border/60 bg-muted/20 dark:bg-muted/10 overflow-hidden",
+        "rounded-xl border border-border/40 bg-background/60 dark:bg-muted/10 overflow-hidden",
         className
       )}
       data-testid={testId}
@@ -210,7 +210,7 @@ interface PanelHeaderProps {
 
 export function PanelHeader({ icon: Icon, label, action, meta, className }: PanelHeaderProps) {
   return (
-    <div className={cn("flex items-center justify-between px-4 py-3.5 border-b border-border/50", className)}>
+    <div className={cn("flex items-center justify-between px-4 py-4 border-b border-border/40", className)}>
       <div className="flex items-center gap-1.5">
         {Icon && <Icon className="w-3.5 h-3.5 text-primary/60" />}
         <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground leading-none">
@@ -293,7 +293,7 @@ export function ActionRow({
   const inner = (
     <div
       className={cn(
-        "w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border bg-card text-left",
+        "w-full flex items-center gap-4 px-5 py-[15px] rounded-xl border border-border/60 bg-card text-left",
         "hover:border-primary/50 hover:bg-primary/[0.04] hover:-translate-y-0.5 hover:shadow-md",
         "active:translate-y-0 active:shadow-none transition-all duration-150 group",
         disabled && "opacity-50 pointer-events-none",
