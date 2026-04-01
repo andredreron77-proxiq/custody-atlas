@@ -26,6 +26,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { setAccessToken } from "@/lib/tokenStore";
 import type { AuthUser } from "@/services/authService";
 
+const AUTH_USER_ID_STORAGE_KEY = "custody-atlas:auth-user-id";
+
 /** True while a Supabase recovery session is active (reset-link clicked). */
 let _recoveryActive = false;
 
@@ -61,6 +63,7 @@ export function useCurrentUser(): UseAuthResult {
           _recoveryActive = true;
           // Persist a flag across re-renders / navigation for ResetPasswordPage.
           sessionStorage.setItem("custody-atlas:recovery", "1");
+          sessionStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
           setAccessToken(null);
           setUser(null);
           setIsLoading(false);
@@ -77,6 +80,7 @@ export function useCurrentUser(): UseAuthResult {
         setAccessToken(session?.access_token ?? null);
         if (session?.user) {
           setUser(buildUser(session.user));
+          sessionStorage.setItem(AUTH_USER_ID_STORAGE_KEY, session.user.id);
 
           // After a Google OAuth round-trip (SIGNED_IN fires on return),
           // navigate back to the page the user was on before they clicked "Continue with Google".
@@ -89,6 +93,7 @@ export function useCurrentUser(): UseAuthResult {
             }
           }
         } else {
+          sessionStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
           setUser(null);
         }
         setIsLoading(false);
@@ -105,7 +110,9 @@ export function useCurrentUser(): UseAuthResult {
       setAccessToken(session?.access_token ?? null);
       if (session?.user) {
         setUser(buildUser(session.user));
+        sessionStorage.setItem(AUTH_USER_ID_STORAGE_KEY, session.user.id);
       } else {
+        sessionStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
         setUser(null);
       }
       setIsLoading(false);
