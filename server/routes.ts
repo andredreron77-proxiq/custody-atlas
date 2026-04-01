@@ -4,6 +4,7 @@ import { createServer, type Server } from "http";
 import { mkdirSync, unlinkSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { createHash } from "crypto";
 import multer from "multer";
 import OpenAI from "openai";
 import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtractor";
@@ -1412,12 +1413,17 @@ CRITICAL RULES:
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
         const documentName = req.file.originalname || "document";
+        const sourceFileSha256 = createHash("sha256")
+          .update(readFileSync(req.file.path))
+          .digest("hex");
+        const analysisWithSourceHash = {
+          ...(validated.data as Record<string, unknown>),
+          source_file_sha256: sourceFileSha256,
+        };
 
         // Await the save so we can return the document ID and use it for case_facts population.
         const duplicateDoc = await findDuplicateDocument(docUserId, {
-          fileName: documentName,
-          mimeType: req.file.mimetype,
-          extractedText: truncatedText,
+          fileHash: sourceFileSha256,
           caseId: docCaseId ?? null,
         });
 
@@ -1427,14 +1433,14 @@ CRITICAL RULES:
           caseId: docCaseId ?? null,
           mimeType: req.file.mimetype,
           pageCount,
-          analysisJson: validated.data as Record<string, unknown>,
+          analysisJson: analysisWithSourceHash,
           extractedText: truncatedText,
           docType: "other",
         }).catch(() => null);
 
         if (savedDoc) {
           if (duplicateDoc) {
-            await updateDocumentAnalysis(savedDoc.id, docUserId, validated.data as Record<string, unknown>).catch(() => false);
+            await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
           }
           savedDocumentId = savedDoc.id;
           // If the request was tied to a case, upsert extracted_facts into case_facts,

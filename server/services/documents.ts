@@ -41,9 +41,7 @@ export interface SavedDocument {
 }
 
 export interface DuplicateDocumentLookup {
-  fileName: string;
-  mimeType: string;
-  extractedText: string;
+  fileHash: string;
   caseId?: string | null;
 }
 
@@ -204,17 +202,15 @@ export async function findDuplicateDocument(
 ): Promise<SavedDocument | null> {
   if (!supabaseAdmin) return null;
 
-  const normalizedText = lookup.extractedText.trim();
-  if (!normalizedText) return null;
+  const normalizedHash = lookup.fileHash.trim().toLowerCase();
+  if (!normalizedHash) return null;
 
   try {
     const query = supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
-      .eq("file_name", lookup.fileName)
-      .eq("mime_type", lookup.mimeType)
-      .eq("extracted_text", normalizedText)
+      .contains("analysis_json", { source_file_sha256: normalizedHash })
       .order("created_at", { ascending: false })
       .limit(1);
 
