@@ -73,3 +73,29 @@ test("/api/ask-document route does not throw ReferenceError for isDocumentFactLo
   assert.equal(res.statusCode, 500);
   assert.notEqual((res.body as any)?.error, "isDocumentFactLookupQuestion is not defined");
 });
+
+test("/api/ask-document returns 400 for malformed request body", async () => {
+  const app = express();
+  app.use(express.json());
+  const httpServer = createServer(app);
+  await registerRoutes(httpServer, app);
+
+  const askDocumentLayer = (app as any).router?.stack?.find(
+    (layer: any) => layer.route?.path === "/api/ask-document",
+  );
+  assert.ok(askDocumentLayer, "Expected /api/ask-document route to be registered");
+  const askDocumentHandler = askDocumentLayer.route.stack[1]?.handle;
+  assert.equal(typeof askDocumentHandler, "function", "Expected ask-document handler function");
+
+  const req = {
+    body: {
+      userQuestion: "",
+    },
+  } as Request;
+
+  const res = createMockResponse();
+  await askDocumentHandler(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.match(String((res.body as any)?.error ?? ""), /Invalid request/);
+});

@@ -10,7 +10,13 @@ import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtracto
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
-import { isDocumentFactLookupQuestion } from "./lib/documentQuestionUtils";
+import {
+  buildExtractedFactsBlock,
+  classifyDocumentQuestion,
+  getSafeErrorMessage,
+  normalizeDocumentAnalysisPayload,
+  validateAnalyzeDocumentGuards,
+} from "./lib/documentFlow";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -29,7 +35,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, type DocumentType, type SavedDocument } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import { deriveCaseTimeline } from "./services/caseTimeline";
@@ -1253,33 +1259,42 @@ The user is asking what they should do or how to take a specific action. Focus y
   app.post("/api/analyze-document", requireAuth, checkDocumentLimit, upload.single("file"), async (req, res) => {
     const filePath = req.file?.path;
     try {
+      const hasAI = Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+      const isDocx = req.file?.mimetype === DOCX_MIME;
+      const hasDocAI = Boolean(
+        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON &&
+        process.env.GOOGLE_PROJECT_ID &&
+        process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID,
+      );
+
+      const guard = validateAnalyzeDocumentGuards({
+        hasFile: Boolean(req.file),
+        mimeType: req.file?.mimetype,
+        fileSize: req.file?.size,
+        hasAiClient: hasAI,
+        isDocx,
+        hasDocAiConfig: hasDocAI,
+      });
+
+      if (!guard.ok) {
+        return res.status(guard.status ?? 400).json({
+          error: guard.error,
+          code: "DOCUMENT_ANALYSIS_PRECONDITION_FAILED",
+        });
+      }
+
       if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded. Please attach a PDF, JPG, or PNG." });
+        return res.status(400).json({
+          error: "No file uploaded. Please attach a PDF, JPG, or PNG.",
+          code: "DOCUMENT_ANALYSIS_PRECONDITION_FAILED",
+        });
       }
 
       if (!SUPPORTED_MIME_TYPES.includes(req.file.mimetype)) {
-        return res.status(400).json({ error: "Unsupported file type. Please upload a PDF, Word document (.docx), JPG, or PNG." });
-      }
-
-      if (req.file.size > 10 * 1024 * 1024) {
-        return res.status(400).json({ error: "File is too large. Maximum size is 10MB." });
-      }
-
-      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-      if (!hasAI) {
-        return res.status(503).json({ error: "AI service not configured." });
-      }
-
-      const isDocx = req.file.mimetype === DOCX_MIME;
-
-      if (!isDocx) {
-        const hasDocAI =
-          process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON &&
-          process.env.GOOGLE_PROJECT_ID &&
-          process.env.GOOGLE_DOCUMENT_AI_PROCESSOR_ID;
-        if (!hasDocAI) {
-          return res.status(503).json({ error: "Google Document AI is not configured." });
-        }
+        return res.status(400).json({
+          error: "Unsupported file type. Please upload a PDF, Word document (.docx), JPG, or PNG.",
+          code: "DOCUMENT_ANALYSIS_PRECONDITION_FAILED",
+        });
       }
 
       const fileBuffer = readFileSync(filePath!);
@@ -1379,36 +1394,7 @@ CRITICAL RULES:
         return res.status(500).json({ error: "AI returned an invalid response format. Please try again." });
       }
 
-      // Defensive normalizer: if the AI returned objects inside any string array,
-      // convert them to readable strings so validation doesn't fail.
-      const normalizeStringArray = (arr: unknown): string[] => {
-        if (!Array.isArray(arr)) return [];
-        return arr.map((item) => {
-          if (typeof item === "string") return item;
-          if (item && typeof item === "object") {
-            // Try common object shapes GPT uses: {term, explanation}, {term, definition}, {name, description}, etc.
-            const obj = item as Record<string, unknown>;
-            const label = obj.term ?? obj.name ?? obj.title ?? obj.provision ?? "";
-            const detail = obj.explanation ?? obj.definition ?? obj.description ?? obj.meaning ?? obj.value ?? "";
-            if (label && detail) return `${label}: ${detail}`;
-            if (label) return String(label);
-            if (detail) return String(detail);
-            // Last resort: stringify
-            return JSON.stringify(item);
-          }
-          return String(item);
-        });
-      };
-
-      if (parsedResponse && typeof parsedResponse === "object") {
-        const r = parsedResponse as Record<string, unknown>;
-        const stringArrayFields = ["important_terms", "key_dates", "possible_implications", "questions_to_ask_attorney"] as const;
-        for (const field of stringArrayFields) {
-          if (Array.isArray(r[field])) {
-            r[field] = normalizeStringArray(r[field]);
-          }
-        }
-      }
+      parsedResponse = normalizeDocumentAnalysisPayload(parsedResponse);
 
       const validated = documentAnalysisResultSchema.safeParse(parsedResponse);
       if (!validated.success) {
@@ -1428,7 +1414,14 @@ CRITICAL RULES:
         const documentName = req.file.originalname || "document";
 
         // Await the save so we can return the document ID and use it for case_facts population.
-        const savedDoc = await saveDocument(docUserId, {
+        const duplicateDoc = await findDuplicateDocument(docUserId, {
+          fileName: documentName,
+          mimeType: req.file.mimetype,
+          extractedText: truncatedText,
+          caseId: docCaseId ?? null,
+        });
+
+        const savedDoc = duplicateDoc ?? await saveDocument(docUserId, {
           fileName: documentName,
           storagePath: null,
           caseId: docCaseId ?? null,
@@ -1440,6 +1433,9 @@ CRITICAL RULES:
         }).catch(() => null);
 
         if (savedDoc) {
+          if (duplicateDoc) {
+            await updateDocumentAnalysis(savedDoc.id, docUserId, validated.data as Record<string, unknown>).catch(() => false);
+          }
           savedDocumentId = savedDoc.id;
           // If the request was tied to a case, upsert extracted_facts into case_facts,
           // then trigger deterministic action generation (fire-and-forget).
@@ -1461,7 +1457,9 @@ CRITICAL RULES:
     } catch (err: any) {
       console.error("Document analysis error:", err);
       return res.status(500).json({
-        error: err.message || "Failed to analyze document. Please try again.",
+        error: "We couldn't analyze that document right now. Please try again.",
+        details: getSafeErrorMessage(err, "Failed to analyze document. Please try again."),
+        code: "DOCUMENT_ANALYSIS_FAILED",
       });
     } finally {
       if (filePath) {
@@ -1492,23 +1490,10 @@ CRITICAL RULES:
         ? `The user is located in ${jurisdiction.state}${jurisdiction.county ? `, ${jurisdiction.county} County` : ""}${jurisdiction.country ? `, ${jurisdiction.country}` : ""}.`
         : "No specific jurisdiction was provided.";
 
-      // Build a structured facts block from extracted_facts (if present in this document)
-      const ef = documentAnalysis.extracted_facts;
-      const hasExtractedFacts = ef && Object.values(ef).some(Boolean);
-      const extractedFactsBlock = hasExtractedFacts ? `
-KNOWN FACTS FROM THIS DOCUMENT (verbatim from text — use these to answer factual questions directly):
-${ef.document_title  ? `- Title: ${ef.document_title}` : ""}
-${ef.case_number     ? `- Case Number: ${ef.case_number}` : ""}
-${ef.court_name      ? `- Court: ${ef.court_name}` : ""}
-${ef.court_address   ? `- Court Address: ${ef.court_address}` : ""}
-${ef.judge_name      ? `- Judge: ${ef.judge_name}` : ""}
-${ef.hearing_date    ? `- Hearing Date: ${ef.hearing_date}` : ""}
-${ef.filing_party    ? `- Filing Party: ${ef.filing_party}` : ""}
-${ef.opposing_party  ? `- Opposing Party: ${ef.opposing_party}` : ""}
-`.trim().split("\n").filter(Boolean).join("\n") : "";
+      const extractedFactsBlock = buildExtractedFactsBlock(documentAnalysis);
 
       // Detect if this is a direct fact question so we can sharpen the answer posture
-      const docFactQuestion = isDocumentFactLookupQuestion(userQuestion);
+      const docFactQuestion = classifyDocumentQuestion(userQuestion) === "fact";
 
       const systemPrompt = `You are a child custody legal information assistant helping users understand a custody-related document they have uploaded.
 
@@ -1598,7 +1583,11 @@ ${userQuestion}`;
       return res.json(validated.data);
     } catch (err: any) {
       console.error("Document Q&A error:", err);
-      return res.status(500).json({ error: err.message || "Failed to get answer. Please try again." });
+      return res.status(500).json({
+        error: "We couldn't answer that document question right now. Please try again.",
+        details: getSafeErrorMessage(err, "Failed to get answer. Please try again."),
+        code: "DOCUMENT_QA_FAILED",
+      });
     }
   });
 
@@ -2008,30 +1997,7 @@ CRITICAL RULES:
         return res.status(500).json({ error: "AI returned an invalid response format. Please try again." });
       }
 
-      // Normalize string arrays (same defensive logic as analyze-document)
-      const normalizeStringArray = (arr: unknown): string[] => {
-        if (!Array.isArray(arr)) return [];
-        return arr.map((item) => {
-          if (typeof item === "string") return item;
-          if (item && typeof item === "object") {
-            const obj = item as Record<string, unknown>;
-            const label = obj.term ?? obj.name ?? obj.title ?? obj.provision ?? "";
-            const detail = obj.explanation ?? obj.definition ?? obj.description ?? obj.meaning ?? obj.value ?? "";
-            if (label && detail) return `${label}: ${detail}`;
-            if (label) return String(label);
-            if (detail) return String(detail);
-            return JSON.stringify(item);
-          }
-          return String(item);
-        });
-      };
-
-      if (parsedResponse && typeof parsedResponse === "object") {
-        const r = parsedResponse as Record<string, unknown>;
-        for (const field of ["important_terms", "key_dates", "possible_implications", "questions_to_ask_attorney"] as const) {
-          if (Array.isArray(r[field])) r[field] = normalizeStringArray(r[field]);
-        }
-      }
+      parsedResponse = normalizeDocumentAnalysisPayload(parsedResponse);
 
       const validated = documentAnalysisResultSchema.safeParse(parsedResponse);
       if (!validated.success) {
@@ -2044,7 +2010,11 @@ CRITICAL RULES:
       return res.json({ ...validated.data, extractedText: truncatedText, documentId });
     } catch (err: any) {
       console.error("[reanalyze] error:", err);
-      return res.status(500).json({ error: err.message || "Failed to re-analyze document. Please try again." });
+      return res.status(500).json({
+        error: "We couldn't re-analyze that document right now. Please try again.",
+        details: getSafeErrorMessage(err, "Failed to re-analyze document. Please try again."),
+        code: "DOCUMENT_REANALYSIS_FAILED",
+      });
     }
   });
 
