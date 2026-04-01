@@ -36,6 +36,10 @@ import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequestRaw, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-auth";
+import {
+  deriveCaseActivityState,
+  type CaseActivityState,
+} from "@/lib/workspaceState";
 
 /* ── API types ────────────────────────────────────────────────────────────── */
 
@@ -139,21 +143,14 @@ function formatEventDate(dateStr: string): string {
  *
  *  loading              — workspace data still fetching
  *  empty                — no documents, no questions, no analysis
- *  intake_started       — documents uploaded but none fully analyzed
+ *  documents_only       — documents uploaded but none fully analyzed
  *  stale_incomplete     — data exists but required context (jurisdiction) missing
  *  analyzed_no_questions — docs analyzed, no questions asked yet
- *  needs_attention      — active case with risk/urgency signals detected
+ *  active_attention     — active case with risk/urgency signals detected
  *  active_case          — healthy active state: docs + analyses + questions
  * ─────────────────────────────────────────────────────────────────────────── */
 
-type WorkspaceState =
-  | "loading"
-  | "empty"
-  | "intake_started"
-  | "stale_incomplete"
-  | "analyzed_no_questions"
-  | "needs_attention"
-  | "active_case";
+type WorkspaceState = CaseActivityState;
 
 /* Debug/inspection shape — logged in development; can be removed later. */
 interface WorkspaceSignals {
@@ -195,43 +192,6 @@ function docHasRiskSignals(doc: WorkspaceDocument): boolean {
   return URGENCY_KEYWORDS.some(
     (kw) => dates.some((d) => d.includes(kw)) || implications.some((i) => i.includes(kw)),
   );
-}
-
-function resolveWorkspaceState(signals: {
-  isLoading: boolean;
-  documentCount: number;
-  analyzedCount: number;
-  conversationCount: number;
-  hasJurisdiction: boolean;
-  hasRisks: boolean;
-}): WorkspaceState {
-  const { isLoading, documentCount, analyzedCount, conversationCount, hasJurisdiction, hasRisks } = signals;
-
-  if (isLoading) return "loading";
-
-  // Nothing at all → onboarding
-  if (documentCount === 0 && conversationCount === 0) return "empty";
-
-  // Needs attention: active + urgent/risk signals detected (highest priority)
-  const isActive = conversationCount > 0 || analyzedCount > 0;
-  if (isActive && hasRisks) return "needs_attention";
-
-  // Missing required context: jurisdiction not set (priority 2 per spec)
-  if (!hasJurisdiction) return "stale_incomplete";
-
-  // Active case: conversations + analyzed docs both present
-  if (conversationCount > 0 && analyzedCount > 0) return "active_case";
-
-  // Analyzed docs but no questions asked yet
-  if (analyzedCount > 0 && conversationCount === 0) return "analyzed_no_questions";
-
-  // Conversations only, no analyzed docs
-  if (conversationCount > 0) return "active_case";
-
-  // Docs uploaded but not yet analyzed
-  if (documentCount > 0) return "intake_started";
-
-  return "empty";
 }
 
 /* ── What Matters Now Panel ───────────────────────────────────────────────────
@@ -365,7 +325,7 @@ function WhatMattersNowPanel({
     isHashCta ? <a href={ctaHref}>{children}</a> : <Link href={ctaHref}>{children}</Link>;
 
   // Colour the "Recommended action" label amber for risks, primary for everything else
-  const recommendedLabelColor = workspaceState === "needs_attention"
+  const recommendedLabelColor = workspaceState === "active_attention"
     ? "text-amber-600 dark:text-amber-400"
     : "text-[#b5922f] dark:text-amber-400";
 
@@ -401,7 +361,7 @@ function WhatMattersNowPanel({
           </div>
           <div className="flex-1 min-w-0">
             <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5 ${recommendedLabelColor}`}>
-              {workspaceState === "needs_attention" ? "Attention needed" : "Recommended action"}
+              {workspaceState === "active_attention" ? "Attention needed" : "Recommended action"}
             </p>
             <h3 className="font-semibold text-foreground text-[15px] leading-tight mb-1.5" data-testid="text-wmn-action-title">
               {title}
@@ -1432,14 +1392,15 @@ export default function WorkspacePage() {
     : null;
 
   // Primary state — single source of truth for the whole page
-  const workspaceState: WorkspaceState = resolveWorkspaceState({
+  const derivedCaseActivity = deriveCaseActivityState({
     isLoading: isLoadingWorkspace && !!user,
     documentCount,
-    analyzedCount,
-    conversationCount,
-    hasJurisdiction,
-    hasRisks,
+    analyzedDocumentCount: analyzedCount,
+    questionCount: conversationCount,
+    latestActivityIso,
+    unresolvedRiskCount: hasRisks ? 1 : 0,
   });
+  const workspaceState: WorkspaceState = derivedCaseActivity.state;
 
   // ── Scenario + recommended action ────────────────────────────────────────
   function resolveScenario(): { scenario: StepScenario; reason: string } {
@@ -1449,16 +1410,15 @@ export default function WorkspacePage() {
         if (!hasJurisdiction) return { scenario: "no-jurisdiction", reason: "no_jurisdiction_and_empty" };
         return { scenario: "no-questions", reason: "no_data_at_all" };
 
-      case "needs_attention":
+      case "active_attention":
         return { scenario: "review-risks", reason: "risk_signals_detected" };
 
-      case "stale_incomplete":
-        return { scenario: "no-jurisdiction", reason: "missing_jurisdiction_with_data" };
-
-      case "intake_started":
+      case "documents_only":
+        if (!hasJurisdiction) return { scenario: "no-jurisdiction", reason: "missing_jurisdiction_with_data" };
         return { scenario: "intake-pending", reason: "docs_not_analyzed" };
 
       case "analyzed_no_questions":
+        if (!hasJurisdiction) return { scenario: "no-jurisdiction", reason: "missing_jurisdiction_with_data" };
         return { scenario: "ask-about-docs", reason: "analyzed_no_questions" };
 
       case "active_case":
