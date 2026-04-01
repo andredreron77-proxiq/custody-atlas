@@ -19,32 +19,69 @@
 
 import { useState } from "react";
 import type { Jurisdiction } from "@shared/schema";
+import { normaliseCounty } from "@/lib/jurisdictionUtils";
 
 const STORAGE_KEY = "custody_jurisdiction";
+const AUTH_USER_ID_STORAGE_KEY = "custody-atlas:auth-user-id";
 const EXPIRY_DAYS = 90;
 
 interface StoredEntry {
   jurisdiction: Jurisdiction;
   savedAt: number; // Unix ms
+  userId?: string;
+}
+
+interface ParsedStoredEntry {
+  entry: StoredEntry;
+  shouldClearStorage: boolean;
+}
+
+function getActiveUserIdFromSession(): string | null {
+  try {
+    return sessionStorage.getItem(AUTH_USER_ID_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function parseStoredJurisdiction(raw: string, activeUserId: string | null): ParsedStoredEntry | null {
+  const parsed = JSON.parse(raw);
+
+  // ── Normalise legacy format ─────────────────────────────────────────────
+  // Old entries were stored as plain Jurisdiction objects (no envelope/user).
+  let entry: StoredEntry;
+  let shouldClearStorage = false;
+  if (parsed && typeof parsed === "object" && "savedAt" in parsed && "jurisdiction" in parsed) {
+    entry = parsed as StoredEntry;
+  } else {
+    shouldClearStorage = true;
+    entry = { jurisdiction: parsed as Jurisdiction, savedAt: Date.now() };
+  }
+
+  // Logged-in users should only ever consume a location they explicitly set in
+  // their own account context. This prevents cross-account county bleed.
+  if (activeUserId) {
+    if (!entry.userId || entry.userId !== activeUserId) {
+      return { entry, shouldClearStorage: true };
+    }
+  } else if (entry.userId) {
+    // Signed-out/new visitors should not inherit prior signed-in context.
+    return { entry, shouldClearStorage: true };
+  }
+
+  return { entry, shouldClearStorage };
 }
 
 function readFromStorage(): Jurisdiction | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    // ── Normalise legacy format ─────────────────────────────────────────────
-    // Old entries were stored as plain Jurisdiction objects (no savedAt).
-    // Detect by checking for our envelope key.
-    let entry: StoredEntry;
-    if ("savedAt" in parsed && "jurisdiction" in parsed) {
-      entry = parsed as StoredEntry;
-    } else {
-      // Treat as legacy — wrap it with a sentinel savedAt so it stays valid
-      // for one session then gets refreshed by the next write.
-      entry = { jurisdiction: parsed as Jurisdiction, savedAt: Date.now() };
+    const activeUserId = getActiveUserIdFromSession();
+    const parsed = parseStoredJurisdiction(raw, activeUserId);
+    if (!parsed) return null;
+    const { entry, shouldClearStorage } = parsed;
+    if (shouldClearStorage) {
+      localStorage.removeItem(STORAGE_KEY);
     }
 
     // ── Soft expiry ─────────────────────────────────────────────────────────
@@ -59,9 +96,8 @@ function readFromStorage(): Jurisdiction | null {
     // Discard corrupt entries with no usable state.
     if (!j?.state?.trim()) return null;
 
-    // Trim state whitespace. County sentinel values ("General", "general", etc.)
-    // are kept as-is — display components are sentinel-aware.
-    return { ...j, state: j.state.trim() };
+    // Trim state + normalise county sentinel/placeholder values.
+    return { ...j, state: j.state.trim(), county: normaliseCounty(j.county) };
   } catch {
     return null;
   }
@@ -69,7 +105,8 @@ function readFromStorage(): Jurisdiction | null {
 
 function writeToStorage(j: Jurisdiction): void {
   try {
-    const entry: StoredEntry = { jurisdiction: j, savedAt: Date.now() };
+    const userId = getActiveUserIdFromSession();
+    const entry: StoredEntry = { jurisdiction: j, savedAt: Date.now(), ...(userId ? { userId } : {}) };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entry));
   } catch {
     // localStorage may be unavailable in private/restricted contexts — fail silently.

@@ -10,6 +10,7 @@ import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtracto
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
+import { isDirectFactQuestion } from "./lib/documentQuestionUtils";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
