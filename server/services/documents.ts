@@ -30,6 +30,7 @@ export interface SavedDocument {
   id: string;
   userId: string;
   caseId: string | null;
+  sourceFileSha256: string | null;
   fileName: string;
   storagePath: string | null;
   mimeType: string;
@@ -42,7 +43,6 @@ export interface SavedDocument {
 
 export interface DuplicateDocumentLookup {
   fileHash: string;
-  caseId?: string | null;
 }
 
 function mapRow(r: any): SavedDocument {
@@ -50,6 +50,10 @@ function mapRow(r: any): SavedDocument {
     id:            r.id,
     userId:        r.user_id,
     caseId:        r.case_id ?? null,
+    sourceFileSha256:
+      (typeof r.source_file_sha256 === "string" && r.source_file_sha256.trim()) ||
+      (typeof r.analysis_json?.source_file_sha256 === "string" && r.analysis_json.source_file_sha256.trim()) ||
+      null,
     fileName:      r.file_name,
     storagePath:   r.storage_path ?? null,
     mimeType:      r.mime_type ?? "application/octet-stream",
@@ -87,6 +91,35 @@ export async function getDocumentsByCase(
 ): Promise<SavedDocument[]> {
   if (!supabaseAdmin) return [];
   try {
+    // New canonical model: association table (document_case_links) handles case linkage.
+    const { data: links, error: linksError } = await supabaseAdmin
+      .from("document_case_links")
+      .select("document_id")
+      .eq("user_id", userId)
+      .eq("case_id", caseId)
+      .limit(100);
+
+    if (!linksError && links?.length) {
+      const documentIds = links
+        .map((l: any) => l.document_id as string | null)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      if (documentIds.length) {
+        const { data, error } = await supabaseAdmin
+          .from("documents")
+          .select("*")
+          .eq("user_id", userId)
+          .in("id", documentIds)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (!error && data) {
+          return data.map(mapRow);
+        }
+      }
+    }
+
+    // Legacy fallback: older environments may still rely on documents.case_id.
     const { data, error } = await supabaseAdmin
       .from("documents")
       .select("*")
@@ -160,6 +193,7 @@ export async function saveDocument(
       doc_type:       fields.docType ?? "other",
       analysis_json:  fields.analysisJson,
       extracted_text: fields.extractedText,
+      source_file_sha256: fields.sourceFileSha256,
       // case_id column confirmed present; include whenever a case is active
       case_id:        fields.caseId ?? null,
     };
@@ -210,20 +244,57 @@ export async function findDuplicateDocument(
       .from("documents")
       .select("*")
       .eq("user_id", userId)
-      .contains("analysis_json", { source_file_sha256: normalizedHash })
+      .or(`source_file_sha256.eq.${normalizedHash},analysis_json.cs.${JSON.stringify({ source_file_sha256: normalizedHash })}`)
       .order("created_at", { ascending: false })
       .limit(1);
-
-    const scopedQuery = lookup.caseId
-      ? query.eq("case_id", lookup.caseId)
-      : query.is("case_id", null);
-
-    const { data, error } = await scopedQuery;
+    const { data, error } = await query;
     if (error || !data?.length) return null;
     return mapRow(data[0]);
   } catch (err) {
     console.error("[documents] findDuplicateDocument exception:", err);
     return null;
+  }
+}
+
+/**
+ * Link a canonical document to a case without creating a duplicate document row.
+ */
+export async function ensureDocumentCaseAssociation(
+  documentId: string,
+  caseId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+
+  try {
+    const { error } = await supabaseAdmin
+      .from("document_case_links")
+      .upsert(
+        {
+          document_id: documentId,
+          case_id: caseId,
+          user_id: userId,
+        },
+        { onConflict: "document_id,case_id" },
+      );
+
+    if (error) {
+      console.error("[documents] ensureDocumentCaseAssociation error:", error.message);
+      return false;
+    }
+
+    // Compatibility bridge: set documents.case_id for records created in legacy views.
+    await supabaseAdmin
+      .from("documents")
+      .update({ case_id: caseId })
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .is("case_id", null);
+
+    return true;
+  } catch (err) {
+    console.error("[documents] ensureDocumentCaseAssociation exception:", err);
+    return false;
   }
 }
 
