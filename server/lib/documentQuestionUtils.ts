@@ -1,5 +1,5 @@
 /** Heuristic detector for direct, document-fact retrieval questions. */
-export function isDirectFactQuestion(question: string): boolean {
+export function isDocumentFactLookupQuestion(question: string): boolean {
   const q = question.toLowerCase().trim();
   if (!q) return false;
 
