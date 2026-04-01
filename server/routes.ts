@@ -10,7 +10,7 @@ import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtracto
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
-import { isDirectFactQuestion } from "./lib/documentQuestionUtils";
+import { isDocumentFactLookupQuestion } from "./lib/documentQuestionUtils";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -1508,7 +1508,7 @@ ${ef.opposing_party  ? `- Opposing Party: ${ef.opposing_party}` : ""}
 `.trim().split("\n").filter(Boolean).join("\n") : "";
 
       // Detect if this is a direct fact question so we can sharpen the answer posture
-      const docFactQuestion = isDirectFactQuestion(userQuestion);
+      const docFactQuestion = isDocumentFactLookupQuestion(userQuestion);
 
       const systemPrompt = `You are a child custody legal information assistant helping users understand a custody-related document they have uploaded.
 
