@@ -40,6 +40,13 @@ export interface SavedDocument {
   createdAt: string;
 }
 
+export interface DuplicateDocumentLookup {
+  fileName: string;
+  mimeType: string;
+  extractedText: string;
+  caseId?: string | null;
+}
+
 function mapRow(r: any): SavedDocument {
   return {
     id:            r.id,
@@ -183,6 +190,43 @@ export async function saveDocument(
     return saved;
   } catch (err) {
     console.error("[documents] saveDocument exception:", err);
+    return null;
+  }
+}
+
+/**
+ * Look up an existing document with the same content to avoid duplicate rows
+ * from repeated uploads/retries of the exact same file.
+ */
+export async function findDuplicateDocument(
+  userId: string,
+  lookup: DuplicateDocumentLookup,
+): Promise<SavedDocument | null> {
+  if (!supabaseAdmin) return null;
+
+  const normalizedText = lookup.extractedText.trim();
+  if (!normalizedText) return null;
+
+  try {
+    const query = supabaseAdmin
+      .from("documents")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("file_name", lookup.fileName)
+      .eq("mime_type", lookup.mimeType)
+      .eq("extracted_text", normalizedText)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const scopedQuery = lookup.caseId
+      ? query.eq("case_id", lookup.caseId)
+      : query.is("case_id", null);
+
+    const { data, error } = await scopedQuery;
+    if (error || !data?.length) return null;
+    return mapRow(data[0]);
+  } catch (err) {
+    console.error("[documents] findDuplicateDocument exception:", err);
     return null;
   }
 }
