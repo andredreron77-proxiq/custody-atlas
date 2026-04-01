@@ -18,6 +18,7 @@ import {
   normalizeDocumentAnalysisPayload,
   validateAnalyzeDocumentGuards,
 } from "./lib/documentFlow";
+import { persistDocumentWithDedup, preserveSourceFileHash } from "./lib/documentDedup";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -1416,32 +1417,25 @@ CRITICAL RULES:
         const sourceFileSha256 = createHash("sha256")
           .update(readFileSync(req.file.path))
           .digest("hex");
-        const analysisWithSourceHash = {
-          ...(validated.data as Record<string, unknown>),
-          source_file_sha256: sourceFileSha256,
-        };
-
-        // Await the save so we can return the document ID and use it for case_facts population.
-        const duplicateDoc = await findDuplicateDocument(docUserId, {
-          fileHash: sourceFileSha256,
-          caseId: docCaseId ?? null,
-        });
-
-        const savedDoc = duplicateDoc ?? await saveDocument(docUserId, {
-          fileName: documentName,
-          storagePath: null,
-          caseId: docCaseId ?? null,
-          mimeType: req.file.mimetype,
-          pageCount,
-          analysisJson: analysisWithSourceHash,
-          extractedText: truncatedText,
-          docType: "other",
-        }).catch(() => null);
+        const savedDoc = await persistDocumentWithDedup(
+          {
+            userId: docUserId,
+            caseId: docCaseId ?? null,
+            fileName: documentName,
+            mimeType: req.file.mimetype,
+            pageCount,
+            extractedText: truncatedText,
+            analysis: validated.data as Record<string, unknown>,
+            sourceFileSha256,
+          },
+          {
+            findDuplicate: findDuplicateDocument,
+            save: saveDocument,
+            updateAnalysis: updateDocumentAnalysis,
+          },
+        ).catch(() => null);
 
         if (savedDoc) {
-          if (duplicateDoc) {
-            await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
-          }
           savedDocumentId = savedDoc.id;
           // If the request was tied to a case, upsert extracted_facts into case_facts,
           // then trigger deterministic action generation (fire-and-forget).
@@ -2010,8 +2004,13 @@ CRITICAL RULES:
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
+      const nextAnalysis = preserveSourceFileHash(
+        doc.analysisJson as Record<string, unknown> | null | undefined,
+        validated.data as Record<string, unknown>,
+      );
+
       // Update the existing document row — no new row created
-      await updateDocumentAnalysis(documentId, user.id, validated.data as Record<string, unknown>).catch(() => {});
+      await updateDocumentAnalysis(documentId, user.id, nextAnalysis).catch(() => {});
 
       return res.json({ ...validated.data, extractedText: truncatedText, documentId });
     } catch (err: any) {
