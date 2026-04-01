@@ -19,6 +19,7 @@ import {
   validateAnalyzeDocumentGuards,
 } from "./lib/documentFlow";
 import { planUploadAssociation } from "./lib/documentIdentity";
+import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -1405,11 +1406,12 @@ CRITICAL RULES:
       }
 
       // Save document + optionally populate case_facts if a caseId was provided.
-      await trackDocument(req);
       const docUserId = (req as any).user?.id as string | undefined;
       const docCaseId: string | undefined = req.body?.caseId || undefined;
 
       let savedDocumentId: string | null = null;
+      let duplicateUpload = false;
+      let duplicateMessage: string | null = null;
 
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
@@ -1440,6 +1442,14 @@ CRITICAL RULES:
         }).catch(() => null);
 
         if (savedDoc) {
+          const isDuplicateUpload = Boolean(duplicateDoc);
+          duplicateUpload = isDuplicateUpload;
+          const uploadOutcome = buildDocumentUploadOutcome({
+            fileName: documentName,
+            isDuplicate: isDuplicateUpload,
+          });
+          duplicateMessage = uploadOutcome.userMessage;
+
           const associationPlan = planUploadAssociation({
             canonicalDocumentId: duplicateDoc?.id ?? null,
             existingCaseIds: duplicateDoc?.caseId ? [duplicateDoc.caseId] : [],
@@ -1453,6 +1463,16 @@ CRITICAL RULES:
             await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
           }
           savedDocumentId = savedDoc.id;
+
+          if (uploadOutcome.shouldTrackUsage) {
+            await trackDocument(req);
+          }
+
+          await createTimelineEvent(docUserId, {
+            eventDate: new Date().toISOString().slice(0, 10),
+            description: uploadOutcome.activityDescription,
+          }).catch(() => null);
+
           // If the request was tied to a case, upsert extracted_facts into case_facts,
           // then trigger deterministic action generation (fire-and-forget).
           if (docCaseId && validated.data.extracted_facts) {
@@ -1469,7 +1489,15 @@ CRITICAL RULES:
         }
       }
 
-      return res.json({ ...validated.data, extractedText: truncatedText, documentId: savedDocumentId });
+      return res.json({
+        ...validated.data,
+        extractedText: truncatedText,
+        documentId: savedDocumentId,
+        dedupe: {
+          isDuplicate: duplicateUpload,
+          message: duplicateMessage,
+        },
+      });
     } catch (err: any) {
       console.error("Document analysis error:", err);
       return res.status(500).json({

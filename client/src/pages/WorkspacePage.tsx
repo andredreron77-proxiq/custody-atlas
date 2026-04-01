@@ -1110,11 +1110,13 @@ function CaseSnapshotPanel({
 function TimelineAndActivityPanel({
   events,
   threads,
+  documents,
   isLoading,
   askAIPath,
 }: {
   events: WorkspaceTimelineEvent[];
   threads: WorkspaceThread[];
+  documents: WorkspaceDocument[];
   isLoading: boolean;
   askAIPath: string;
 }) {
@@ -1140,7 +1142,8 @@ function TimelineAndActivityPanel({
 
   type FeedItem =
     | { kind: "event"; sortKey: number; event: WorkspaceTimelineEvent }
-    | { kind: "thread"; sortKey: number; thread: WorkspaceThread };
+    | { kind: "thread"; sortKey: number; thread: WorkspaceThread }
+    | { kind: "document"; sortKey: number; document: WorkspaceDocument };
 
   const feed: FeedItem[] = [
     ...events.map((e) => ({
@@ -1152,6 +1155,11 @@ function TimelineAndActivityPanel({
       kind: "thread" as const,
       sortKey: new Date(t.createdAt).getTime(),
       thread: t,
+    })),
+    ...documents.slice(0, 6).map((d) => ({
+      kind: "document" as const,
+      sortKey: new Date(d.createdAt).getTime(),
+      document: d,
     })),
   ].sort((a, b) => b.sortKey - a.sortKey).slice(0, 8);
 
@@ -1280,31 +1288,55 @@ function TimelineAndActivityPanel({
                 );
               }
 
-              const thread = item.thread;
-              const params = new URLSearchParams({ thread: thread.id });
-              if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
-              if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
+              if (item.kind === "thread") {
+                const thread = item.thread;
+                const params = new URLSearchParams({ thread: thread.id });
+                if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
+                if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
+                return (
+                  <Link key={`thread-${thread.id}`} href={`/ask?${params.toString()}`}>
+                    <li
+                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 hover:bg-muted/30 cursor-pointer group"
+                      data-testid={`conversation-item-${thread.id}`}
+                    >
+                      <div className="w-6 h-6 rounded-md bg-violet-50 dark:bg-violet-950/40 flex items-center justify-center flex-shrink-0">
+                        <MessageSquare className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+                          {thread.title ?? "Custody Conversation"}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {thread.jurisdictionState && (
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-muted-foreground">{relativeTime(thread.createdAt)}</span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors flex-shrink-0" />
+                    </li>
+                  </Link>
+                );
+              }
+
+              const doc = item.document;
+              const analyzed = isDocAnalyzed(doc);
               return (
-                <Link key={`thread-${thread.id}`} href={`/ask?${params.toString()}`}>
+                <Link key={`document-${doc.id}`} href={`/documents/${doc.id}`}>
                   <li
                     className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 hover:bg-muted/30 cursor-pointer group"
-                    data-testid={`conversation-item-${thread.id}`}
+                    data-testid={`activity-document-${doc.id}`}
                   >
-                    <div className="w-6 h-6 rounded-md bg-violet-50 dark:bg-violet-950/40 flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                    <div className="w-6 h-6 rounded-md bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
-                        {thread.title ?? "Custody Conversation"}
+                        {analyzed ? "Analyzed document" : "Uploaded document"}: {doc.fileName}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {thread.jurisdictionState && (
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
-                          </span>
-                        )}
-                        <span className="text-[11px] text-muted-foreground">{relativeTime(thread.createdAt)}</span>
-                      </div>
+                      <span className="text-[11px] text-muted-foreground">{relativeTime(doc.createdAt)}</span>
                     </div>
                     <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors flex-shrink-0" />
                   </li>
@@ -1590,6 +1622,7 @@ export default function WorkspacePage() {
           <TimelineAndActivityPanel
             events={timelineEvents}
             threads={threads}
+            documents={documents}
             isLoading={isLoadingWorkspace && !!user}
             askAIPath={askAIPath}
           />
