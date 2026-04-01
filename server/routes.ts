@@ -18,6 +18,7 @@ import {
   normalizeDocumentAnalysisPayload,
   validateAnalyzeDocumentGuards,
 } from "./lib/documentFlow";
+import { planUploadAssociation } from "./lib/documentIdentity";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -36,7 +37,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, type DocumentType, type SavedDocument } from "./services/documents";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import { deriveCaseTimeline } from "./services/caseTimeline";
@@ -1424,13 +1425,13 @@ CRITICAL RULES:
         // Await the save so we can return the document ID and use it for case_facts population.
         const duplicateDoc = await findDuplicateDocument(docUserId, {
           fileHash: sourceFileSha256,
-          caseId: docCaseId ?? null,
         });
 
         const savedDoc = duplicateDoc ?? await saveDocument(docUserId, {
           fileName: documentName,
           storagePath: null,
           caseId: docCaseId ?? null,
+          sourceFileSha256,
           mimeType: req.file.mimetype,
           pageCount,
           analysisJson: analysisWithSourceHash,
@@ -1439,6 +1440,15 @@ CRITICAL RULES:
         }).catch(() => null);
 
         if (savedDoc) {
+          const associationPlan = planUploadAssociation({
+            canonicalDocumentId: duplicateDoc?.id ?? null,
+            existingCaseIds: duplicateDoc?.caseId ? [duplicateDoc.caseId] : [],
+            requestedCaseId: docCaseId ?? null,
+          });
+
+          if (docCaseId && associationPlan.linkToRequestedCase) {
+            await ensureDocumentCaseAssociation(savedDoc.id, docCaseId, docUserId).catch(() => false);
+          }
           if (duplicateDoc) {
             await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
           }
