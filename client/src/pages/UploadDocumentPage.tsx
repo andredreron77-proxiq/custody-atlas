@@ -29,6 +29,14 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import type { DocumentAnalysisResult, DocumentQAResponse, ExtractedFacts } from "@shared/schema";
 
+interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
+  documentId?: string | null;
+  dedupe?: {
+    isDuplicate: boolean;
+    message: string | null;
+  };
+}
+
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -362,7 +370,7 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
         return;
       }
       if (!res.ok) {
-        throw new Error(data.error || `Server error (${res.status})`);
+        throw new Error((data as any).error || `Server error (${res.status})`);
       }
 
       const responseData = data as DocumentQAResponse;
@@ -1338,14 +1346,21 @@ export default function UploadDocumentPage() {
         return;
       }
 
-      const data = await res.json();
+      const data = await res.json() as AnalyzeDocumentResponse;
       if (!res.ok) {
-        throw new Error(data.error || `Server error (${res.status})`);
+        throw new Error((data as any).error || `Server error (${res.status})`);
       }
 
       setResult(data as DocumentAnalysisResult);
       if (data.documentId) setDocumentId(data.documentId as string);
+      if (data.dedupe?.isDuplicate) {
+        toast({
+          title: "Already uploaded",
+          description: data.dedupe.message || "This file is already in your workspace. We refreshed its analysis.",
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
     } catch (err: any) {
       const message = err?.message || "Failed to analyze document. Please try again.";
       setError(message);

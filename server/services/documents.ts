@@ -198,11 +198,23 @@ export async function saveDocument(
       case_id:        fields.caseId ?? null,
     };
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("documents")
       .insert(insertPayload)
       .select()
       .single();
+
+    // Backward compatibility: older environments may not have the
+    // source_file_sha256 column yet. Retry once without it so document
+    // persistence (workspace visibility) still succeeds.
+    if (error?.message?.includes("source_file_sha256")) {
+      const { source_file_sha256, ...legacyPayload } = insertPayload;
+      ({ data, error } = await supabaseAdmin
+        .from("documents")
+        .insert(legacyPayload)
+        .select()
+        .single());
+    }
 
     if (error) {
       console.error("[documents] saveDocument error:", error.message);
@@ -240,14 +252,26 @@ export async function findDuplicateDocument(
   if (!normalizedHash) return null;
 
   try {
-    const query = supabaseAdmin
+    let query = supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
       .or(`source_file_sha256.eq.${normalizedHash},analysis_json.cs.${JSON.stringify({ source_file_sha256: normalizedHash })}`)
       .order("created_at", { ascending: false })
       .limit(1);
-    const { data, error } = await query;
+    let { data, error } = await query;
+
+    // Backward compatibility for pre-migration DBs without source_file_sha256.
+    if (error?.message?.includes("source_file_sha256")) {
+      query = supabaseAdmin
+        .from("documents")
+        .select("*")
+        .eq("user_id", userId)
+        .contains("analysis_json", { source_file_sha256: normalizedHash })
+        .order("created_at", { ascending: false })
+        .limit(1);
+      ({ data, error } = await query);
+    }
     if (error || !data?.length) return null;
     return mapRow(data[0]);
   } catch (err) {
