@@ -989,6 +989,15 @@ export default function AskAIPage() {
       {/* ── Urgent priority strip — single focused signal for urgent_case ─── */}
       {prioritySignal && <UrgentPriorityStrip signal={prioritySignal} />}
 
+      <div
+        className="rounded-lg border-2 border-primary/35 bg-primary/10 px-4 py-3 mt-1 mb-2"
+        data-testid="answering-scope-banner"
+      >
+        <span className="text-sm font-semibold text-foreground">
+          {answeringScopeLabel}
+        </span>
+      </div>
+
       {/* ChatBox — input sticky when active, conversation grows below */}
       <ChatBox
         jurisdiction={jurisdiction}
