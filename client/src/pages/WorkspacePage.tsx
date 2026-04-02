@@ -564,8 +564,8 @@ function CaseSummarySection() {
   });
 
   return (
-    <div id="case-summary" className="scroll-mt-4">
-      <Panel testId="card-case-summary">
+    <div id="case-summary" className="scroll-mt-4 h-full">
+      <Panel testId="card-case-summary" className="h-full">
       <PanelHeader
         icon={Sparkles}
         label="Case Summary"
@@ -581,9 +581,9 @@ function CaseSummarySection() {
           ) : undefined
         }
       />
-      <PanelContent className="p-3">
+      <PanelContent className="p-2.5">
         {!summary && !summaryMutation.isPending && (
-          <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <div className="flex flex-col items-center gap-2.5 py-1.5 text-center">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-primary" />
             </div>
@@ -612,14 +612,14 @@ function CaseSummarySection() {
         )}
 
         {summaryMutation.isPending && (
-          <div className="flex flex-col items-center gap-3 py-5">
+          <div className="flex flex-col items-center gap-2.5 py-4">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
             <p className="text-xs text-muted-foreground">Analyzing your conversations and documents…</p>
           </div>
         )}
 
         {summary && open && (
-          <div className="space-y-4" data-testid="section-summary-output">
+          <div className="space-y-3" data-testid="section-summary-output">
             {/* Themes */}
             {summary.themes.length > 0 && (
               <div>
@@ -964,10 +964,10 @@ function TimelineAndActivityPanel({
       sortKey: new Date(d.createdAt).getTime(),
       document: d,
     })),
-  ].sort((a, b) => b.sortKey - a.sortKey).slice(0, 8);
+  ].sort((a, b) => b.sortKey - a.sortKey).slice(0, 6);
 
   return (
-    <Panel testId="card-timeline-activity">
+    <Panel testId="card-timeline-activity" className="h-full">
       <PanelHeader
         icon={Clock}
         label="Recent Activity"
@@ -986,7 +986,7 @@ function TimelineAndActivityPanel({
           ) : undefined
         }
       />
-      <PanelContent className="space-y-3">
+      <PanelContent className="space-y-2.5 p-2.5">
         {/* Add event form */}
         {showForm && (
           <div className="rounded-lg border bg-muted/30 p-2.5 space-y-2.5" data-testid="form-add-event">
@@ -1391,31 +1391,9 @@ export default function WorkspacePage() {
             caseCount={cases.length}
             timelineEventCount={timelineEvents.length}
           >
-            <div id="recent-activity">
-              {user ? (
-                <TimelineAndActivityPanel
-                  events={timelineEvents}
-                  threads={threads}
-                  documents={documents}
-                  isLoading={isLoadingWorkspace && !!user}
-                  askAIPath={askAIPath}
-                />
-              ) : (
-                <Panel testId="card-timeline-activity">
-                  <PanelHeader icon={Activity} label="Recent Activity" />
-                  <PanelContent>
-                    <EmptyState
-                      icon={MessageSquare}
-                      message="Sign in to save conversations and track your case timeline"
-                      ctaLabel="Ask Atlas"
-                      ctaHref={askAIPath}
-                      testId="empty-activity-unauth"
-                    />
-                  </PanelContent>
-                </Panel>
-              )}
-            </div>
-            {user && <CaseSummarySection />}
+            <p className="text-xs text-muted-foreground">
+              View your recent activity and summary below for a unified case snapshot.
+            </p>
           </CaseContextPanel>
 
           <div className="rounded-lg border border-border/40 bg-muted/10 px-3 py-2.5 flex items-center gap-2" data-testid="card-privacy-trust">
@@ -1424,6 +1402,52 @@ export default function WorkspacePage() {
               Documents are analyzed privately and never retained. Your questions are confidential.
             </p>
           </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+        <div id="recent-activity" className="h-full">
+          {user ? (
+            <TimelineAndActivityPanel
+              events={timelineEvents}
+              threads={threads}
+              documents={documents}
+              isLoading={isLoadingWorkspace && !!user}
+              askAIPath={askAIPath}
+            />
+          ) : (
+            <Panel testId="card-timeline-activity" className="h-full">
+              <PanelHeader icon={Activity} label="Recent Activity" />
+              <PanelContent className="p-2.5">
+                <EmptyState
+                  icon={MessageSquare}
+                  message="Sign in to save conversations and track your case timeline"
+                  ctaLabel="Ask Atlas"
+                  ctaHref={askAIPath}
+                  testId="empty-activity-unauth"
+                />
+              </PanelContent>
+            </Panel>
+          )}
+        </div>
+
+        <div className="h-full">
+          {user ? (
+            <CaseSummarySection />
+          ) : (
+            <Panel testId="card-case-summary-unauth" className="h-full">
+              <PanelHeader icon={Sparkles} label="Case Summary" />
+              <PanelContent className="p-2.5">
+                <EmptyState
+                  icon={Sparkles}
+                  message="Sign in to generate a summary of your custody documents and conversations"
+                  ctaLabel="Ask Atlas"
+                  ctaHref={askAIPath}
+                  testId="empty-summary-unauth"
+                />
+              </PanelContent>
+            </Panel>
+          )}
         </div>
       </section>
 
