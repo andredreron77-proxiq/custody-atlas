@@ -11,13 +11,13 @@ export function WorkspaceHeader({ activeCaseName, caseCount }: WorkspaceHeaderPr
   const hasActiveCase = !!activeCaseName;
 
   return (
-    <div className="sticky top-3 z-10 rounded-2xl border border-border/70 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-md px-5 py-4">
+    <div className="sticky top-2 z-10 rounded-xl border border-border/70 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-sm px-4 py-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-1 min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Active Workspace</p>
           <div className="flex items-center gap-2 min-w-0">
             <FolderOpen className="w-4 h-4 text-primary/70 flex-shrink-0" />
-            <h1 className="text-xl md:text-2xl font-semibold truncate" data-testid="heading-workspace">
+            <h1 className="text-lg md:text-xl font-semibold truncate" data-testid="heading-workspace">
               {activeCaseName ?? "General Workspace"}
             </h1>
             <Badge variant={hasActiveCase ? "default" : "secondary"} className="text-[10px] uppercase tracking-wide">
@@ -26,7 +26,7 @@ export function WorkspaceHeader({ activeCaseName, caseCount }: WorkspaceHeaderPr
           </div>
         </div>
 
-        <Button variant="outline" size="sm" className="gap-1.5" data-testid="button-switch-case">
+        <Button variant="outline" size="sm" className="gap-1.5 h-8" data-testid="button-switch-case">
           <ChevronsUpDown className="w-3.5 h-3.5" />
           Switch case
           <span className="text-[10px] text-muted-foreground">({caseCount})</span>

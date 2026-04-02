@@ -29,7 +29,7 @@ import {
   Panel, PanelHeader, PanelContent,
 } from "@/components/app/ProductLayout";
 import {
-  DocFactChips, DocKeyDatesRow, DocObligationBadge,
+  DocKeyDatesRow, DocObligationBadge,
 } from "@/components/app/DocIntelPanel";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -284,11 +284,11 @@ function WhatMattersNowPanel({
   if (workspaceState === "loading") {
     return (
       <HeroPanel testId="panel-what-matters-now">
-        <HeroPanelContent className="space-y-4 py-6">
+        <HeroPanelContent className="space-y-3 py-4 px-4 sm:px-5">
           <div className="h-5 w-48 rounded bg-muted animate-pulse" />
           <div className="space-y-2">
-            <div className="h-14 rounded-lg bg-muted animate-pulse" />
-            <div className="h-14 rounded-lg bg-muted animate-pulse" />
+            <div className="h-12 rounded-lg bg-muted animate-pulse" />
+            <div className="h-12 rounded-lg bg-muted animate-pulse" />
           </div>
         </HeroPanelContent>
       </HeroPanel>
@@ -310,10 +310,10 @@ function WhatMattersNowPanel({
 
   return (
     <HeroPanel testId="panel-what-matters-now">
-      <HeroPanelHeader className="flex items-center justify-between gap-4">
+      <HeroPanelHeader className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 pb-3">
         <div>
           <h2 className="text-base font-semibold text-foreground leading-tight">What Matters Now</h2>
-          <p className="text-xs text-muted-foreground mt-1">Top priorities to keep your case moving forward.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Top priorities to keep your case moving forward.</p>
         </div>
         {conversationCount > 0 && (
           <Link href={resumeHref}>
@@ -325,17 +325,17 @@ function WhatMattersNowPanel({
         )}
       </HeroPanelHeader>
 
-      <HeroPanelContent className="space-y-3">
+      <HeroPanelContent className="space-y-2.5 px-4 sm:px-5 py-3.5">
         {priorityItems.map((item) => (
           <Link key={item.id} href={item.href}>
-            <div className={`rounded-lg border px-4 py-3 transition-colors cursor-pointer ${item.tone === "urgent" ? "border-amber-300 bg-amber-50/60 dark:border-amber-700/50 dark:bg-amber-950/20" : "border-border/70 bg-background hover:bg-muted/30"}`}>
+            <div className={`rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${item.tone === "urgent" ? "border-amber-300 bg-amber-50/60 dark:border-amber-700/50 dark:bg-amber-950/20" : "border-border/70 bg-background hover:bg-muted/30"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className={`text-xs font-semibold uppercase tracking-[0.12em] mb-1 ${item.tone === "urgent" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
+                  <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] mb-0.5 ${item.tone === "urgent" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
                     {item.tone === "urgent" ? "Urgent" : "Priority"}
                   </p>
                   <p className="text-sm font-semibold text-foreground leading-snug">{item.title}</p>
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.detail}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.detail}</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
               </div>
@@ -344,7 +344,7 @@ function WhatMattersNowPanel({
         ))}
       </HeroPanelContent>
 
-      <HeroPanelFooter className="py-4">
+      <HeroPanelFooter className="py-3 px-4 sm:px-5">
         <div className="flex items-center gap-2.5 flex-wrap">
           <Link href={askAIPath}>
             <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" data-testid="wmn-footer-ask">
@@ -566,15 +566,15 @@ function CaseSummarySection() {
           ) : undefined
         }
       />
-      <PanelContent>
+      <PanelContent className="p-3">
         {!summary && !summaryMutation.isPending && (
-          <div className="flex flex-col items-center gap-4 py-4 text-center">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-primary" />
+          <div className="flex flex-col items-center gap-3 py-2 text-center">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-primary" />
             </div>
-            <div className="space-y-1.5 max-w-sm">
+            <div className="space-y-1 max-w-sm">
               <p className="text-sm font-semibold text-foreground">Summarize My Situation</p>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Generate an informational overview of the themes and general custody factors
                 that appear in your conversations and documents.
               </p>
@@ -597,14 +597,14 @@ function CaseSummarySection() {
         )}
 
         {summaryMutation.isPending && (
-          <div className="flex flex-col items-center gap-3 py-8">
+          <div className="flex flex-col items-center gap-3 py-5">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Analyzing your conversations and documents…</p>
+            <p className="text-xs text-muted-foreground">Analyzing your conversations and documents…</p>
           </div>
         )}
 
         {summary && open && (
-          <div className="space-y-5" data-testid="section-summary-output">
+          <div className="space-y-4" data-testid="section-summary-output">
             {/* Themes */}
             {summary.themes.length > 0 && (
               <div>
@@ -647,7 +647,7 @@ function CaseSummarySection() {
                   {summary.insights.map((ins, i) => (
                     <li
                       key={i}
-                      className="flex items-start gap-2.5 rounded-lg bg-muted/50 border px-3 py-2.5 text-sm text-foreground"
+                      className="flex items-start gap-2.5 rounded-lg bg-muted/50 border px-3 py-2 text-sm text-foreground"
                       data-testid={`item-insight-${i}`}
                     >
                       <Lightbulb className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -698,9 +698,8 @@ function DocumentsSection({
   const { toast } = useToast();
   const [localTypes, setLocalTypes] = useState<Record<string, DocType>>({});
   const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
-  const [showAll, setShowAll] = useState(false);
 
-  const MAX_VISIBLE = 4;
+  const MAX_VISIBLE = 3;
 
   const typeMutation = useMutation({
     mutationFn: ({ docId, docType }: { docId: string; docType: DocType }) =>
@@ -779,12 +778,11 @@ function DocumentsSection({
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     ),
   );
-  const visibleDocs = showAll ? orderedDocs : orderedDocs.slice(0, MAX_VISIBLE);
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
 
-  // Re-group only the visible slice
+  // Re-group only the preview slice
   const visibleGroups: Record<string, WorkspaceDocument[]> = {};
-  for (const doc of visibleDocs) {
+  for (const doc of orderedDocs.slice(0, MAX_VISIBLE)) {
     const groupKey = doc.caseId ? `case:${doc.caseId}` : "case:unassigned";
     if (!visibleGroups[groupKey]) visibleGroups[groupKey] = [];
     visibleGroups[groupKey]!.push(doc);
@@ -792,7 +790,7 @@ function DocumentsSection({
   const activeGroups = groupOrder.filter((groupKey) => visibleGroups[groupKey]?.length);
 
   return (
-    <div className="space-y-4" data-testid="list-documents-grouped">
+    <div className="space-y-3" data-testid="list-documents-grouped">
       {activeGroups.map((groupKey) => {
         const caseId = groupKey.replace("case:", "");
         const groupLabel = groupKey === "case:unassigned"
@@ -800,39 +798,39 @@ function DocumentsSection({
           : caseNameById[caseId] ?? "Unnamed Case";
         return (
         <div key={groupKey}>
-          <div className="flex items-center gap-1.5 mb-2">
+          <div className="flex items-center gap-1.5 mb-1.5">
             <Badge variant="outline" className="text-[10px] h-5 px-1.5">
               {groupLabel}
             </Badge>
             <span className="text-[10px] text-muted-foreground">{caseGroups[groupKey]!.length}</span>
           </div>
-          <ul className="space-y-2">
+          <ul className="space-y-1.5">
             {visibleGroups[groupKey]!.map((doc) => (
               <li
                 key={doc.id}
-                className="rounded-lg border p-3.5 space-y-2.5 hover:bg-muted/20 hover:border-border transition-all duration-150 group"
+                className="rounded-lg border p-2.5 space-y-2 hover:bg-muted/20 hover:border-border transition-all duration-150 group"
                 data-testid={`doc-item-${doc.id}`}
               >
                 {/* Header row: icon + filename + badge + Review/Ask/Delete buttons */}
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground/60" />
                   <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-semibold truncate text-foreground">{doc.fileName}</span>
+                    <span className="text-sm font-medium truncate text-foreground">{doc.fileName}</span>
                     {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-0.5 flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
                     <Link href={`/document/${doc.id}`}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                        className="text-xs h-6 px-1.5 text-muted-foreground hover:text-foreground"
                         data-testid={`button-review-doc-${doc.id}`}
                       >
                         Review
                       </Button>
                     </Link>
                     <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
-                      <Button variant="ghost" size="sm" className="text-xs gap-1 h-7 px-2 flex-shrink-0 text-primary/70 hover:text-primary" data-testid={`button-ask-doc-${doc.id}`}>
+                      <Button variant="ghost" size="sm" className="text-xs gap-1 h-6 px-1.5 flex-shrink-0 text-primary/70 hover:text-primary" data-testid={`button-ask-doc-${doc.id}`}>
                         Ask
                         <ArrowRight className="w-3 h-3" />
                       </Button>
@@ -841,7 +839,7 @@ function DocumentsSection({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-xs h-7 px-2 text-muted-foreground hover:text-destructive"
+                      className="text-xs h-6 px-1.5 text-muted-foreground hover:text-destructive"
                       onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
                       disabled={deleteMutation.isPending && pendingDelete?.id === doc.id}
                       data-testid={`button-delete-doc-${doc.id}`}
@@ -853,7 +851,7 @@ function DocumentsSection({
                 </div>
 
                 {/* Type selector + date */}
-                <div className="flex items-center gap-2.5 pl-6">
+                <div className="flex flex-wrap items-center gap-1.5 pl-6">
                   <Select
                     value={getDocType(doc)}
                     onValueChange={(val) => handleTypeChange(doc, val)}
@@ -881,40 +879,28 @@ function DocumentsSection({
                   </Badge>
                 </div>
 
-                {/* Obligation badges — hearing/deadline/time-sensitive */}
-                <DocObligationBadge analysisJson={doc.analysisJson} className="pl-6" />
-
-                {/* Extracted fact chips — court, case#, hearing date */}
-                <DocFactChips analysisJson={doc.analysisJson} className="pl-6" />
-
-                {/* Key dates preview — 1 date inline */}
-                <DocKeyDatesRow analysisJson={doc.analysisJson} maxDates={1} className="pl-6" />
+                <div className="pl-6 space-y-1.5">
+                  <DocObligationBadge analysisJson={doc.analysisJson} />
+                  <DocKeyDatesRow analysisJson={doc.analysisJson} maxDates={1} />
+                </div>
               </li>
             ))}
           </ul>
         </div>
       )})}
 
-      {/* View all / collapse */}
-      {!showAll && hiddenCount > 0 && (
-        <button
-          onClick={() => setShowAll(true)}
-          className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/50 rounded-lg py-2 hover:bg-muted/30 transition-colors"
-          data-testid="button-show-all-docs"
-        >
-          <FileText className="w-3.5 h-3.5" />
-          View all {orderedDocs.length} documents
-        </button>
-      )}
-      {showAll && orderedDocs.length > MAX_VISIBLE && (
-        <button
-          onClick={() => setShowAll(false)}
-          className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-          data-testid="button-collapse-docs"
-        >
-          Show fewer
-        </button>
-      )}
+      <div className="pt-1 flex items-center justify-between">
+        <p className="text-[11px] text-muted-foreground">
+          Showing {Math.min(orderedDocs.length, MAX_VISIBLE)} of {orderedDocs.length} document{orderedDocs.length === 1 ? "" : "s"}
+          {hiddenCount > 0 ? ` · ${hiddenCount} more in full view` : ""}
+        </p>
+        <Link href="/workspace/documents">
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-show-all-docs">
+            View all documents
+            <ArrowRight className="w-3 h-3" />
+          </Button>
+        </Link>
+      </div>
 
       {/* ── Shared delete confirmation dialog ────────────────────────────── */}
       <AlertDialog
@@ -956,21 +942,21 @@ function QuickActionsPanel({ askAIPath }: { askAIPath: string }) {
   return (
     <Panel testId="panel-quick-actions" className="border-border/50 bg-card/70">
       <PanelHeader icon={Zap} label="Quick Actions" />
-      <PanelContent className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+      <PanelContent className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 p-3">
         <Link href="/upload-document">
-          <Button className="w-full justify-between" data-testid="button-upload-new-doc">
+          <Button className="w-full justify-between h-9 text-sm" data-testid="button-upload-new-doc">
             Upload Document
             <ArrowRight className="w-4 h-4" />
           </Button>
         </Link>
         <Link href={askAIPath}>
-          <Button variant="outline" className="w-full justify-between" data-testid="button-go-ask-atlas">
+          <Button variant="outline" className="w-full justify-between h-9 text-sm" data-testid="button-go-ask-atlas">
             Ask Atlas
             <ArrowRight className="w-4 h-4" />
           </Button>
         </Link>
         <Link href="/custody-map">
-          <Button variant="outline" className="w-full justify-between" data-testid="button-view-custody-map">
+          <Button variant="outline" className="w-full justify-between h-9 text-sm" data-testid="button-view-custody-map">
             Custody Map
             <ArrowRight className="w-4 h-4" />
           </Button>
@@ -1062,7 +1048,7 @@ function TimelineAndActivityPanel({
       <PanelContent className="space-y-3">
         {/* Add event form */}
         {showForm && (
-          <div className="rounded-lg border bg-muted/30 p-3 space-y-3" data-testid="form-add-event">
+          <div className="rounded-lg border bg-muted/30 p-2.5 space-y-2.5" data-testid="form-add-event">
             <p className="text-xs font-semibold text-foreground">New timeline event</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -1124,7 +1110,7 @@ function TimelineAndActivityPanel({
             <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
               <Clock className="w-5 h-5 text-muted-foreground/50" />
             </div>
-            <p className="text-sm text-muted-foreground leading-snug max-w-[220px]">
+            <p className="text-xs text-muted-foreground leading-snug max-w-[220px]">
               Recent conversations and timeline events will appear here.
             </p>
             <Link href={askAIPath}>
@@ -1134,21 +1120,21 @@ function TimelineAndActivityPanel({
             </Link>
           </div>
         ) : (
-          <ul className="space-y-0.5" data-testid="list-timeline-activity">
+          <ul className="space-y-0" data-testid="list-timeline-activity">
             {feed.map((item) => {
               if (item.kind === "event") {
                 const ev = item.event;
                 return (
                   <li
                     key={`event-${ev.id}`}
-                    className="flex items-start gap-2.5 rounded-lg px-2.5 py-2.5 group hover:bg-muted/30 transition-colors"
+                    className="flex items-start gap-2.5 rounded-lg px-2 py-2 group hover:bg-muted/30 transition-colors"
                     data-testid={`timeline-event-${ev.id}`}
                   >
                     <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <CalendarDays className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground leading-snug">{ev.description}</p>
+                      <p className="text-xs text-foreground leading-snug">{ev.description}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">{formatEventDate(ev.eventDate)}</p>
                     </div>
                     <button
@@ -1172,14 +1158,14 @@ function TimelineAndActivityPanel({
                 return (
                   <Link key={`thread-${thread.id}`} href={`/ask?${params.toString()}`}>
                     <li
-                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 hover:bg-muted/30 cursor-pointer group"
+                      className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-muted/30 cursor-pointer group"
                       data-testid={`conversation-item-${thread.id}`}
                     >
                       <div className="w-6 h-6 rounded-md bg-violet-50 dark:bg-violet-950/40 flex items-center justify-center flex-shrink-0">
                         <MessageSquare className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+                        <p className="text-xs text-foreground line-clamp-1 group-hover:text-primary transition-colors">
                           {thread.title ?? "Custody Conversation"}
                         </p>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -1202,14 +1188,14 @@ function TimelineAndActivityPanel({
               return (
                 <Link key={`document-${doc.id}`} href={`/documents/${doc.id}`}>
                   <li
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 hover:bg-muted/30 cursor-pointer group"
+                      className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-muted/30 cursor-pointer group"
                     data-testid={`activity-document-${doc.id}`}
                   >
                     <div className="w-6 h-6 rounded-md bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0">
                       <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+                      <p className="text-xs text-foreground line-clamp-1 group-hover:text-primary transition-colors">
                         {analyzed ? "Analyzed document" : "Uploaded document"}: {doc.fileName}
                       </p>
                       <span className="text-[11px] text-muted-foreground">{relativeTime(doc.createdAt)}</span>
@@ -1416,7 +1402,7 @@ export default function WorkspacePage() {
   })();
 
   return (
-    <PageContainer size="wide" className="max-w-[1320px] py-6 space-y-6" testId="page-workspace">
+    <PageContainer size="wide" className="max-w-[1320px] py-4 space-y-4" testId="page-workspace">
 
       {/* 1. Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
@@ -1429,8 +1415,8 @@ export default function WorkspacePage() {
 
       <WorkspaceHeader activeCaseName={activeCaseName} caseCount={cases.length} />
 
-      <section className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        <div className="xl:col-span-8 space-y-6">
+      <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+        <div className="xl:col-span-8 space-y-4">
           <WhatMattersNowPanel
             workspaceState={workspaceState}
             scenario={scenario}
@@ -1443,6 +1429,8 @@ export default function WorkspacePage() {
             analyzedCount={analyzedCount}
           />
 
+          <QuickActionsPanel askAIPath={askAIPath} />
+
           <div id="documents">
             <DocumentsPanel groupedCaseCount={new Set(documents.map((doc) => doc.caseId ?? "unassigned")).size}>
               <DocumentsSection
@@ -1453,11 +1441,9 @@ export default function WorkspacePage() {
               />
             </DocumentsPanel>
           </div>
-
-          <QuickActionsPanel askAIPath={askAIPath} />
         </div>
 
-        <div className="xl:col-span-4 space-y-6">
+        <div className="xl:col-span-4 space-y-4">
           <CaseContextPanel
             activeCaseName={activeCaseName}
             caseIdParam={caseIdParam}
@@ -1491,7 +1477,7 @@ export default function WorkspacePage() {
             {user && <CaseSummarySection />}
           </CaseContextPanel>
 
-          <div className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center gap-2" data-testid="card-privacy-trust">
+          <div className="rounded-lg border border-border/40 bg-muted/10 px-3 py-2.5 flex items-center gap-2" data-testid="card-privacy-trust">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <p className="text-xs text-muted-foreground leading-snug">
               Documents are analyzed privately and never retained. Your questions are confidential.
