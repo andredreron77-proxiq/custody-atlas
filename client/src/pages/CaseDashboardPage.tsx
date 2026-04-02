@@ -39,7 +39,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import { CasePageHeader } from "@/components/app/CaseIdentity";
 
 /* ── Shared helpers ───────────────────────────────────────────────────────── */
 
@@ -1834,16 +1833,13 @@ export default function CaseDashboardPage() {
     );
   }
 
-  const caseNumber = facts.find((f) => f.factType === "case_number")?.value ?? null;
-  const caseJurisdiction = caseRecord.jurisdictionState
-    ? `${caseRecord.jurisdictionState}${caseRecord.jurisdictionCounty ? `, ${caseRecord.jurisdictionCounty}` : ""}`
-    : null;
+  const isActive = caseRecord.status === "active";
 
   return (
     <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4 animate-fade-in" data-testid="case-dashboard-page">
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <Link href="/workspace">
           <a
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
@@ -1854,17 +1850,39 @@ export default function CaseDashboardPage() {
           </a>
         </Link>
 
-        <CasePageHeader
-          caseInfo={{
-            id: caseRecord.id,
-            title: caseRecord.title,
-            caseNumber,
-            jurisdiction: caseJurisdiction,
-            status: caseRecord.status,
-          }}
-        />
+        <div className="flex-1 min-w-0 flex items-center gap-2 sm:ml-2">
+          <div className="min-w-0 flex-1">
+            <h1 className="font-serif text-xl font-semibold truncate leading-tight" data-testid="heading-case-title">
+              {caseRecord.title}
+            </h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              {caseRecord.jurisdictionState && (
+                <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                  <MapPin className="w-2.5 h-2.5" />
+                  {caseRecord.jurisdictionState}
+                  {caseRecord.jurisdictionCounty ? `, ${caseRecord.jurisdictionCounty}` : ""}
+                </span>
+              )}
+              <Badge
+                variant={isActive ? "default" : "secondary"}
+                className={cn(
+                  "text-[10px] px-1.5 py-0 h-4",
+                  isActive && "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50",
+                )}
+                data-testid="badge-case-status"
+              >
+                {caseRecord.status}
+              </Badge>
+              {caseRecord.description && (
+                <span className="text-[11px] text-muted-foreground/70 truncate max-w-[240px]">
+                  {caseRecord.description}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0 sm:ml-auto">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Link href={uploadHref}>
             <a data-testid="link-upload-document">
               <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs">

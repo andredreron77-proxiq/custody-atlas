@@ -40,13 +40,11 @@ import {
   deriveCaseActivityState,
   type CaseActivityState,
 } from "@/lib/workspaceState";
-import { ActiveCaseIndicator, CaseChip } from "@/components/app/CaseIdentity";
 
 /* ── API types ────────────────────────────────────────────────────────────── */
 
 interface WorkspaceThread {
   id: string;
-  caseId?: string | null;
   title: string | null;
   threadType: string;
   jurisdictionState: string | null;
@@ -59,7 +57,6 @@ type DocType = "custody_order" | "communication" | "financial" | "other";
 
 interface WorkspaceDocument {
   id: string;
-  caseId?: string | null;
   fileName: string;
   mimeType: string;
   docType: DocType;
@@ -86,14 +83,6 @@ interface CaseSummary {
   custodyFactors: string[];
   insights: string[];
   disclaimer: string;
-}
-
-interface CaseListItem {
-  id: string;
-  title: string;
-  status: string;
-  jurisdictionState: string | null;
-  jurisdictionCounty: string | null;
 }
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -743,12 +732,11 @@ function CaseSummarySection() {
 /* ── Documents — grouped by type ──────────────────────────────────────────── */
 
 function DocumentsSection({
-  documents, isLoading, askAIPath, caseMap,
+  documents, isLoading, askAIPath,
 }: {
   documents: WorkspaceDocument[];
   isLoading: boolean;
   askAIPath: string;
-  caseMap: Map<string, CaseListItem>;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -894,10 +882,6 @@ function DocumentsSection({
 
                 {/* Type selector + date */}
                 <div className="flex items-center gap-2.5 pl-6">
-                  <CaseChip
-                    caseInfo={doc.caseId ? { id: doc.caseId, title: caseMap.get(doc.caseId)?.title ?? "Case" } : null}
-                    fallback="General Workspace"
-                  />
                   <Select
                     value={getDocType(doc)}
                     onValueChange={(val) => handleTypeChange(doc, val)}
@@ -1129,14 +1113,12 @@ function TimelineAndActivityPanel({
   documents,
   isLoading,
   askAIPath,
-  caseMap,
 }: {
   events: WorkspaceTimelineEvent[];
   threads: WorkspaceThread[];
   documents: WorkspaceDocument[];
   isLoading: boolean;
   askAIPath: string;
-  caseMap: Map<string, CaseListItem>;
 }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -1325,10 +1307,6 @@ function TimelineAndActivityPanel({
                           {thread.title ?? "Custody Conversation"}
                         </p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <CaseChip
-                            caseInfo={thread.caseId ? { id: thread.caseId, title: caseMap.get(thread.caseId)?.title ?? "Case" } : null}
-                            fallback="General Workspace"
-                          />
                           {thread.jurisdictionState && (
                             <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                               <MapPin className="w-2.5 h-2.5" />{thread.jurisdictionState}
@@ -1358,13 +1336,7 @@ function TimelineAndActivityPanel({
                       <p className="text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
                         {analyzed ? "Analyzed document" : "Uploaded document"}: {doc.fileName}
                       </p>
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <CaseChip
-                          caseInfo={doc.caseId ? { id: doc.caseId, title: caseMap.get(doc.caseId)?.title ?? "Case" } : null}
-                          fallback="General Workspace"
-                        />
-                        <span className="text-[11px] text-muted-foreground">{relativeTime(doc.createdAt)}</span>
-                      </div>
+                      <span className="text-[11px] text-muted-foreground">{relativeTime(doc.createdAt)}</span>
                     </div>
                     <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors flex-shrink-0" />
                   </li>
@@ -1396,7 +1368,6 @@ function TimelineAndActivityPanel({
 export default function WorkspacePage() {
   const { jurisdiction } = useJurisdiction();
   const { user } = useCurrentUser();
-  const activeCaseId = new URLSearchParams(window.location.search).get("case");
 
   const { data: usage } = useQuery<UsageState>({
     queryKey: ["/api/usage"],
@@ -1423,15 +1394,6 @@ export default function WorkspacePage() {
   const threads: WorkspaceThread[] = workspaceData?.threads ?? [];
   const documents: WorkspaceDocument[] = workspaceData?.documents ?? [];
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
-
-  const { data: casesData } = useQuery<{ cases: CaseListItem[] }>({
-    queryKey: ["/api/cases"],
-    enabled: !!user,
-    staleTime: 60_000,
-  });
-  const cases = casesData?.cases ?? [];
-  const caseMap = new Map(cases.map((c) => [c.id, c]));
-  const activeCase = activeCaseId ? caseMap.get(activeCaseId) ?? null : null;
 
   // ── Workspace signals ────────────────────────────────────────────────────
   // Count unique analyzed docs (de-duplicate by fileName, keep latest per file
@@ -1527,9 +1489,7 @@ export default function WorkspacePage() {
 
     if (scenario === "no-jurisdiction") return "/location";
     if (scenario === "pro-summarize") return "#case-summary";
-    if (scenario === "intake-pending") {
-      return activeCaseId ? `/upload-document?case=${encodeURIComponent(activeCaseId)}` : "/upload-document";
-    }
+    if (scenario === "intake-pending") return "/upload-document";
 
     if (scenario === "ask-about-docs") {
       // Pre-select the most recently analyzed doc in Ask Atlas
@@ -1557,17 +1517,9 @@ export default function WorkspacePage() {
       (jurisdiction.longitude !== undefined ? `&lng=${jurisdiction.longitude}` : "")
     : null;
 
-  const askAIPath = (() => {
-    const params = new URLSearchParams();
-    if (activeCaseId) params.set("case", activeCaseId);
-    if (jurisdiction) {
-      params.set("state", jurisdiction.state);
-      params.set("county", jurisdiction.county);
-      params.set("country", jurisdiction.country ?? "United States");
-    }
-    const qs = params.toString();
-    return qs ? `/ask?${qs}` : "/ask";
-  })();
+  const askAIPath = jurisdiction
+    ? `/ask?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`
+    : "/ask";
 
   // Resume href — deeplinks to last conversation with jurisdiction preserved.
   const resumeHref = (() => {
@@ -1611,17 +1563,6 @@ export default function WorkspacePage() {
             )}
           </div>
         }
-      />
-
-      <ActiveCaseIndicator
-        caseInfo={activeCase ? {
-          id: activeCase.id,
-          title: activeCase.title,
-          jurisdiction: activeCase.jurisdictionState
-            ? `${activeCase.jurisdictionState}${activeCase.jurisdictionCounty ? `, ${activeCase.jurisdictionCounty}` : ""}`
-            : null,
-          status: activeCase.status,
-        } : null}
       />
 
       {/* 3. Primary row: What Matters Now (dominant 2/3) + Case Snapshot (1/3) */}
@@ -1672,7 +1613,6 @@ export default function WorkspacePage() {
               documents={documents}
               isLoading={isLoadingWorkspace && !!user}
               askAIPath={askAIPath}
-              caseMap={caseMap}
             />
           </PanelContent>
         </Panel>
@@ -1685,7 +1625,6 @@ export default function WorkspacePage() {
             documents={documents}
             isLoading={isLoadingWorkspace && !!user}
             askAIPath={askAIPath}
-            caseMap={caseMap}
           />
         ) : (
           <Panel testId="card-timeline-activity">

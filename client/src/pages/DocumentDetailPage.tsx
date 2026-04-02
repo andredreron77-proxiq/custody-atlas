@@ -40,7 +40,6 @@ import {
   hasAnalysis,
 } from "@/components/app/DocIntelPanel";
 import { apiRequestRaw } from "@/lib/queryClient";
-import { ActiveCaseIndicator } from "@/components/app/CaseIdentity";
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -55,14 +54,6 @@ interface DocumentDetail {
   createdAt: string;
   /** Reflects whether a storage_path exists in the backend — not used in UI rendering. */
   hasStoragePath: boolean;
-}
-
-interface CaseRecord {
-  id: string;
-  title: string;
-  status: string;
-  jurisdictionState: string | null;
-  jurisdictionCounty: string | null;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -566,18 +557,6 @@ export default function DocumentDetailPage() {
     retry: 1,
   });
 
-  const { data: caseData } = useQuery<{ case: CaseRecord }>({
-    queryKey: ["/api/cases", doc?.caseId],
-    enabled: !!doc?.caseId,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${doc!.caseId}`);
-      if (!res.ok) throw new Error("Case not found");
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-  const caseRecord = caseData?.case ?? null;
-
   const analyzed = !!doc && hasAnalysis(doc.analysisJson);
   const typeLabel = doc ? (DOC_TYPE_LABELS[doc.docType] ?? "Document") : "";
   const typeColor = doc ? (DOC_TYPE_COLORS[doc.docType] ?? DOC_TYPE_COLORS.other) : "";
@@ -657,17 +636,6 @@ export default function DocumentDetailPage() {
             {/* Obligation badges prominently in header area */}
             <DocObligationBadge analysisJson={doc.analysisJson} />
           </header>
-
-          <ActiveCaseIndicator
-            caseInfo={caseRecord ? {
-              id: caseRecord.id,
-              title: caseRecord.title,
-              jurisdiction: caseRecord.jurisdictionState
-                ? `${caseRecord.jurisdictionState}${caseRecord.jurisdictionCounty ? `, ${caseRecord.jurisdictionCounty}` : ""}`
-                : null,
-              status: caseRecord.status,
-            } : null}
-          />
 
           {/* ── Action insight ── */}
           <DocActionInsight
