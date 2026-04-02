@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, MapPin, MessageSquare, FileSearch, Map,
   GitCompare, ShieldCheck, FileText, ArrowRight, ChevronRight,
@@ -57,6 +57,7 @@ type DocType = "custody_order" | "communication" | "financial" | "other";
 
 interface WorkspaceDocument {
   id: string;
+  caseId?: string | null;
   fileName: string;
   mimeType: string;
   docType: DocType;
@@ -83,6 +84,11 @@ interface CaseSummary {
   custodyFactors: string[];
   insights: string[];
   disclaimer: string;
+}
+
+interface CaseRecord {
+  id: string;
+  title: string;
 }
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -732,11 +738,12 @@ function CaseSummarySection() {
 /* ── Documents — grouped by type ──────────────────────────────────────────── */
 
 function DocumentsSection({
-  documents, isLoading, askAIPath,
+  documents, isLoading, askAIPath, caseNameById,
 }: {
   documents: WorkspaceDocument[];
   isLoading: boolean;
   askAIPath: string;
+  caseNameById: Record<string, string>;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -902,6 +909,11 @@ function DocumentsSection({
                   <span className="text-xs text-muted-foreground">
                     {relativeTime(doc.createdAt)}
                   </span>
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                    {doc.caseId
+                      ? `Case: ${caseNameById[doc.caseId] ?? "Unnamed Case"}`
+                      : "Unassigned"}
+                  </Badge>
                 </div>
 
                 {/* Obligation badges — hearing/deadline/time-sensitive */}
@@ -1366,8 +1378,12 @@ function TimelineAndActivityPanel({
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export default function WorkspacePage() {
+  const [location] = useLocation();
   const { jurisdiction } = useJurisdiction();
   const { user } = useCurrentUser();
+  const caseIdParam = new URLSearchParams(
+    location.split("?")[1] || window.location.search.slice(1),
+  ).get("case") ?? undefined;
 
   const { data: usage } = useQuery<UsageState>({
     queryKey: ["/api/usage"],
@@ -1390,10 +1406,23 @@ export default function WorkspacePage() {
       return res.json();
     },
   });
+  const { data: casesData } = useQuery<{ cases: CaseRecord[] }>({
+    queryKey: ["/api/cases"],
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
 
   const threads: WorkspaceThread[] = workspaceData?.threads ?? [];
   const documents: WorkspaceDocument[] = workspaceData?.documents ?? [];
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
+  const cases = casesData?.cases ?? [];
+  const activeCase = caseIdParam ? cases.find((c) => c.id === caseIdParam) ?? null : null;
+  const activeCaseName = activeCase?.title?.trim() || (caseIdParam ? "Unnamed Case" : null);
+  const caseNameById = cases.reduce<Record<string, string>>((acc, c) => {
+    acc[c.id] = c.title?.trim() || "Unnamed Case";
+    return acc;
+  }, {});
 
   // ── Workspace signals ────────────────────────────────────────────────────
   // Count unique analyzed docs (de-duplicate by fileName, keep latest per file
@@ -1565,6 +1594,17 @@ export default function WorkspacePage() {
         }
       />
 
+      <div
+        className="inline-flex items-center rounded-md border border-border/70 bg-muted/30 px-3 py-1.5"
+        data-testid="workspace-active-case-indicator"
+      >
+        <span className="text-xs font-medium text-foreground">
+          {activeCaseName
+            ? `Active Case: ${activeCaseName}`
+            : "General Workspace (No case selected)"}
+        </span>
+      </div>
+
       {/* 3. Primary row: What Matters Now (dominant 2/3) + Case Snapshot (1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
@@ -1613,6 +1653,7 @@ export default function WorkspacePage() {
               documents={documents}
               isLoading={isLoadingWorkspace && !!user}
               askAIPath={askAIPath}
+              caseNameById={caseNameById}
             />
           </PanelContent>
         </Panel>

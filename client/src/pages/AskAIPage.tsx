@@ -804,9 +804,10 @@ export default function AskAIPage() {
   const prioritySignal = askPageState === "urgent_case"
     ? derivePrioritySignal({ overdueActions, urgentActions, hearingDaysAway, baseAskHref })
     : null;
-  const answeringScopeLabel = activeCase
-    ? `Answering from: ${activeCase.title}`
-    : "General Workspace";
+  const activeCaseName = activeCase?.title?.trim() || (activeCaseId ? "Unnamed Case" : null);
+  const answeringScopeLabel = activeCaseName
+    ? `Answering from: ${activeCaseName}`
+    : "Answering from: General Workspace";
 
   /* ── Main Ask AI layout ───────────────────────────────────────────────── */
   return (
@@ -923,7 +924,7 @@ export default function AskAIPage() {
               askPageState === "urgent_case" ? "text-orange-600 dark:text-orange-400" : "text-primary/70"
             )} />
             <span className="text-xs font-medium text-foreground truncate">
-              {activeCase?.title ? `Answering from: ${activeCase.title}` : "General Workspace"}
+              {activeCaseName ? `Answering from: ${activeCaseName}` : "Answering from: General Workspace"}
             </span>
             {activeCase?.jurisdictionState && (
               <span className="text-xs text-muted-foreground hidden sm:inline">· {activeCase.jurisdictionState}</span>
