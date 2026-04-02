@@ -49,6 +49,13 @@ export interface DuplicateDocumentLookup {
   fileHash: string;
 }
 
+export function mergeCaseScopedDocumentIds(
+  linkedDocumentIds: string[],
+  legacyDocumentIds: string[],
+): string[] {
+  return Array.from(new Set([...linkedDocumentIds, ...legacyDocumentIds]));
+}
+
 function mapRow(r: any): SavedDocument {
   return {
     id:            r.id,
@@ -99,6 +106,9 @@ export async function getDocumentsByCase(
 ): Promise<SavedDocument[]> {
   if (!supabaseAdmin) return [];
   try {
+    const linkedDocumentIds: string[] = [];
+    const legacyDocumentIds: string[] = [];
+
     // New canonical model: association table (document_case_links) handles case linkage.
     const { data: links, error: linksError } = await supabaseAdmin
       .from("document_case_links")
@@ -108,36 +118,44 @@ export async function getDocumentsByCase(
       .limit(100);
 
     if (!linksError && links?.length) {
-      const documentIds = links
+      linkedDocumentIds.push(...links
         .map((l: any) => l.document_id as string | null)
-        .filter((id): id is string => typeof id === "string" && id.length > 0);
-
-      if (documentIds.length) {
-        const { data, error } = await supabaseAdmin
-          .from("documents")
-          .select("*")
-          .eq("user_id", userId)
-          .in("id", documentIds)
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        if (!error && data) {
-          return data.map(mapRow);
-        }
-      }
+        .filter((id): id is string => typeof id === "string" && id.length > 0));
     }
 
-    // Legacy fallback: older environments may still rely on documents.case_id.
+    // Legacy compatibility: include legacy case_id matches so pre-link rows remain visible.
+    const { data: legacyRows, error: legacyError } = await supabaseAdmin
+      .from("documents")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("case_id", caseId)
+      .limit(100);
+
+    if (legacyError) {
+      console.error("[documents] getDocumentsByCase legacy fetch error:", legacyError.message);
+    } else if (legacyRows?.length) {
+      legacyDocumentIds.push(
+        ...legacyRows
+          .map((r: any) => r.id as string | null)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      );
+    }
+
+    const caseScopedDocumentIds = mergeCaseScopedDocumentIds(linkedDocumentIds, legacyDocumentIds);
+    if (!caseScopedDocumentIds.length) {
+      return [];
+    }
+
     const { data, error } = await supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
-      .eq("case_id", caseId)
+      .in("id", caseScopedDocumentIds)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(50);
 
     if (error) {
-      console.error("[documents] getDocumentsByCase error:", error.message);
+      console.error("[documents] getDocumentsByCase documents fetch error:", error.message);
       return [];
     }
 
@@ -269,7 +287,7 @@ export async function findDuplicateDocument(
       .select("*")
       .eq("user_id", userId)
       .or(`source_file_sha256.eq.${normalizedHash},analysis_json.cs.${JSON.stringify({ source_file_sha256: normalizedHash })}`)
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: true })
       .limit(1);
     let { data, error } = await query;
 
@@ -280,7 +298,7 @@ export async function findDuplicateDocument(
         .select("*")
         .eq("user_id", userId)
         .contains("analysis_json", { source_file_sha256: normalizedHash })
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
         .limit(1);
       ({ data, error } = await query);
     }
@@ -290,6 +308,47 @@ export async function findDuplicateDocument(
     console.error("[documents] findDuplicateDocument exception:", err);
     return null;
   }
+}
+
+export async function getDocumentCaseIds(
+  documentId: string,
+  userId: string,
+): Promise<string[]> {
+  if (!supabaseAdmin) return [];
+
+  const caseIds = new Set<string>();
+
+  try {
+    const { data: links, error: linksError } = await supabaseAdmin
+      .from("document_case_links")
+      .select("case_id")
+      .eq("document_id", documentId)
+      .eq("user_id", userId)
+      .limit(100);
+
+    if (!linksError && links?.length) {
+      for (const row of links) {
+        if (typeof (row as any).case_id === "string" && (row as any).case_id) {
+          caseIds.add((row as any).case_id);
+        }
+      }
+    }
+
+    const { data: docRow, error: docError } = await supabaseAdmin
+      .from("documents")
+      .select("case_id")
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .single();
+
+    if (!docError && typeof docRow?.case_id === "string" && docRow.case_id) {
+      caseIds.add(docRow.case_id);
+    }
+  } catch (err) {
+    console.error("[documents] getDocumentCaseIds exception:", err);
+  }
+
+  return Array.from(caseIds);
 }
 
 /**
@@ -303,6 +362,7 @@ export async function ensureDocumentCaseAssociation(
   if (!supabaseAdmin) return false;
 
   try {
+    let linkWriteSucceeded = false;
     const { error } = await supabaseAdmin
       .from("document_case_links")
       .upsert(
@@ -316,18 +376,23 @@ export async function ensureDocumentCaseAssociation(
 
     if (error) {
       console.error("[documents] ensureDocumentCaseAssociation error:", error.message);
-      return false;
+    } else {
+      linkWriteSucceeded = true;
     }
 
     // Compatibility bridge: set documents.case_id for records created in legacy views.
-    await supabaseAdmin
+    const { error: legacyError } = await supabaseAdmin
       .from("documents")
       .update({ case_id: caseId })
       .eq("id", documentId)
       .eq("user_id", userId)
       .is("case_id", null);
 
-    return true;
+    if (legacyError) {
+      console.error("[documents] ensureDocumentCaseAssociation legacy update error:", legacyError.message);
+    }
+
+    return linkWriteSucceeded || !legacyError;
   } catch (err) {
     console.error("[documents] ensureDocumentCaseAssociation exception:", err);
     return false;
