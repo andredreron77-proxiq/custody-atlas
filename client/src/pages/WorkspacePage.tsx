@@ -1595,10 +1595,10 @@ export default function WorkspacePage() {
       />
 
       <div
-        className="inline-flex items-center rounded-md border border-border/70 bg-muted/30 px-3 py-1.5"
+        className="rounded-lg border-2 border-primary/35 bg-primary/10 px-4 py-3 mt-2 mb-5 shadow-sm"
         data-testid="workspace-active-case-indicator"
       >
-        <span className="text-xs font-medium text-foreground">
+        <span className="text-sm font-semibold text-foreground">
           {activeCaseName
             ? `Active Case: ${activeCaseName}`
             : "General Workspace (No case selected)"}
