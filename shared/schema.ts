@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, serial, text, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const jurisdictionSchema = z.object({
@@ -286,6 +286,101 @@ export const documentQAResponseSchema = z.object({
 });
 
 export type DocumentQAResponse = z.infer<typeof documentQAResponseSchema>;
+
+/* ── Attorney-grade Document Intelligence Model (scaffold) ─────────────────── */
+
+export const retentionTierSchema = z.enum(["free", "pro", "attorney_firm"]);
+export type RetentionTier = z.infer<typeof retentionTierSchema>;
+
+export const documentsIntelligence = pgTable("documents", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  caseId: text("case_id"),
+  fileName: text("file_name").notNull(),
+  storagePath: text("storage_path"),
+  mimeType: text("mime_type"),
+  analysisJson: jsonb("analysis_json").$type<Record<string, unknown>>(),
+  extractedText: text("extracted_text"),
+  retentionTier: text("retention_tier").notNull().default("free"),
+  originalExpiresAt: timestamp("original_expires_at"),
+  intelligenceExpiresAt: timestamp("intelligence_expires_at"),
+  lifecycleState: text("lifecycle_state").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const documentCaseLinks = pgTable("document_case_links", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id").notNull(),
+  caseId: text("case_id").notNull(),
+  userId: text("user_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const documentAnalysisRuns = pgTable("document_analysis_runs", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id").notNull(),
+  userId: text("user_id").notNull(),
+  caseId: text("case_id"),
+  modelName: text("model_name").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  status: text("status").notNull().default("completed"),
+  analysisJson: jsonb("analysis_json").$type<Record<string, unknown>>().notNull(),
+  extractedTextSnapshot: text("extracted_text_snapshot"),
+  retentionTier: text("retention_tier").notNull().default("free"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const documentChunks = pgTable("document_chunks", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id").notNull(),
+  userId: text("user_id").notNull(),
+  caseId: text("case_id"),
+  chunkIndex: integer("chunk_index").notNull(),
+  chunkText: text("chunk_text").notNull(),
+  tokenEstimate: integer("token_estimate"),
+  retentionTier: text("retention_tier").notNull().default("free"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const documentFacts = pgTable("document_facts", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id").notNull(),
+  userId: text("user_id").notNull(),
+  caseId: text("case_id"),
+  factType: text("fact_type").notNull(),
+  factValue: text("fact_value").notNull(),
+  confidence: text("confidence").notNull().default("medium"),
+  source: text("source").notNull().default("analysis"),
+  retentionTier: text("retention_tier").notNull().default("free"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const documentDates = pgTable("document_dates", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id").notNull(),
+  userId: text("user_id").notNull(),
+  caseId: text("case_id"),
+  dateLabel: text("date_label").notNull(),
+  normalizedDate: timestamp("normalized_date"),
+  source: text("source").notNull().default("analysis"),
+  retentionTier: text("retention_tier").notNull().default("free"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const intelligenceAuditLogs = pgTable("intelligence_audit_logs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id"),
+  caseId: text("case_id"),
+  documentId: text("document_id"),
+  action: text("action").notNull(),
+  actorType: text("actor_type").notNull().default("system"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 /* ── Case Facts (Drizzle / Replit PostgreSQL) ─────────────────────────────── */
 

@@ -18,6 +18,7 @@ import {
   normalizeDocumentAnalysisPayload,
   validateAnalyzeDocumentGuards,
 } from "./lib/documentFlow";
+import { buildRetentionWindow } from "./lib/documentRetention";
 import { planUploadAssociation } from "./lib/documentIdentity";
 import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
 import { requireAuth, requireAdmin } from "./services/auth";
@@ -39,6 +40,7 @@ import {
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
 import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, type DocumentType, type SavedDocument } from "./services/documents";
+import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
 import { deriveCaseTimeline } from "./services/caseTimeline";
@@ -626,6 +628,13 @@ const upload = multer({
   },
 });
 
+function resolveRetentionTierFromRequest(req: any): "free" | "pro" | "attorney_firm" {
+  const tier = String(req?.user?.tier ?? "free").toLowerCase();
+  if (tier === "attorney" || tier === "firm" || tier === "attorney_firm") return "attorney_firm";
+  if (tier === "pro") return "pro";
+  return "free";
+}
+
 // Memory storage for audio uploads (Whisper transcription)
 const audioUpload = multer({
   storage: multer.memoryStorage(),
@@ -1017,6 +1026,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
       // For EXPLANATION/ACTION intents without a documentId scope, load recent docs now
       // so we can inject a compact summary block into the system prompt.
       let generalDocSummaryAddendum = "";
+      let retainedChunkAddendum = "";
 
       // When selectedDocumentIds is an empty array, the user has deselected all docs —
       // skip general doc context entirely, regardless of intent.
@@ -1059,6 +1069,28 @@ RULES FOR USING THESE DOCUMENTS:
 2. Do NOT invent or guess document details not listed above.
 3. Suggest the user review their specific document for exact values if needed.
 4. If the question seems to be about one of these documents specifically, note that they can select it via "Document scope" for more detailed answers.`;
+
+          const retainedChunks = await getDocumentIntelligenceChunks({
+            userId,
+            documentIds: recentDocs.map((d) => d.id),
+            maxChunks: 18,
+          });
+          if (retainedChunks.length > 0) {
+            const chunkLines = retainedChunks
+              .map((chunk) => `- [doc:${chunk.documentId.slice(0, 8)} chunk:${chunk.chunkIndex}] ${chunk.chunkText}`)
+              .join("\n");
+            retainedChunkAddendum = `
+
+---
+RETAINED DOCUMENT INTELLIGENCE (chunk corpus)
+Use these persisted chunks as primary evidence when answering fact-specific questions.
+${chunkLines}
+
+RULES:
+1. Prefer these retained chunks over high-level summaries when they contain relevant detail.
+2. If details conflict across chunks/documents, call out the conflict explicitly.
+3. Do not invent text that is not present in the chunks.`;
+          }
         }
       }
 
@@ -1067,6 +1099,19 @@ RULES FOR USING THESE DOCUMENTS:
 
       if (intent === "FACT") {
         const factsText = buildDocumentFactsText(intentUserDocs);
+        let retainedFactChunks = "";
+        if (userId && intentUserDocs.length > 0) {
+          const chunks = await getDocumentIntelligenceChunks({
+            userId,
+            documentIds: intentUserDocs.map((d) => d.id),
+            maxChunks: 14,
+          });
+          if (chunks.length > 0) {
+            retainedFactChunks = chunks
+              .map((chunk) => `- [doc:${chunk.documentId.slice(0, 8)} chunk:${chunk.chunkIndex}] ${chunk.chunkText}`)
+              .join("\n");
+          }
+        }
         if (factsText) {
           factModeAddendum = `
 
@@ -1076,6 +1121,7 @@ The user is asking for a specific factual value from a legal document.
 
 EXTRACTED FACTS FROM THE USER'S UPLOADED DOCUMENTS:
 ${factsText}
+${retainedFactChunks ? `\n\nRETAINED CHUNKS FROM STORED DOCUMENT INTELLIGENCE:\n${retainedFactChunks}` : ""}
 
 RULES:
 1. Answer with the exact value from the documents above. State which document it came from.
@@ -1099,7 +1145,7 @@ ACTION GUIDANCE MODE
 The user is asking what they should do or how to take a specific action. Focus your response on concrete next steps. Keep steps numbered and clear. Distinguish between actions they can take themselves and actions that require an attorney.`;
       }
 
-      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + documentContextAddendum + generalDocSummaryAddendum + factModeAddendum;
+      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + documentContextAddendum + generalDocSummaryAddendum + retainedChunkAddendum + factModeAddendum;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -1416,6 +1462,8 @@ CRITICAL RULES:
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
         const documentName = req.file.originalname || "document";
+        const retentionTier = resolveRetentionTierFromRequest(req);
+        const retentionWindow = buildRetentionWindow(retentionTier);
         const sourceFileSha256 = createHash("sha256")
           .update(readFileSync(req.file.path))
           .digest("hex");
@@ -1434,6 +1482,10 @@ CRITICAL RULES:
           storagePath: null,
           caseId: docCaseId ?? null,
           sourceFileSha256,
+          retentionTier,
+          originalExpiresAt: retentionWindow.originalExpiresAt,
+          intelligenceExpiresAt: retentionWindow.intelligenceExpiresAt,
+          lifecycleState: "active",
           mimeType: req.file.mimetype,
           pageCount,
           analysisJson: analysisWithSourceHash,
@@ -1461,6 +1513,47 @@ CRITICAL RULES:
           }
           if (duplicateDoc) {
             await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
+          }
+
+          const analysisRunId = await createAnalysisRun({
+            documentId: savedDoc.id,
+            userId: docUserId,
+            caseId: docCaseId ?? null,
+            modelName: "gpt-4o",
+            promptVersion: "document-analysis-v2",
+            analysisJson: analysisWithSourceHash,
+            extractedText: truncatedText,
+            retentionTier,
+            expiresAt: retentionWindow.intelligenceExpiresAt,
+          });
+          if (analysisRunId) {
+            const chunkRows = buildChunks(truncatedText).map((chunk) => ({
+              ...chunk,
+              documentId: savedDoc.id,
+              userId: docUserId,
+              caseId: docCaseId ?? null,
+              retentionTier,
+              expiresAt: retentionWindow.intelligenceExpiresAt,
+            }));
+            await replaceDocumentChunks(chunkRows);
+
+            const extractedFacts = (validated.data.extracted_facts ?? {}) as Record<string, unknown>;
+            await replaceDocumentFacts({
+              documentId: savedDoc.id,
+              userId: docUserId,
+              caseId: docCaseId ?? null,
+              extractedFacts,
+              retentionTier,
+              expiresAt: retentionWindow.intelligenceExpiresAt,
+            });
+            await replaceDocumentDates({
+              documentId: savedDoc.id,
+              userId: docUserId,
+              caseId: docCaseId ?? null,
+              keyDates: Array.isArray(validated.data.key_dates) ? validated.data.key_dates : [],
+              retentionTier,
+              expiresAt: retentionWindow.intelligenceExpiresAt,
+            });
           }
           savedDocumentId = savedDoc.id;
 

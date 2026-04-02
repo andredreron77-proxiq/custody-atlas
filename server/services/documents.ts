@@ -31,6 +31,10 @@ export interface SavedDocument {
   userId: string;
   caseId: string | null;
   sourceFileSha256: string | null;
+  retentionTier: "free" | "pro" | "attorney_firm";
+  originalExpiresAt: string | null;
+  intelligenceExpiresAt: string | null;
+  lifecycleState: string;
   fileName: string;
   storagePath: string | null;
   mimeType: string;
@@ -54,6 +58,10 @@ function mapRow(r: any): SavedDocument {
       (typeof r.source_file_sha256 === "string" && r.source_file_sha256.trim()) ||
       (typeof r.analysis_json?.source_file_sha256 === "string" && r.analysis_json.source_file_sha256.trim()) ||
       null,
+    retentionTier: (r.retention_tier ?? "free") as "free" | "pro" | "attorney_firm",
+    originalExpiresAt: r.original_expires_at ?? null,
+    intelligenceExpiresAt: r.intelligence_expires_at ?? null,
+    lifecycleState: r.lifecycle_state ?? "active",
     fileName:      r.file_name,
     storagePath:   r.storage_path ?? null,
     mimeType:      r.mime_type ?? "application/octet-stream",
@@ -194,6 +202,10 @@ export async function saveDocument(
       analysis_json:  fields.analysisJson,
       extracted_text: fields.extractedText,
       source_file_sha256: fields.sourceFileSha256,
+      retention_tier: fields.retentionTier ?? "free",
+      original_expires_at: fields.originalExpiresAt,
+      intelligence_expires_at: fields.intelligenceExpiresAt,
+      lifecycle_state: fields.lifecycleState ?? "active",
       // case_id column confirmed present; include whenever a case is active
       case_id:        fields.caseId ?? null,
     };
