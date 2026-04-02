@@ -6,7 +6,7 @@ import {
   Scale, Lightbulb, X,
   Clock, Loader2, CalendarDays, PlusCircle, Trash2,
   Sparkles, ChevronDown, Tag, TriangleAlert, Zap, AlertCircle,
-  FolderOpen, Layers, Activity,
+  Activity,
 } from "lucide-react";
 import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
@@ -39,6 +39,9 @@ import {
   deriveCaseActivityState,
   type CaseActivityState,
 } from "@/lib/workspaceState";
+import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
+import { DocumentsPanel } from "@/components/workspace/DocumentsPanel";
+import { CaseContextPanel } from "@/components/workspace/CaseContextPanel";
 
 /* ── API types ────────────────────────────────────────────────────────────── */
 
@@ -92,19 +95,6 @@ interface CaseRecord {
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-const DOC_TYPE_LABELS: Record<DocType, string> = {
-  custody_order: "Custody Order",
-  communication: "Communication",
-  financial: "Financial",
-  other: "Other",
-};
-
-const DOC_TYPE_COLORS: Record<DocType, string> = {
-  custody_order: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/50",
-  communication: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50",
-  financial: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50",
-  other: "bg-muted text-foreground/60 border-border dark:bg-muted/40 dark:text-muted-foreground dark:border-border/50",
-};
 
 /* ── Shared sub-components ────────────────────────────────────────────────── */
 
@@ -116,13 +106,6 @@ function AnalyzedBadge() {
   );
 }
 
-function DocTypeBadge({ type }: { type: DocType }) {
-  return (
-    <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-medium ${DOC_TYPE_COLORS[type]}`}>
-      {DOC_TYPE_LABELS[type]}
-    </span>
-  );
-}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -701,7 +684,7 @@ function CaseSummarySection() {
   );
 }
 
-/* ── Documents — grouped by type ──────────────────────────────────────────── */
+/* ── Documents — grouped by case ──────────────────────────────────────────── */
 
 function DocumentsSection({
   documents, isLoading, askAIPath, caseNameById,
@@ -776,39 +759,55 @@ function DocumentsSection({
     );
   }
 
-  // Group documents by type
-  const groups: Partial<Record<DocType, WorkspaceDocument[]>> = {};
-  for (const doc of documents) {
-    const t = getDocType(doc);
-    if (!groups[t]) groups[t] = [];
-    groups[t]!.push(doc);
-  }
-  const groupOrder: DocType[] = ["custody_order", "communication", "financial", "other"];
+  const caseGroups = documents.reduce<Record<string, WorkspaceDocument[]>>((acc, doc) => {
+    const key = doc.caseId ? `case:${doc.caseId}` : "case:unassigned";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(doc);
+    return acc;
+  }, {});
 
-  // Flatten in group order, then cap
-  const orderedDocs = groupOrder.flatMap((t) => groups[t] ?? []);
+  const groupOrder = Object.keys(caseGroups).sort((a, b) => {
+    if (a === "case:unassigned") return 1;
+    if (b === "case:unassigned") return -1;
+    const caseA = caseNameById[a.replace("case:", "")] ?? "Unnamed Case";
+    const caseB = caseNameById[b.replace("case:", "")] ?? "Unnamed Case";
+    return caseA.localeCompare(caseB);
+  });
+
+  const orderedDocs = groupOrder.flatMap((groupKey) =>
+    (caseGroups[groupKey] ?? []).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    ),
+  );
   const visibleDocs = showAll ? orderedDocs : orderedDocs.slice(0, MAX_VISIBLE);
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
 
   // Re-group only the visible slice
-  const visibleGroups: Partial<Record<DocType, WorkspaceDocument[]>> = {};
+  const visibleGroups: Record<string, WorkspaceDocument[]> = {};
   for (const doc of visibleDocs) {
-    const t = getDocType(doc);
-    if (!visibleGroups[t]) visibleGroups[t] = [];
-    visibleGroups[t]!.push(doc);
+    const groupKey = doc.caseId ? `case:${doc.caseId}` : "case:unassigned";
+    if (!visibleGroups[groupKey]) visibleGroups[groupKey] = [];
+    visibleGroups[groupKey]!.push(doc);
   }
-  const activeGroups = groupOrder.filter((t) => visibleGroups[t]?.length);
+  const activeGroups = groupOrder.filter((groupKey) => visibleGroups[groupKey]?.length);
 
   return (
     <div className="space-y-4" data-testid="list-documents-grouped">
-      {activeGroups.map((groupType) => (
-        <div key={groupType}>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <DocTypeBadge type={groupType} />
-            <span className="text-[10px] text-muted-foreground">{groups[groupType]!.length}</span>
+      {activeGroups.map((groupKey) => {
+        const caseId = groupKey.replace("case:", "");
+        const groupLabel = groupKey === "case:unassigned"
+          ? "Unassigned"
+          : caseNameById[caseId] ?? "Unnamed Case";
+        return (
+        <div key={groupKey}>
+          <div className="flex items-center gap-1.5 mb-2">
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+              {groupLabel}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">{caseGroups[groupKey]!.length}</span>
           </div>
           <ul className="space-y-2">
-            {visibleGroups[groupType]!.map((doc) => (
+            {visibleGroups[groupKey]!.map((doc) => (
               <li
                 key={doc.id}
                 className="rounded-lg border p-3.5 space-y-2.5 hover:bg-muted/20 hover:border-border transition-all duration-150 group"
@@ -894,7 +893,7 @@ function DocumentsSection({
             ))}
           </ul>
         </div>
-      ))}
+      )})}
 
       {/* View all / collapse */}
       {!showAll && hiddenCount > 0 && (
@@ -952,96 +951,6 @@ function DocumentsSection({
 
 /* ── CaseSnapshotPanel ────────────────────────────────────────────────────── */
 
-function WorkspaceSummaryBar({
-  activeCaseName,
-  documentCount,
-  actionDeadlineCount,
-  recentActivityCount,
-}: {
-  activeCaseName: string | null;
-  documentCount: number;
-  actionDeadlineCount: number;
-  recentActivityCount: number;
-}) {
-  const metrics = [
-    { label: "Workspace", value: activeCaseName ? `Case: ${activeCaseName}` : "General workspace" },
-    { label: "Documents", value: String(documentCount) },
-    { label: "Actions / Deadlines", value: String(actionDeadlineCount) },
-    { label: "Recent Activity", value: String(recentActivityCount) },
-  ];
-
-  return (
-    <div className="rounded-xl border border-border/70 bg-card px-4 py-3 shadow-xs" data-testid="workspace-summary-bar">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {metrics.map((metric) => (
-          <div key={metric.label} className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{metric.label}</p>
-            <p className="text-sm font-semibold text-foreground mt-1 truncate">{metric.value}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function WorkspaceEntryHeader({
-  activeCaseName,
-  isProUser,
-  isFreeUser,
-  documentCount,
-  deadlineCount,
-  recentActivityCount,
-}: {
-  activeCaseName: string | null;
-  isProUser: boolean;
-  isFreeUser: boolean;
-  documentCount: number;
-  deadlineCount: number;
-  recentActivityCount: number;
-}) {
-  return (
-    <HeroPanel testId="hero-workspace-entry">
-      <HeroPanelHeader className="space-y-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="space-y-2">
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold">
-              Workspace
-            </Badge>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground" data-testid="heading-workspace">
-              Welcome to your case workspace
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {activeCaseName
-                ? `Active case: ${activeCaseName}`
-                : "General Workspace · Organize documents, track cases, and keep momentum."}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isProUser && (
-              <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium" data-testid="badge-workspace-plan-pro">
-                <Zap className="w-3 h-3" />
-                Pro
-              </Badge>
-            )}
-            {isFreeUser && (
-              <Badge variant="outline" className="text-xs font-medium" data-testid="badge-workspace-plan-free">
-                Free plan
-              </Badge>
-            )}
-          </div>
-        </div>
-      </HeroPanelHeader>
-      <HeroPanelContent className="pt-0">
-        <WorkspaceSummaryBar
-          activeCaseName={activeCaseName}
-          documentCount={documentCount}
-          actionDeadlineCount={deadlineCount}
-          recentActivityCount={recentActivityCount}
-        />
-      </HeroPanelContent>
-    </HeroPanel>
-  );
-}
 
 function QuickActionsPanel({ askAIPath }: { askAIPath: string }) {
   return (
@@ -1071,74 +980,6 @@ function QuickActionsPanel({ askAIPath }: { askAIPath: string }) {
   );
 }
 
-function ActiveCasesSection({
-  cases,
-  documents,
-  caseIdParam,
-}: {
-  cases: CaseRecord[];
-  documents: WorkspaceDocument[];
-  caseIdParam?: string;
-}) {
-  const docsByCase = documents.reduce<Record<string, number>>((acc, doc) => {
-    if (!doc.caseId) return acc;
-    acc[doc.caseId] = (acc[doc.caseId] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const activeCases = cases
-    .map((caseRecord) => ({
-      ...caseRecord,
-      docCount: docsByCase[caseRecord.id] ?? 0,
-    }))
-    .sort((a, b) => {
-      if (b.docCount !== a.docCount) return b.docCount - a.docCount;
-      return a.title.localeCompare(b.title);
-    })
-    .slice(0, 4);
-
-  if (activeCases.length === 0) {
-    return (
-      <EmptyState
-        icon={FolderOpen}
-        message="No cases yet. Create a case to keep documents and conversations organized."
-        ctaLabel="Start in Ask Atlas"
-        ctaHref="/ask"
-        testId="empty-active-cases"
-      />
-    );
-  }
-
-  return (
-    <ul className="space-y-2.5" data-testid="list-active-cases">
-      {activeCases.map((caseRecord) => {
-        const isActive = caseIdParam === caseRecord.id;
-        return (
-          <li key={caseRecord.id}>
-            <Link href={`/case/${caseRecord.id}`}>
-              <div
-                className={`rounded-lg border px-3 py-3 cursor-pointer transition-colors hover:bg-muted/30 ${isActive ? "border-primary/50 bg-primary/[0.05]" : "border-border/60 bg-background/60"}`}
-                data-testid={`active-case-item-${caseRecord.id}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold truncate">{caseRecord.title || "Unnamed Case"}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {caseRecord.docCount} document{caseRecord.docCount === 1 ? "" : "s"} linked
-                    </p>
-                  </div>
-                  <Badge variant={isActive ? "default" : "outline"} className="text-[10px] h-5 px-1.5">
-                    {isActive ? "Current" : "Open"}
-                  </Badge>
-                </div>
-              </div>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
 
 /* ── TimelineAndActivityPanel ─────────────────────────────────────────────── */
 
@@ -1415,7 +1256,6 @@ export default function WorkspacePage() {
     refetchOnWindowFocus: false,
   });
 
-  const isFreeUser = usage?.isAuthenticated && usage.tier === "free";
   const isProUser = usage?.isAuthenticated && usage.tier === "pro";
 
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useQuery<WorkspaceData | null>({
@@ -1576,7 +1416,7 @@ export default function WorkspacePage() {
   })();
 
   return (
-    <PageContainer size="wide" testId="page-workspace">
+    <PageContainer size="wide" className="max-w-[1320px] py-6 space-y-6" testId="page-workspace">
 
       {/* 1. Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
@@ -1587,48 +1427,10 @@ export default function WorkspacePage() {
         <span className="text-foreground font-medium">Workspace</span>
       </nav>
 
-      <WorkspaceEntryHeader
-        activeCaseName={activeCaseName}
-        isProUser={!!isProUser}
-        isFreeUser={!!isFreeUser}
-        documentCount={documents.length}
-        deadlineCount={documents.filter(docHasRiskSignals).length}
-        recentActivityCount={Math.min(threads.length + documents.length + timelineEvents.length, 8)}
-      />
+      <WorkspaceHeader activeCaseName={activeCaseName} caseCount={cases.length} />
 
-      <QuickActionsPanel askAIPath={askAIPath} />
-
-      <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <div id="documents" className="xl:col-span-3">
-          <Panel testId="card-recent-documents" className="h-full">
-            <PanelHeader icon={FileText} label="Recent Documents" />
-            <PanelContent>
-              <DocumentsSection
-                documents={documents}
-                isLoading={isLoadingWorkspace && !!user}
-                askAIPath={askAIPath}
-                caseNameById={caseNameById}
-              />
-            </PanelContent>
-          </Panel>
-        </div>
-
-        <div className="xl:col-span-2">
-          <Panel testId="card-active-cases" className="h-full">
-            <PanelHeader
-              icon={Layers}
-              label="Active Cases"
-              meta={<Badge variant="outline" className="text-[10px] h-5 px-1.5">{cases.length}</Badge>}
-            />
-            <PanelContent>
-              <ActiveCasesSection cases={cases} documents={documents} caseIdParam={caseIdParam} />
-            </PanelContent>
-          </Panel>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <div className="xl:col-span-3">
+      <section className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        <div className="xl:col-span-8 space-y-6">
           <WhatMattersNowPanel
             workspaceState={workspaceState}
             scenario={scenario}
@@ -1640,55 +1442,60 @@ export default function WorkspacePage() {
             conversationCount={conversationCount}
             analyzedCount={analyzedCount}
           />
-        </div>
 
-        <div id="recent-activity" className="xl:col-span-2">
-          {user ? (
-            <TimelineAndActivityPanel
-              events={timelineEvents}
-              threads={threads}
+          <div id="documents">
+            <DocumentsPanel groupedCaseCount={new Set(documents.map((doc) => doc.caseId ?? "unassigned")).size}>
+              <DocumentsSection
               documents={documents}
               isLoading={isLoadingWorkspace && !!user}
               askAIPath={askAIPath}
-            />
-          ) : (
-            <Panel testId="card-timeline-activity">
-              <PanelHeader icon={Activity} label="Recent Activity" />
-              <PanelContent>
-                <EmptyState
-                  icon={MessageSquare}
-                  message="Sign in to save conversations and track your case timeline"
-                  ctaLabel="Ask Atlas"
-                  ctaHref={askAIPath}
-                  testId="empty-activity-unauth"
-                />
-              </PanelContent>
-            </Panel>
-          )}
-        </div>
-      </section>
+                caseNameById={caseNameById}
+              />
+            </DocumentsPanel>
+          </div>
 
-      <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <div className="xl:col-span-3">
-          {user && <CaseSummarySection />}
+          <QuickActionsPanel askAIPath={askAIPath} />
         </div>
-        <div className="xl:col-span-2">
-          {/* Privacy strip */}
-          <div
-            className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4"
-            data-testid="card-privacy-trust"
+
+        <div className="xl:col-span-4 space-y-6">
+          <CaseContextPanel
+            activeCaseName={activeCaseName}
+            caseIdParam={caseIdParam}
+            caseCount={cases.length}
+            timelineEventCount={timelineEvents.length}
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-              <p className="text-xs text-muted-foreground leading-snug">
-                Documents are analyzed privately and never retained. Your questions are confidential.
-              </p>
+            <div id="recent-activity">
+              {user ? (
+                <TimelineAndActivityPanel
+                  events={timelineEvents}
+                  threads={threads}
+                  documents={documents}
+                  isLoading={isLoadingWorkspace && !!user}
+                  askAIPath={askAIPath}
+                />
+              ) : (
+                <Panel testId="card-timeline-activity">
+                  <PanelHeader icon={Activity} label="Recent Activity" />
+                  <PanelContent>
+                    <EmptyState
+                      icon={MessageSquare}
+                      message="Sign in to save conversations and track your case timeline"
+                      ctaLabel="Ask Atlas"
+                      ctaHref={askAIPath}
+                      testId="empty-activity-unauth"
+                    />
+                  </PanelContent>
+                </Panel>
+              )}
             </div>
-            <Link href="/privacy">
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
-                Privacy Policy
-              </Button>
-            </Link>
+            {user && <CaseSummarySection />}
+          </CaseContextPanel>
+
+          <div className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center gap-2" data-testid="card-privacy-trust">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            <p className="text-xs text-muted-foreground leading-snug">
+              Documents are analyzed privately and never retained. Your questions are confidential.
+            </p>
           </div>
         </div>
       </section>
