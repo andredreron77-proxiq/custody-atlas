@@ -6,6 +6,7 @@ import {
   Scale, Lightbulb, X,
   Clock, Loader2, CalendarDays, PlusCircle, Trash2,
   Sparkles, ChevronDown, Tag, TriangleAlert, Zap, AlertCircle,
+  FolderOpen, Layers, Activity,
 } from "lucide-react";
 import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
@@ -29,9 +30,6 @@ import {
 } from "@/components/app/ProductLayout";
 import {
   WorkspaceHeaderSection,
-  WorkspaceMainLayout,
-  WorkspacePrimaryGroup,
-  WorkspaceSecondaryGroup,
 } from "@/components/app/WorkspaceV0Layout";
 import {
   DocFactChips, DocKeyDatesRow, DocObligationBadge,
@@ -991,9 +989,9 @@ function WorkspaceSummaryBar({
 
 function QuickActionsPanel({ askAIPath, lawPagePath }: { askAIPath: string; lawPagePath: string | null }) {
   return (
-    <Panel testId="panel-quick-actions">
+    <Panel testId="panel-quick-actions" className="border-border/50 bg-card/70">
       <PanelHeader icon={Zap} label="Quick Actions" />
-      <PanelContent className="space-y-2.5">
+      <PanelContent className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
         <Link href={askAIPath}>
           <Button className="w-full justify-between" data-testid="button-go-ask-atlas">
             Ask Atlas
@@ -1008,7 +1006,7 @@ function QuickActionsPanel({ askAIPath, lawPagePath }: { askAIPath: string; lawP
         </Link>
         {lawPagePath && (
           <Link href={lawPagePath}>
-            <Button variant="ghost" className="w-full justify-between" data-testid="button-view-law-summary">
+            <Button variant="outline" className="w-full justify-between" data-testid="button-view-law-summary">
               View law summary
               <ArrowRight className="w-4 h-4" />
             </Button>
@@ -1016,6 +1014,75 @@ function QuickActionsPanel({ askAIPath, lawPagePath }: { askAIPath: string; lawP
         )}
       </PanelContent>
     </Panel>
+  );
+}
+
+function ActiveCasesSection({
+  cases,
+  documents,
+  caseIdParam,
+}: {
+  cases: CaseRecord[];
+  documents: WorkspaceDocument[];
+  caseIdParam?: string;
+}) {
+  const docsByCase = documents.reduce<Record<string, number>>((acc, doc) => {
+    if (!doc.caseId) return acc;
+    acc[doc.caseId] = (acc[doc.caseId] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const activeCases = cases
+    .map((caseRecord) => ({
+      ...caseRecord,
+      docCount: docsByCase[caseRecord.id] ?? 0,
+    }))
+    .sort((a, b) => {
+      if (b.docCount !== a.docCount) return b.docCount - a.docCount;
+      return a.title.localeCompare(b.title);
+    })
+    .slice(0, 4);
+
+  if (activeCases.length === 0) {
+    return (
+      <EmptyState
+        icon={FolderOpen}
+        message="No cases yet. Create a case to keep documents and conversations organized."
+        ctaLabel="Start in Ask Atlas"
+        ctaHref="/ask"
+        testId="empty-active-cases"
+      />
+    );
+  }
+
+  return (
+    <ul className="space-y-2.5" data-testid="list-active-cases">
+      {activeCases.map((caseRecord) => {
+        const isActive = caseIdParam === caseRecord.id;
+        return (
+          <li key={caseRecord.id}>
+            <Link href={`/case/${caseRecord.id}`}>
+              <div
+                className={`rounded-lg border px-3 py-3 cursor-pointer transition-colors hover:bg-muted/30 ${isActive ? "border-primary/50 bg-primary/[0.05]" : "border-border/60 bg-background/60"}`}
+                data-testid={`active-case-item-${caseRecord.id}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate">{caseRecord.title || "Unnamed Case"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {caseRecord.docCount} document{caseRecord.docCount === 1 ? "" : "s"} linked
+                    </p>
+                  </div>
+                  <Badge variant={isActive ? "default" : "outline"} className="text-[10px] h-5 px-1.5">
+                    {isActive ? "Current" : "Open"}
+                  </Badge>
+                </div>
+              </div>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -1502,87 +1569,102 @@ export default function WorkspacePage() {
         )}
       />
 
-      <WorkspaceMainLayout
-        primary={(
-          <WorkspacePrimaryGroup>
-            <WhatMattersNowPanel
-              workspaceState={workspaceState}
-              scenario={scenario}
-              ctaHref={scenarioCta}
-              documents={documents}
-              timelineEvents={timelineEvents}
-              resumeHref={resumeHref}
-              askAIPath={askAIPath}
-              conversationCount={conversationCount}
-              analyzedCount={analyzedCount}
+      <QuickActionsPanel askAIPath={askAIPath} lawPagePath={lawPagePath} />
+
+      <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <div id="documents" className="xl:col-span-3">
+          <Panel testId="card-recent-documents" className="h-full">
+            <PanelHeader icon={FileText} label="Recent Documents" />
+            <PanelContent>
+              <DocumentsSection
+                documents={documents}
+                isLoading={isLoadingWorkspace && !!user}
+                askAIPath={askAIPath}
+                caseNameById={caseNameById}
+              />
+            </PanelContent>
+          </Panel>
+        </div>
+
+        <div className="xl:col-span-2">
+          <Panel testId="card-active-cases" className="h-full">
+            <PanelHeader
+              icon={Layers}
+              label="Active Cases"
+              meta={<Badge variant="outline" className="text-[10px] h-5 px-1.5">{cases.length}</Badge>}
             />
+            <PanelContent>
+              <ActiveCasesSection cases={cases} documents={documents} caseIdParam={caseIdParam} />
+            </PanelContent>
+          </Panel>
+        </div>
+      </section>
 
-            <div id="documents">
-              <Panel testId="card-recent-documents">
-                <PanelHeader icon={FileText} label="Documents" />
-                <PanelContent>
-                  <DocumentsSection
-                    documents={documents}
-                    isLoading={isLoadingWorkspace && !!user}
-                    askAIPath={askAIPath}
-                    caseNameById={caseNameById}
-                  />
-                </PanelContent>
-              </Panel>
-            </div>
-          </WorkspacePrimaryGroup>
-        )}
-        secondary={(
-          <WorkspaceSecondaryGroup>
-            <div id="recent-activity">
-              {user ? (
-                <TimelineAndActivityPanel
-                  events={timelineEvents}
-                  threads={threads}
-                  documents={documents}
-                  isLoading={isLoadingWorkspace && !!user}
-                  askAIPath={askAIPath}
+      <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <div className="xl:col-span-3">
+          <WhatMattersNowPanel
+            workspaceState={workspaceState}
+            scenario={scenario}
+            ctaHref={scenarioCta}
+            documents={documents}
+            timelineEvents={timelineEvents}
+            resumeHref={resumeHref}
+            askAIPath={askAIPath}
+            conversationCount={conversationCount}
+            analyzedCount={analyzedCount}
+          />
+        </div>
+
+        <div id="recent-activity" className="xl:col-span-2">
+          {user ? (
+            <TimelineAndActivityPanel
+              events={timelineEvents}
+              threads={threads}
+              documents={documents}
+              isLoading={isLoadingWorkspace && !!user}
+              askAIPath={askAIPath}
+            />
+          ) : (
+            <Panel testId="card-timeline-activity">
+              <PanelHeader icon={Activity} label="Recent Activity" />
+              <PanelContent>
+                <EmptyState
+                  icon={MessageSquare}
+                  message="Sign in to save conversations and track your case timeline"
+                  ctaLabel="Ask Atlas"
+                  ctaHref={askAIPath}
+                  testId="empty-activity-unauth"
                 />
-              ) : (
-                <Panel testId="card-timeline-activity">
-                  <PanelHeader icon={Clock} label="Recent Activity" />
-                  <PanelContent>
-                    <EmptyState
-                      icon={MessageSquare}
-                      message="Sign in to save conversations and track your case timeline"
-                      ctaLabel="Ask Atlas"
-                      ctaHref={askAIPath}
-                      testId="empty-activity-unauth"
-                    />
-                  </PanelContent>
-                </Panel>
-              )}
+              </PanelContent>
+            </Panel>
+          )}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <div className="xl:col-span-3">
+          {user && <CaseSummarySection />}
+        </div>
+        <div className="xl:col-span-2">
+          {/* Privacy strip */}
+          <div
+            className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4"
+            data-testid="card-privacy-trust"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+              <p className="text-xs text-muted-foreground leading-snug">
+                Documents are analyzed privately and never retained. Your questions are confidential.
+              </p>
             </div>
-
-            <QuickActionsPanel askAIPath={askAIPath} lawPagePath={lawPagePath} />
-
-            {user && <CaseSummarySection />}
-
-            {/* Privacy strip */}
-            <div
-              className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4"
-              data-testid="card-privacy-trust"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                <p className="text-xs text-muted-foreground leading-snug">
-                  Documents are analyzed privately and never retained. Your questions are confidential.
-                </p>
-              </div>
-              <Link href="/privacy">
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
-                  Privacy Policy
-                </Button>
-              </Link>
-            </div>
-          </WorkspaceSecondaryGroup>
-        )}
-      />
+            <Link href="/privacy">
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
+                Privacy Policy
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
 
     </PageContainer>
   );
