@@ -47,6 +47,7 @@ import { deriveCaseTimeline } from "./services/caseTimeline";
 import {
   listTimelineEvents,
   createTimelineEvent,
+  createTimelineEventIfNotRecentDuplicate,
   deleteTimelineEvent,
 } from "./services/timeline";
 import {
@@ -1563,10 +1564,8 @@ CRITICAL RULES:
             await trackDocument(req);
           }
 
-          await createTimelineEvent(docUserId, {
-            eventDate: new Date().toISOString().slice(0, 10),
-            description: uploadOutcome.activityDescription,
-          }).catch(() => null);
+          // Legacy timeline logging disabled for analyze uploads.
+          // Workspace activity now uses canonical document records as source of truth.
 
           // If the request was tied to a case, upsert extracted_facts into case_facts,
           // then trigger deterministic action generation (fire-and-forget).
@@ -2016,7 +2015,7 @@ ${userQuestion}`;
       return res.status(400).json({ error: "Invalid timeline event payload.", details: parsed.error.flatten() });
     }
     try {
-      const event = await createTimelineEvent(user.id, parsed.data);
+      const event = await createTimelineEventIfNotRecentDuplicate(user.id, parsed.data);
       if (!event) return res.status(503).json({ error: "Timeline storage unavailable." });
       return res.status(201).json({ event });
     } catch (err) {
