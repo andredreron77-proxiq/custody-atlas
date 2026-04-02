@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, MapPin, MessageSquare, FileSearch, Map,
-  GitCompare, ShieldCheck, FileText, ArrowRight, ChevronRight,
-  BookOpen, Scale, Lightbulb, X,
+  MapPin, MessageSquare, FileSearch,
+  ShieldCheck, FileText, ArrowRight, ChevronRight,
+  Scale, Lightbulb, X,
   Clock, Loader2, CalendarDays, PlusCircle, Trash2,
   Sparkles, ChevronDown, Tag, TriangleAlert, Zap, AlertCircle,
 } from "lucide-react";
@@ -26,13 +26,12 @@ import {
   PageContainer, PageIntro,
   HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
   Panel, PanelHeader, PanelContent,
-  ActionRow as ProdActionRow, SectionStack,
+  SectionStack,
 } from "@/components/app/ProductLayout";
 import {
   DocFactChips, DocKeyDatesRow, DocObligationBadge,
 } from "@/components/app/DocIntelPanel";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
-import { isStateOnlyCounty } from "@/lib/jurisdictionUtils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequestRaw, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -200,6 +199,69 @@ function docHasRiskSignals(doc: WorkspaceDocument): boolean {
   );
 }
 
+
+function getTopPriorityItems({
+  workspaceState,
+  scenario,
+  documents,
+  timelineEvents,
+}: {
+  workspaceState: WorkspaceState;
+  scenario: StepScenario;
+  documents: WorkspaceDocument[];
+  timelineEvents: WorkspaceTimelineEvent[];
+}) {
+  const riskDocuments = documents.filter(docHasRiskSignals).slice(0, 2);
+  const upcomingEvents = timelineEvents
+    .filter((ev) => new Date(ev.eventDate).getTime() >= Date.now())
+    .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
+    .slice(0, 1);
+
+  const items: Array<{ id: string; title: string; detail: string; href: string; tone: "urgent" | "default" }> = [];
+
+  if (workspaceState === "active_attention") {
+    items.push({
+      id: "risk-review",
+      title: "Review time-sensitive document items",
+      detail: `${riskDocuments.length || 1} document${riskDocuments.length === 1 ? "" : "s"} may contain deadlines or compliance obligations`,
+      href: "/ask",
+      tone: "urgent",
+    });
+  }
+
+  const step = STEP_CONFIGS[scenario];
+  items.push({
+    id: `scenario-${scenario}`,
+    title: step.title,
+    detail: step.description,
+    href: step.ctaHref,
+    tone: workspaceState === "active_attention" ? "urgent" : "default",
+  });
+
+  for (const event of upcomingEvents) {
+    items.push({
+      id: `event-${event.id}`,
+      title: "Upcoming timeline event",
+      detail: `${event.description} · ${formatEventDate(event.eventDate)}`,
+      href: "#recent-activity",
+      tone: "default",
+    });
+  }
+
+  if (riskDocuments[0]) {
+    items.push({
+      id: `doc-${riskDocuments[0].id}`,
+      title: "Open flagged document",
+      detail: riskDocuments[0].fileName,
+      href: `/document/${riskDocuments[0].id}`,
+      tone: "default",
+    });
+  }
+
+  const deduped = Array.from(new globalThis.Map<string, (typeof items)[number]>(items.map((item) => [item.id, item])).values());
+  return deduped.slice(0, 3);
+}
+
 /* ── What Matters Now Panel ───────────────────────────────────────────────────
  * PRIMARY panel — the first thing users see.
  * loading:              skeleton, prevents flash of onboarding
@@ -211,8 +273,8 @@ function WhatMattersNowPanel({
   workspaceState,
   scenario,
   ctaHref,
-  threads,
   documents,
+  timelineEvents,
   resumeHref,
   askAIPath,
   conversationCount,
@@ -221,137 +283,58 @@ function WhatMattersNowPanel({
   workspaceState: WorkspaceState;
   scenario: StepScenario;
   ctaHref: string;
-  threads: WorkspaceThread[];
   documents: WorkspaceDocument[];
+  timelineEvents: WorkspaceTimelineEvent[];
   resumeHref: string;
   askAIPath: string;
   conversationCount: number;
   analyzedCount: number;
 }) {
-  // Context-aware ask label — never "first question" if the user has already asked
   const askLabel = conversationCount > 0
     ? "Ask a follow-up question"
     : analyzedCount > 0
       ? "Ask about your documents"
       : "Ask Atlas";
 
-  const askDescription = conversationCount > 0
-    ? "Continue where you left off with another question"
-    : analyzedCount > 0
-      ? "Get document-specific answers from your analyzed files"
-      : "Get answers to your custody questions";
+  const priorityItems = getTopPriorityItems({ workspaceState, scenario, documents, timelineEvents });
 
-  const primaryActions = [
-    {
-      href: askAIPath,
-      icon: MessageSquare,
-      iconBg: "bg-primary/[0.08] dark:bg-primary/20",
-      iconColor: "text-primary",
-      title: askLabel,
-      description: askDescription,
-      testId: "wmn-ask-atlas",
-    },
-    {
-      href: "/upload-document",
-      icon: FileSearch,
-      iconBg: "bg-primary/[0.08] dark:bg-primary/20",
-      iconColor: "text-primary",
-      title: "Analyze a Document",
-      description: "Upload a custody order for instant analysis",
-      testId: "wmn-analyze-doc",
-    },
-  ];
-
-  const explorationActions = [
-    {
-      href: "/custody-map",
-      icon: Map,
-      iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40",
-      iconColor: "text-[#b5922f] dark:text-amber-400",
-      title: "Explore Custody Map",
-      description: "See how custody laws vary across the U.S.",
-      testId: "wmn-explore-map",
-    },
-    {
-      href: "/custody-map?mode=compare",
-      icon: GitCompare,
-      iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40",
-      iconColor: "text-[#b5922f] dark:text-amber-400",
-      title: "Compare States",
-      description: "Side-by-side custody law comparison",
-      testId: "wmn-compare-states",
-    },
-  ];
-
-  // Loading skeleton — prevents flash of "new user" while workspace data fetches
   if (workspaceState === "loading") {
     return (
       <HeroPanel testId="panel-what-matters-now">
         <HeroPanelContent className="space-y-4 py-6">
-          <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-muted animate-pulse flex-shrink-0" />
-            <div className="flex-1 space-y-2.5">
-              <div className="h-3 w-32 rounded bg-muted animate-pulse" />
-              <div className="h-4 w-56 rounded bg-muted animate-pulse" />
-              <div className="h-3 w-72 rounded bg-muted animate-pulse" />
-            </div>
+          <div className="h-5 w-48 rounded bg-muted animate-pulse" />
+          <div className="space-y-2">
+            <div className="h-14 rounded-lg bg-muted animate-pulse" />
+            <div className="h-14 rounded-lg bg-muted animate-pulse" />
           </div>
-          <div className="h-9 w-36 rounded-md bg-muted animate-pulse" />
         </HeroPanelContent>
       </HeroPanel>
     );
   }
 
-  // Empty / onboarding — show guided next-best-step card
   if (workspaceState === "empty") {
     return (
       <HeroPanel testId="panel-what-matters-now">
+        <HeroPanelHeader>
+          <h2 className="text-base font-semibold text-foreground leading-tight">What Matters Now</h2>
+        </HeroPanelHeader>
         <HeroPanelContent className="pb-5">
           <NextBestStepPanel scenario={scenario} ctaHref={ctaHref} />
         </HeroPanelContent>
-        <HeroPanelFooter className="space-y-3">
-          <p className="text-xs font-medium text-muted-foreground">Or jump to</p>
-          {[...primaryActions, ...explorationActions].map((action) => (
-            <ProdActionRow key={action.testId} {...action} />
-          ))}
-        </HeroPanelFooter>
       </HeroPanel>
     );
   }
-
-  // All other states — active user layout with inline recommended action
-  const activityParts: string[] = [];
-  if (conversationCount > 0) activityParts.push(`${conversationCount} conversation${conversationCount !== 1 ? "s" : ""}`);
-  if (analyzedCount > 0) activityParts.push(`${analyzedCount} document${analyzedCount !== 1 ? "s" : ""} analyzed`);
-  else if (documents.length > 0) activityParts.push(`${documents.length} document${documents.length !== 1 ? "s" : ""} uploaded`);
-
-  const { icon: Icon, iconBg, iconColor, title, description, ctaLabel } = STEP_CONFIGS[scenario];
-  const isHashCta = ctaHref.startsWith("#");
-  const CtaLink = ({ children }: { children: React.ReactNode }) =>
-    isHashCta ? <a href={ctaHref}>{children}</a> : <Link href={ctaHref}>{children}</Link>;
-
-  // Colour the "Recommended action" label amber for risks, primary for everything else
-  const recommendedLabelColor = workspaceState === "active_attention"
-    ? "text-amber-600 dark:text-amber-400"
-    : "text-[#b5922f] dark:text-amber-400";
 
   return (
     <HeroPanel testId="panel-what-matters-now">
       <HeroPanelHeader className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-foreground leading-tight">What Matters Now</h2>
-          {activityParts.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-1 leading-snug">{activityParts.join(" · ")}</p>
-          )}
+          <p className="text-xs text-muted-foreground mt-1">Top priorities to keep your case moving forward.</p>
         </div>
         {conversationCount > 0 && (
           <Link href={resumeHref}>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 h-8 text-xs flex-shrink-0"
-              data-testid="button-wmn-resume"
-            >
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs flex-shrink-0" data-testid="button-wmn-resume">
               <Sparkles className="w-3.5 h-3.5" />
               Resume last
             </Button>
@@ -359,54 +342,35 @@ function WhatMattersNowPanel({
         )}
       </HeroPanelHeader>
 
-      <HeroPanelContent className="space-y-6">
-        {/* Recommended action — inline */}
-        <div className="flex items-start gap-4">
-          <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
-            <Icon className={`w-5 h-5 ${iconColor}`} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] mb-1.5 ${recommendedLabelColor}`}>
-              {workspaceState === "active_attention" ? "Attention needed" : "Recommended action"}
-            </p>
-            <h3 className="font-semibold text-foreground text-[15px] leading-tight mb-1.5" data-testid="text-wmn-action-title">
-              {title}
-            </h3>
-            <p className="text-[14px] text-foreground/75 leading-relaxed" data-testid="text-wmn-action-description">
-              {description}
-            </p>
-          </div>
-        </div>
-
-        {/* Primary CTA */}
-        <CtaLink>
-          <Button className="gap-2 px-5 shadow-sm" data-testid="button-wmn-primary-cta">
-            {ctaLabel}
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        </CtaLink>
+      <HeroPanelContent className="space-y-3">
+        {priorityItems.map((item) => (
+          <Link key={item.id} href={item.href}>
+            <div className={`rounded-lg border px-4 py-3 transition-colors cursor-pointer ${item.tone === "urgent" ? "border-amber-300 bg-amber-50/60 dark:border-amber-700/50 dark:bg-amber-950/20" : "border-border/70 bg-background hover:bg-muted/30"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={`text-xs font-semibold uppercase tracking-[0.12em] mb-1 ${item.tone === "urgent" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
+                    {item.tone === "urgent" ? "Urgent" : "Priority"}
+                  </p>
+                  <p className="text-sm font-semibold text-foreground leading-snug">{item.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.detail}</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+              </div>
+            </div>
+          </Link>
+        ))}
       </HeroPanelContent>
 
       <HeroPanelFooter className="py-4">
         <div className="flex items-center gap-2.5 flex-wrap">
           <Link href={askAIPath}>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 h-8 text-xs"
-              data-testid="wmn-footer-ask"
-            >
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" data-testid="wmn-footer-ask">
               <MessageSquare className="w-3.5 h-3.5" />
               {askLabel}
             </Button>
           </Link>
           <Link href="/upload-document">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 h-8 text-xs"
-              data-testid="wmn-footer-analyze"
-            >
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" data-testid="wmn-footer-analyze">
               <FileSearch className="w-3.5 h-3.5" />
               Analyze a document
             </Button>
@@ -602,7 +566,8 @@ function CaseSummarySection() {
   });
 
   return (
-    <Panel testId="card-case-summary" className="scroll-mt-4" id="case-summary">
+    <div id="case-summary" className="scroll-mt-4">
+      <Panel testId="card-case-summary">
       <PanelHeader
         icon={Sparkles}
         label="Case Summary"
@@ -732,6 +697,7 @@ function CaseSummarySection() {
         )}
       </PanelContent>
     </Panel>
+    </div>
   );
 }
 
@@ -986,132 +952,63 @@ function DocumentsSection({
 
 /* ── CaseSnapshotPanel ────────────────────────────────────────────────────── */
 
-function CaseSnapshotPanel({
-  jurisdiction,
-  threadCount,
+function WorkspaceSummaryBar({
+  activeCaseName,
   documentCount,
-  documents,
-  lawPagePath,
+  actionDeadlineCount,
+  recentActivityCount,
 }: {
-  jurisdiction: { state: string; county: string; country: string } | null;
-  threadCount: number;
+  activeCaseName: string | null;
   documentCount: number;
-  documents: WorkspaceDocument[];
-  lawPagePath: string | null;
+  actionDeadlineCount: number;
+  recentActivityCount: number;
 }) {
-  const mostRecentDoc = documents[0] ?? null;
+  const metrics = [
+    { label: "Workspace", value: activeCaseName ? `Case: ${activeCaseName}` : "General workspace" },
+    { label: "Documents", value: String(documentCount) },
+    { label: "Actions / Deadlines", value: String(actionDeadlineCount) },
+    { label: "Recent Activity", value: String(recentActivityCount) },
+  ];
 
   return (
-    <Panel className="h-full" testId="panel-case-snapshot">
-      <PanelHeader icon={LayoutDashboard} label="Case Snapshot" />
-      <PanelContent className="space-y-5">
+    <div className="rounded-xl border border-border/70 bg-card px-4 py-3 shadow-xs" data-testid="workspace-summary-bar">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{metric.label}</p>
+            <p className="text-sm font-semibold text-foreground mt-1 truncate">{metric.value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        {/* Jurisdiction */}
-        <div className="rounded-lg border border-border/40 bg-muted/20 px-3.5 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-2">Jurisdiction</p>
-          {jurisdiction ? (
-            <div className="flex items-start gap-2">
-              <MapPin className="w-3.5 h-3.5 text-primary/60 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-foreground" data-testid="text-workspace-state">{jurisdiction.state}</p>
-                {!isStateOnlyCounty(jurisdiction.county) && (
-                  <p className="text-xs text-muted-foreground mt-0.5" data-testid="text-workspace-county">{jurisdiction.county} County</p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <Link href="/location">
-              <button className="flex items-center gap-1.5 text-xs text-primary/70 hover:text-primary transition-colors" data-testid="button-set-location">
-                <MapPin className="w-3 h-3" />
-                Set your location
-              </button>
-            </Link>
-          )}
-        </div>
-
-        {/* Case overview */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
-            <p className="text-lg font-bold text-foreground tabular-nums">{threadCount}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">Questions</p>
-          </div>
-          <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5">
-            <p className="text-lg font-bold text-foreground tabular-nums">{documentCount}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">Documents</p>
-          </div>
-        </div>
-
-        {/* Most recent document */}
-        {mostRecentDoc ? (
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Last Document</p>
-            <Link href={`/document/${mostRecentDoc.id}`}>
-              <div
-                className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-background px-3 py-2.5 hover:border-primary/40 hover:bg-primary/[0.03] transition-all cursor-pointer group"
-                data-testid="link-last-document"
-              >
-                <FileText className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">{mostRecentDoc.fileName}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">{relativeTime(mostRecentDoc.createdAt)}</p>
-                </div>
-                {Object.keys(mostRecentDoc.analysisJson).length > 0 && <AnalyzedBadge />}
-                <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors flex-shrink-0" />
-              </div>
-            </Link>
-          </div>
-        ) : (
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Last Document</p>
-            <Link href="/upload-document">
-              <button
-                className="flex items-center gap-1.5 text-xs text-primary/70 hover:text-primary transition-colors"
-                data-testid="button-snapshot-upload-doc"
-              >
-                <FileText className="w-3 h-3" />
-                Analyze your first document
-              </button>
-            </Link>
-          </div>
+function QuickActionsPanel({ askAIPath, lawPagePath }: { askAIPath: string; lawPagePath: string | null }) {
+  return (
+    <Panel testId="panel-quick-actions">
+      <PanelHeader icon={Zap} label="Quick Actions" />
+      <PanelContent className="space-y-2.5">
+        <Link href={askAIPath}>
+          <Button className="w-full justify-between" data-testid="button-go-ask-atlas">
+            Ask Atlas
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </Link>
+        <Link href="/upload-document">
+          <Button variant="outline" className="w-full justify-between" data-testid="button-upload-new-doc">
+            Analyze a document
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </Link>
+        {lawPagePath && (
+          <Link href={lawPagePath}>
+            <Button variant="ghost" className="w-full justify-between" data-testid="button-view-law-summary">
+              View law summary
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </Link>
         )}
-
-        {/* Quick links */}
-        <div className="space-y-1.5 pt-3 border-t border-border/40">
-          {lawPagePath && (
-            <Link href={lawPagePath}>
-              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-view-law-summary">
-                <BookOpen className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
-                <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors flex-1">
-                  {jurisdiction?.state} law summary
-                </span>
-                <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/60 group-hover:translate-x-0.5 transition-all" />
-              </button>
-            </Link>
-          )}
-          <Link href="/custody-map">
-            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-open-map">
-              <Map className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors flex-1">Explore custody map</span>
-              <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/60 group-hover:translate-x-0.5 transition-all" />
-            </button>
-          </Link>
-          <Link href="/custody-map?mode=compare">
-            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-compare-states-map">
-              <GitCompare className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors flex-1">Compare states</span>
-              <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/60 group-hover:translate-x-0.5 transition-all" />
-            </button>
-          </Link>
-          <Link href="/location">
-            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-border/50 bg-background/60 hover:border-border/80 hover:bg-muted/40 transition-all text-left group" data-testid="button-change-location-workspace">
-              <MapPin className="w-3.5 h-3.5 text-primary/60 flex-shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors flex-1">
-                {jurisdiction ? "Change location" : "Set location"}
-              </span>
-            </button>
-          </Link>
-        </div>
-
       </PanelContent>
     </Panel>
   );
@@ -1576,7 +1473,7 @@ export default function WorkspacePage() {
       <PageIntro
         title="Case Workspace"
         titleTestId="heading-workspace"
-        description="Track your custody case, review documents, and get answers tailored to your situation."
+        description="A focused command center for your case priorities, documents, and activity."
         right={
           <div className="flex items-center gap-2">
             {isProUser && (
@@ -1594,119 +1491,71 @@ export default function WorkspacePage() {
         }
       />
 
-      <div
-        className="rounded-lg border-2 border-primary/35 bg-primary/10 px-4 py-3 mt-2 mb-5 shadow-sm"
-        data-testid="workspace-active-case-indicator"
-      >
-        <span className="text-sm font-semibold text-foreground">
-          {activeCaseName
-            ? `Active Case: ${activeCaseName}`
-            : "General Workspace (No case selected)"}
-        </span>
-      </div>
+      <WorkspaceSummaryBar
+        activeCaseName={activeCaseName}
+        documentCount={documents.length}
+        actionDeadlineCount={documents.filter(docHasRiskSignals).length}
+        recentActivityCount={Math.min(threads.length + documents.length + timelineEvents.length, 8)}
+      />
 
-      {/* 3. Primary row: What Matters Now (dominant 2/3) + Case Snapshot (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 space-y-6">
           <WhatMattersNowPanel
             workspaceState={workspaceState}
             scenario={scenario}
             ctaHref={scenarioCta}
-            threads={threads}
             documents={documents}
+            timelineEvents={timelineEvents}
             resumeHref={resumeHref}
             askAIPath={askAIPath}
             conversationCount={conversationCount}
             analyzedCount={analyzedCount}
           />
-        </div>
-        <div className="lg:col-span-1">
-          <CaseSnapshotPanel
-            jurisdiction={jurisdiction}
-            threadCount={threads.length}
-            documentCount={documents.length}
-            documents={documents}
-            lawPagePath={lawPagePath}
-          />
-        </div>
-      </div>
 
-      {/* 4. Secondary row: Documents + Timeline / Recent Activity */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        {/* Documents — recent 3–5 items, View All action */}
-        <Panel testId="card-recent-documents">
-          <PanelHeader
-            icon={FileText}
-            label="Documents"
-            action={
-              <Link href="/upload-document">
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 px-2.5" data-testid="button-upload-new-doc">
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  Upload
-                </Button>
-              </Link>
-            }
-          />
-          <PanelContent>
-            <DocumentsSection
-              documents={documents}
-              isLoading={isLoadingWorkspace && !!user}
-              askAIPath={askAIPath}
-              caseNameById={caseNameById}
-            />
-          </PanelContent>
-        </Panel>
-
-        {/* Timeline + Recent Activity — unified chronological feed */}
-        {user ? (
-          <TimelineAndActivityPanel
-            events={timelineEvents}
-            threads={threads}
-            documents={documents}
-            isLoading={isLoadingWorkspace && !!user}
-            askAIPath={askAIPath}
-          />
-        ) : (
-          <Panel testId="card-timeline-activity">
-            <PanelHeader icon={Clock} label="Recent Activity" />
+          <div id="documents">
+          <Panel testId="card-recent-documents">
+            <PanelHeader icon={FileText} label="Documents" />
             <PanelContent>
-              <EmptyState
-                icon={MessageSquare}
-                message="Sign in to save conversations and track your case timeline"
-                ctaLabel="Ask Atlas"
-                ctaHref={askAIPath}
-                testId="empty-activity-unauth"
+              <DocumentsSection
+                documents={documents}
+                isLoading={isLoadingWorkspace && !!user}
+                askAIPath={askAIPath}
+                caseNameById={caseNameById}
               />
             </PanelContent>
           </Panel>
-        )}
-      </div>
+          </div>
+        </div>
 
-      {/* 5. Lower section — Ask Atlas + Case Summary (lighter visual weight) */}
-      <SectionStack gap="md">
-        {/* Ask Atlas entry panel */}
-        {user && (
-          <Panel testId="panel-ask-atlas-entry">
-            <PanelHeader icon={MessageSquare} label="Ask Atlas" />
-            <PanelContent>
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Get plain-English answers to your custody questions, tailored to your jurisdiction.
-                </p>
-                <Link href={askAIPath}>
-                  <Button className="gap-1.5 flex-shrink-0" data-testid="button-go-ask-atlas">
-                    Ask a question
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
-              </div>
-            </PanelContent>
-          </Panel>
-        )}
+        <SectionStack gap="md">
+          <div id="recent-activity">
+            {user ? (
+              <TimelineAndActivityPanel
+                events={timelineEvents}
+                threads={threads}
+                documents={documents}
+                isLoading={isLoadingWorkspace && !!user}
+                askAIPath={askAIPath}
+              />
+            ) : (
+              <Panel testId="card-timeline-activity">
+                <PanelHeader icon={Clock} label="Recent Activity" />
+                <PanelContent>
+                  <EmptyState
+                    icon={MessageSquare}
+                    message="Sign in to save conversations and track your case timeline"
+                    ctaLabel="Ask Atlas"
+                    ctaHref={askAIPath}
+                    testId="empty-activity-unauth"
+                  />
+                </PanelContent>
+              </Panel>
+            )}
+          </div>
 
-        {/* Case Summary */}
-        {user && <CaseSummarySection />}
+          <QuickActionsPanel askAIPath={askAIPath} lawPagePath={lawPagePath} />
+
+          {user && <CaseSummarySection />}
 
         {/* Privacy strip */}
         <div
@@ -1725,7 +1574,8 @@ export default function WorkspacePage() {
             </Button>
           </Link>
         </div>
-      </SectionStack>
+        </SectionStack>
+      </div>
 
     </PageContainer>
   );
