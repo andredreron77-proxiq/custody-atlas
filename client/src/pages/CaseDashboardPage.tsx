@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CaseScopeBadge } from "@/components/app/CaseScopeBadge";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -664,10 +665,12 @@ function DocumentsPanel({
   caseId,
   uploadHref,
   askHref,
+  caseTitle,
 }: {
   caseId: string;
   uploadHref: string;
   askHref: string;
+  caseTitle: string;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -815,6 +818,9 @@ function DocumentsPanel({
                       {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
                       {" · "}
                       {shortDate(doc.createdAt)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/80" data-testid={`text-doc-case-label-${doc.id}`}>
+                      Case: {caseTitle}
                     </p>
 
                     {/* Row 3: obligation badges — hearing/deadline/time-sensitive */}
@@ -1761,6 +1767,7 @@ export default function CaseDashboardPage() {
 
   const caseRecord = caseData?.case ?? null;
   const facts      = factsData?.facts ?? [];
+  const caseNumber = facts.find((f) => f.factType === "case_number")?.value ?? null;
 
   // Page-level conversations query — shared cache key with ConversationsPanel.
   // Used to derive hasConversations (hide redundant CTAs once user has chatted).
@@ -1852,10 +1859,17 @@ export default function CaseDashboardPage() {
 
         <div className="flex-1 min-w-0 flex items-center gap-2 sm:ml-2">
           <div className="min-w-0 flex-1">
+            <CaseScopeBadge caseTitle={caseRecord.title} />
             <h1 className="font-serif text-xl font-semibold truncate leading-tight" data-testid="heading-case-title">
               {caseRecord.title}
             </h1>
             <div className="flex items-center gap-2 flex-wrap">
+              {caseNumber && (
+                <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground" data-testid="text-case-number">
+                  <Hash className="w-2.5 h-2.5" />
+                  {caseNumber}
+                </span>
+              )}
               {caseRecord.jurisdictionState && (
                 <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
                   <MapPin className="w-2.5 h-2.5" />
@@ -2018,7 +2032,12 @@ export default function CaseDashboardPage() {
           defaultOpen={false}
           testId="collapsible-documents"
         >
-          <DocumentsPanel caseId={caseId} uploadHref={uploadHref} askHref={askHref} />
+          <DocumentsPanel
+            caseId={caseId}
+            uploadHref={uploadHref}
+            askHref={askHref}
+            caseTitle={caseRecord.title}
+          />
         </CollapsibleSection>
       </div>
 

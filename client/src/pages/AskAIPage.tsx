@@ -8,6 +8,7 @@ import { LocationSelector } from "@/components/app/LocationSelector";
 import { Breadcrumb } from "@/components/app/Header";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { PageShell, PageHeader } from "@/components/app/PageShell";
+import { CaseScopeBadge } from "@/components/app/CaseScopeBadge";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import type { ChatMessage, Jurisdiction } from "@shared/schema";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
@@ -805,7 +806,7 @@ export default function AskAIPage() {
     : null;
   const answeringScopeLabel = activeCase
     ? `Answering from: ${activeCase.title}`
-    : "Answering from: General workspace (no case selected)";
+    : "General Workspace";
 
   /* ── Main Ask AI layout ───────────────────────────────────────────────── */
   return (
@@ -856,6 +857,13 @@ export default function AskAIPage() {
         </div>
       </div>
 
+      <div className="flex items-center">
+        <CaseScopeBadge
+          caseTitle={activeCase?.title}
+          className="inline-flex items-center gap-1.5 text-[11px] font-medium"
+        />
+      </div>
+
       {/* ── Case context — 3-state rendering ─────────────────────────────── */}
       {user && askPageState === "no_case" && (
         /* no_case: compact decision block */
@@ -892,7 +900,7 @@ export default function AskAIPage() {
               onClick={() => setShowCasePicker(false)}
               data-testid="button-continue-without-case"
             >
-              Continue without
+              Keep General Workspace
             </button>
           </div>
         </div>
@@ -914,7 +922,9 @@ export default function AskAIPage() {
               "w-3.5 h-3.5 flex-shrink-0",
               askPageState === "urgent_case" ? "text-orange-600 dark:text-orange-400" : "text-primary/70"
             )} />
-            <span className="text-xs font-medium text-foreground truncate">{activeCase?.title ?? "Active case"}</span>
+            <span className="text-xs font-medium text-foreground truncate">
+              {activeCase?.title ? `Answering from: ${activeCase.title}` : "General Workspace"}
+            </span>
             {activeCase?.jurisdictionState && (
               <span className="text-xs text-muted-foreground hidden sm:inline">· {activeCase.jurisdictionState}</span>
             )}
