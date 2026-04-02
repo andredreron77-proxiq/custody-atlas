@@ -56,6 +56,39 @@ export function mergeCaseScopedDocumentIds(
   return Array.from(new Set([...linkedDocumentIds, ...legacyDocumentIds]));
 }
 
+const OPTIONAL_DOCUMENT_INSERT_COLUMNS = new Set([
+  "source_file_sha256",
+  "retention_tier",
+  "original_expires_at",
+  "intelligence_expires_at",
+  "lifecycle_state",
+]);
+
+export function extractMissingInsertColumn(errorMessage: string): string | null {
+  if (!errorMessage) return null;
+
+  const postgrestMatch = errorMessage.match(/Could not find the '([a-z_]+)' column/i);
+  if (postgrestMatch?.[1]) return postgrestMatch[1].toLowerCase();
+
+  const postgresMatch = errorMessage.match(/column "?([a-z_]+)"? of relation "documents" does not exist/i);
+  if (postgresMatch?.[1]) return postgresMatch[1].toLowerCase();
+
+  return null;
+}
+
+export function dropUnsupportedInsertColumn(
+  payload: Record<string, unknown>,
+  errorMessage: string,
+): { nextPayload: Record<string, unknown>; removedColumn: string | null } {
+  const missingColumn = extractMissingInsertColumn(errorMessage);
+  if (!missingColumn || !OPTIONAL_DOCUMENT_INSERT_COLUMNS.has(missingColumn) || !(missingColumn in payload)) {
+    return { nextPayload: payload, removedColumn: null };
+  }
+
+  const { [missingColumn]: _removed, ...nextPayload } = payload;
+  return { nextPayload, removedColumn: missingColumn };
+}
+
 function mapRow(r: any): SavedDocument {
   return {
     id:            r.id,
@@ -228,22 +261,26 @@ export async function saveDocument(
       case_id:        fields.caseId ?? null,
     };
 
-    let { data, error } = await supabaseAdmin
-      .from("documents")
-      .insert(insertPayload)
-      .select()
-      .single();
+    let payload = insertPayload;
+    let data: any = null;
+    let error: any = null;
 
-    // Backward compatibility: older environments may not have the
-    // source_file_sha256 column yet. Retry once without it so document
-    // persistence (workspace visibility) still succeeds.
-    if (error?.message?.includes("source_file_sha256")) {
-      const { source_file_sha256, ...legacyPayload } = insertPayload;
+    for (let attempt = 0; attempt <= OPTIONAL_DOCUMENT_INSERT_COLUMNS.size; attempt += 1) {
       ({ data, error } = await supabaseAdmin
         .from("documents")
-        .insert(legacyPayload)
+        .insert(payload)
         .select()
         .single());
+
+      if (!error) break;
+
+      const { nextPayload, removedColumn } = dropUnsupportedInsertColumn(payload, error.message ?? "");
+      if (!removedColumn) {
+        break;
+      }
+
+      payload = nextPayload;
+      console.warn(`[documents] saveDocument retry without optional column: ${removedColumn}`);
     }
 
     if (error) {
@@ -596,7 +633,19 @@ export async function deleteDocument(
       console.log(`[documents] delete — no storage_path to remove doc=${documentId}`);
     }
 
-    // Step 3: hard-delete the DB row (analysis + extracted text deleted with it)
+    // Step 3: remove case-link rows explicitly (defensive cleanup for environments
+    // where FK cascade is missing or temporarily misconfigured).
+    const { error: linkDeleteError } = await supabaseAdmin
+      .from("document_case_links")
+      .delete()
+      .eq("document_id", documentId)
+      .eq("user_id", userId);
+
+    if (linkDeleteError && !linkDeleteError.message?.includes("relation")) {
+      console.warn(`[documents] link cleanup warn doc=${documentId}:`, linkDeleteError.message);
+    }
+
+    // Step 4: hard-delete the DB row (analysis + extracted text deleted with it)
     const { error: dbError } = await supabaseAdmin
       .from("documents")
       .delete()
