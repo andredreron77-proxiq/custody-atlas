@@ -18,7 +18,6 @@ import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { TTSControls } from "@/components/app/TTSControls";
-import { ActiveCaseIndicator } from "@/components/app/CaseIdentity";
 import { getAccessToken } from "@/lib/tokenStore";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import {
@@ -27,7 +26,7 @@ import {
   Panel, PanelHeader, PanelContent,
   InsetPanel, ActionRow as ProdActionRow, SectionStack,
 } from "@/components/app/ProductLayout";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import type { DocumentAnalysisResult, DocumentQAResponse, ExtractedFacts } from "@shared/schema";
 
 interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
@@ -1065,25 +1064,6 @@ export default function UploadDocumentPage() {
 
   const { toast } = useToast();
   const { jurisdiction } = useJurisdiction();
-  const { data: activeCaseData } = useQuery<{
-    case: {
-      id: string;
-      title: string;
-      status: string;
-      jurisdictionState: string | null;
-      jurisdictionCounty: string | null;
-    };
-  }>({
-    queryKey: ["/api/cases", activeCaseId],
-    enabled: !!activeCaseId,
-    queryFn: async () => {
-      const res = await fetch(`/api/cases/${activeCaseId}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Case not found");
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-  const activeCase = activeCaseData?.case ?? null;
 
   // Derived state — drives which sub-view renders
   const isDocx = pages.length === 1 && pages[0].type === DOCX_MIME;
@@ -1460,17 +1440,6 @@ export default function UploadDocumentPage() {
         title="Analyze a Custody Document"
         titleTestId="heading-upload-page"
         description="Upload a court order, parenting plan, or legal notice. Atlas reads the document and explains what it means in plain English."
-      />
-
-      <ActiveCaseIndicator
-        caseInfo={activeCase ? {
-          id: activeCase.id,
-          title: activeCase.title,
-          jurisdiction: activeCase.jurisdictionState
-            ? `${activeCase.jurisdictionState}${activeCase.jurisdictionCounty ? `, ${activeCase.jurisdictionCounty}` : ""}`
-            : null,
-          status: activeCase.status,
-        } : null}
       />
 
       {/* 3. Context bar: jurisdiction + private session + change */}

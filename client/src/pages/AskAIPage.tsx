@@ -17,7 +17,6 @@ import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { ActiveCaseIndicator, CaseChip } from "@/components/app/CaseIdentity";
 
 interface ThreadWithMessages {
   thread: {
@@ -345,7 +344,7 @@ function CasePickerMenu({
           onClick={() => onSelect(c.id)}
           data-testid={`option-case-${c.id}`}
         >
-          <CaseChip caseInfo={{ id: c.id, title: c.title }} />
+          <span className="block truncate">{c.title}</span>
           {c.jurisdictionState && (
             <span className="text-xs text-muted-foreground">{c.jurisdictionState}</span>
           )}
@@ -897,19 +896,6 @@ export default function AskAIPage() {
             </button>
           </div>
         </div>
-      )}
-
-      {user && (
-        <ActiveCaseIndicator
-          caseInfo={activeCase ? {
-            id: activeCase.id,
-            title: activeCase.title,
-            jurisdiction: activeCase.jurisdictionState
-              ? `${activeCase.jurisdictionState}${activeCase.jurisdictionCounty ? `, ${activeCase.jurisdictionCounty}` : ""}`
-              : null,
-            status: activeCase.status,
-          } : null}
-        />
       )}
 
       {user && (askPageState === "active_case" || askPageState === "urgent_case") && (
