@@ -28,9 +28,6 @@ import {
   HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
   Panel, PanelHeader, PanelContent,
 } from "@/components/app/ProductLayout";
-import {
-  DocKeyDatesRow, DocObligationBadge,
-} from "@/components/app/DocIntelPanel";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequestRaw, apiRequest } from "@/lib/queryClient";
@@ -180,6 +177,24 @@ function docHasRiskSignals(doc: WorkspaceDocument): boolean {
   return URGENCY_KEYWORDS.some(
     (kw) => dates.some((d) => d.includes(kw)) || implications.some((i) => i.includes(kw)),
   );
+}
+
+function getTopDocumentSignal(doc: WorkspaceDocument): string | null {
+  if (!isDocAnalyzed(doc)) return null;
+  const keyDates = Array.isArray(doc.analysisJson.key_dates)
+    ? (doc.analysisJson.key_dates as string[]).filter(Boolean)
+    : [];
+  const implications = Array.isArray(doc.analysisJson.possible_implications)
+    ? (doc.analysisJson.possible_implications as string[]).filter(Boolean)
+    : [];
+  return keyDates[0] ?? implications[0] ?? null;
+}
+
+function getDocumentPriorityScore(doc: WorkspaceDocument): number {
+  const createdAtMs = new Date(doc.createdAt).getTime();
+  const hasSignal = getTopDocumentSignal(doc) ? 1 : 0;
+  const hasRisk = docHasRiskSignals(doc) ? 1 : 0;
+  return (hasRisk * 1_000_000_000_000) + (hasSignal * 100_000_000_000) + createdAtMs;
 }
 
 
@@ -684,7 +699,7 @@ function CaseSummarySection() {
   );
 }
 
-/* ── Documents — grouped by case ──────────────────────────────────────────── */
+/* ── Documents — compact dashboard preview ────────────────────────────────── */
 
 function DocumentsSection({
   documents, isLoading, askAIPath, caseNameById,
@@ -696,16 +711,9 @@ function DocumentsSection({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [localTypes, setLocalTypes] = useState<Record<string, DocType>>({});
   const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
 
-  const MAX_VISIBLE = 3;
-
-  const typeMutation = useMutation({
-    mutationFn: ({ docId, docType }: { docId: string; docType: DocType }) =>
-      apiRequest("PATCH", `/api/documents/${docId}/type`, { docType }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/workspace"] }),
-  });
+  const MAX_VISIBLE = 4;
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: string) => {
@@ -728,16 +736,6 @@ function DocumentsSection({
     },
   });
 
-  function getDocType(doc: WorkspaceDocument): DocType {
-    return localTypes[doc.id] ?? doc.docType ?? "other";
-  }
-
-  function handleTypeChange(doc: WorkspaceDocument, val: string) {
-    const newType = val as DocType;
-    setLocalTypes((prev) => ({ ...prev, [doc.id]: newType }));
-    typeMutation.mutate({ docId: doc.id, docType: newType });
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-6">
@@ -758,136 +756,79 @@ function DocumentsSection({
     );
   }
 
-  const caseGroups = documents.reduce<Record<string, WorkspaceDocument[]>>((acc, doc) => {
-    const key = doc.caseId ? `case:${doc.caseId}` : "case:unassigned";
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(doc);
-    return acc;
-  }, {});
-
-  const groupOrder = Object.keys(caseGroups).sort((a, b) => {
-    if (a === "case:unassigned") return 1;
-    if (b === "case:unassigned") return -1;
-    const caseA = caseNameById[a.replace("case:", "")] ?? "Unnamed Case";
-    const caseB = caseNameById[b.replace("case:", "")] ?? "Unnamed Case";
-    return caseA.localeCompare(caseB);
-  });
-
-  const orderedDocs = groupOrder.flatMap((groupKey) =>
-    (caseGroups[groupKey] ?? []).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    ),
-  );
+  const orderedDocs = [...documents].sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a));
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
-
-  // Re-group only the preview slice
-  const visibleGroups: Record<string, WorkspaceDocument[]> = {};
-  for (const doc of orderedDocs.slice(0, MAX_VISIBLE)) {
-    const groupKey = doc.caseId ? `case:${doc.caseId}` : "case:unassigned";
-    if (!visibleGroups[groupKey]) visibleGroups[groupKey] = [];
-    visibleGroups[groupKey]!.push(doc);
-  }
-  const activeGroups = groupOrder.filter((groupKey) => visibleGroups[groupKey]?.length);
+  const visibleDocs = orderedDocs.slice(0, MAX_VISIBLE);
 
   return (
     <div className="space-y-3" data-testid="list-documents-grouped">
-      {activeGroups.map((groupKey) => {
-        const caseId = groupKey.replace("case:", "");
-        const groupLabel = groupKey === "case:unassigned"
-          ? "Unassigned"
-          : caseNameById[caseId] ?? "Unnamed Case";
-        return (
-        <div key={groupKey}>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-              {groupLabel}
-            </Badge>
-            <span className="text-[10px] text-muted-foreground">{caseGroups[groupKey]!.length}</span>
-          </div>
-          <ul className="space-y-1.5">
-            {visibleGroups[groupKey]!.map((doc) => (
-              <li
-                key={doc.id}
-                className="rounded-lg border p-2.5 space-y-2 hover:bg-muted/20 hover:border-border transition-all duration-150 group"
-                data-testid={`doc-item-${doc.id}`}
-              >
-                {/* Header row: icon + filename + badge + Review/Ask/Delete buttons */}
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground/60" />
-                  <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium truncate text-foreground">{doc.fileName}</span>
-                    {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
-                  </div>
-                  <div className="flex items-center gap-0.5 flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
-                    <Link href={`/document/${doc.id}`}>
+      <ul className="space-y-1.5">
+        {visibleDocs.map((doc) => {
+          const caseLabel = doc.caseId
+            ? caseNameById[doc.caseId] ?? "Unnamed Case"
+            : "Unassigned";
+          const topSignal = getTopDocumentSignal(doc);
+          const hasRisk = docHasRiskSignals(doc);
+          return (
+            <li
+              key={doc.id}
+              className="rounded-lg border px-2.5 py-2 hover:bg-muted/20 hover:border-border transition-all duration-150"
+              data-testid={`doc-item-${doc.id}`}
+            >
+              <div className="flex items-start gap-2">
+                <FileText className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 text-muted-foreground/60" />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium leading-5 truncate text-foreground">{doc.fileName}</p>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Link href={`/document/${doc.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[11px] h-6 px-1.5 text-muted-foreground hover:text-foreground"
+                          data-testid={`button-review-doc-${doc.id}`}
+                        >
+                          Review
+                        </Button>
+                      </Link>
+                      <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
+                        <Button variant="ghost" size="sm" className="text-[11px] gap-1 h-6 px-1.5 text-primary/80 hover:text-primary" data-testid={`button-ask-doc-${doc.id}`}>
+                          Ask
+                          <ArrowRight className="w-3 h-3" />
+                        </Button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-xs h-6 px-1.5 text-muted-foreground hover:text-foreground"
-                        data-testid={`button-review-doc-${doc.id}`}
+                        className="h-6 px-1 text-muted-foreground hover:text-destructive"
+                        onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
+                        disabled={deleteMutation.isPending && pendingDelete?.id === doc.id}
+                        data-testid={`button-delete-doc-${doc.id}`}
+                        aria-label={`Delete ${doc.fileName}`}
                       >
-                        Review
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
-                    </Link>
-                    <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
-                      <Button variant="ghost" size="sm" className="text-xs gap-1 h-6 px-1.5 flex-shrink-0 text-primary/70 hover:text-primary" data-testid={`button-ask-doc-${doc.id}`}>
-                        Ask
-                        <ArrowRight className="w-3 h-3" />
-                      </Button>
-                    </Link>
-                    {/* Delete — always available; ensures no doc is permanently orphaned */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs h-6 px-1.5 text-muted-foreground hover:text-destructive"
-                      onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
-                      disabled={deleteMutation.isPending && pendingDelete?.id === doc.id}
-                      data-testid={`button-delete-doc-${doc.id}`}
-                      aria-label={`Delete ${doc.fileName}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    </div>
                   </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
+                    <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                      {caseLabel}
+                    </Badge>
+                    <span className="text-[11px] text-muted-foreground">{relativeTime(doc.createdAt)}</span>
+                  </div>
+                  {topSignal && (
+                    <p className={`text-[11px] truncate ${hasRisk ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
+                      {hasRisk ? "Alert: " : "Key date: "}
+                      {topSignal}
+                    </p>
+                  )}
                 </div>
-
-                {/* Type selector + date */}
-                <div className="flex flex-wrap items-center gap-1.5 pl-6">
-                  <Select
-                    value={getDocType(doc)}
-                    onValueChange={(val) => handleTypeChange(doc, val)}
-                  >
-                    <SelectTrigger
-                      className="h-6 text-[10px] px-2 py-0 w-auto border-dashed gap-1"
-                      data-testid={`select-doc-type-${doc.id}`}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="custody_order">Custody Order</SelectItem>
-                      <SelectItem value="communication">Communication</SelectItem>
-                      <SelectItem value="financial">Financial</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs text-muted-foreground">
-                    {relativeTime(doc.createdAt)}
-                  </span>
-                  <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-                    {doc.caseId
-                      ? `Case: ${caseNameById[doc.caseId] ?? "Unnamed Case"}`
-                      : "Unassigned"}
-                  </Badge>
-                </div>
-
-                <div className="pl-6 space-y-1.5">
-                  <DocObligationBadge analysisJson={doc.analysisJson} />
-                  <DocKeyDatesRow analysisJson={doc.analysisJson} maxDates={1} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )})}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
 
       <div className="pt-1 flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground">
