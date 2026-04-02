@@ -3,9 +3,9 @@ import { Link, useLocation } from "wouter";
 import {
   MapPin, MessageSquare, FileSearch,
   ShieldCheck, FileText, ArrowRight, ChevronRight,
-  Scale, Lightbulb, X,
+  Lightbulb, X,
   Clock, Loader2, CalendarDays, PlusCircle, Trash2,
-  Sparkles, ChevronDown, Tag, TriangleAlert, Zap, AlertCircle,
+  Sparkles, ChevronDown, TriangleAlert, Zap, AlertCircle,
   Activity,
 } from "lucide-react";
 import { fetchUsageState } from "@/services/usageService";
@@ -78,11 +78,29 @@ interface WorkspaceData {
   timelineEvents: WorkspaceTimelineEvent[];
 }
 
-interface CaseSummary {
-  themes: string[];
-  custodyFactors: string[];
-  insights: string[];
-  disclaimer: string;
+interface CaseBrief {
+  title: string;
+  scope: {
+    type: "case" | "general";
+    caseId: string | null;
+    caseTitle: string | null;
+  };
+  currentSituation: string;
+  whatMattersMost: Array<{ priority: string; reason: string; level: "high" | "medium" }>;
+  keyDatesAndDeadlines: Array<{ date: string; label: string; source: string; urgency: "upcoming" | "future" | "unknown" }>;
+  risksWatchItems: string[];
+  documentInsights: Array<{ documentId: string; fileName: string; insight: string; whyItMatters: string }>;
+  missingInformationGaps: string[];
+  recommendedNextActions: string[];
+  evidenceBasis: Array<{
+    documentId: string;
+    fileName: string;
+    docType: string;
+    createdAt: string;
+    caseId: string | null;
+    facts: Record<string, string | null>;
+    alerts: string[];
+  }>;
 }
 
 interface CaseRecord {
@@ -430,9 +448,9 @@ const STEP_CONFIGS: Record<StepScenario, StepConfig> = {
   },
   "pro-summarize": {
     icon: Sparkles, iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40", iconColor: "text-[#b5922f] dark:text-amber-400",
-    title: "Summarize your situation",
-    description: "Generate a structured overview of the themes and custody factors across your conversations and documents.",
-    ctaLabel: "Summarize My Situation", ctaHref: "#case-summary", secondaryLabel: "Maybe later",
+    title: "Generate your case brief",
+    description: "Generate a structured case brief across extracted facts, dates, risks, and document intelligence.",
+    ctaLabel: "Generate Case Brief", ctaHref: "#case-brief", secondaryLabel: "Maybe later",
   },
   "ask-about-docs": {
     icon: MessageSquare, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
@@ -538,24 +556,26 @@ function EmptyState({
   );
 }
 
-/* ── Case Summary Section ─────────────────────────────────────────────────── */
+const CASE_BRIEF_LABEL = (import.meta.env.VITE_WORKSPACE_CASE_BRIEF_LABEL as string | undefined)?.trim() || "Case Brief";
 
-function CaseSummarySection() {
-  const [summary, setSummary] = useState<CaseSummary | null>(null);
+/* ── Case Brief Section ───────────────────────────────────────────────────── */
+
+function CaseBriefSection({ caseIdParam }: { caseIdParam?: string }) {
+  const [brief, setBrief] = useState<CaseBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
 
-  const summaryMutation = useMutation({
+  const briefMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequestRaw("POST", "/api/workspace/summarize");
+      const res = await apiRequestRaw("POST", "/api/workspace/case-brief", caseIdParam ? { caseId: caseIdParam } : {});
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Failed to generate summary.");
+        throw new Error(body.error ?? "Failed to generate case brief.");
       }
-      return res.json() as Promise<CaseSummary>;
+      return res.json() as Promise<CaseBrief>;
     },
     onSuccess: (data) => {
-      setSummary(data);
+      setBrief(data);
       setError(null);
     },
     onError: (err: Error) => {
@@ -564,17 +584,17 @@ function CaseSummarySection() {
   });
 
   return (
-    <div id="case-summary" className="scroll-mt-4 h-full">
-      <Panel testId="card-case-summary" className="h-full">
+    <div id="case-brief" className="scroll-mt-4 h-full">
+      <Panel testId="card-case-brief" className="h-full">
       <PanelHeader
         icon={Sparkles}
-        label="Case Summary"
+        label={CASE_BRIEF_LABEL}
         action={
-          summary ? (
+          brief ? (
             <button
               className="text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setOpen((v) => !v)}
-              data-testid="button-toggle-summary"
+              data-testid="button-toggle-brief"
             >
               <ChevronDown className={`w-4 h-4 transition-transform ${open ? "" : "-rotate-90"}`} />
             </button>
@@ -582,16 +602,16 @@ function CaseSummarySection() {
         }
       />
       <PanelContent className="p-2.5">
-        {!summary && !summaryMutation.isPending && (
+        {!brief && !briefMutation.isPending && (
           <div className="flex flex-col items-center gap-2.5 py-1.5 text-center">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-primary" />
             </div>
             <div className="space-y-1 max-w-sm">
-              <p className="text-sm font-semibold text-foreground">Summarize My Situation</p>
+              <p className="text-sm font-semibold text-foreground">{CASE_BRIEF_LABEL}</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Generate an informational overview of the themes and general custody factors
-                that appear in your conversations and documents.
+                Build a structured brief from extracted facts, deadlines, risks, document alerts,
+                and case activity.
               </p>
             </div>
             {error && (
@@ -601,95 +621,122 @@ function CaseSummarySection() {
               </div>
             )}
             <Button
-              onClick={() => summaryMutation.mutate()}
+              onClick={() => briefMutation.mutate()}
               className="gap-2"
-              data-testid="button-generate-summary"
+              data-testid="button-generate-brief"
             >
               <Sparkles className="w-4 h-4" />
-              Summarize My Situation
+              Generate {CASE_BRIEF_LABEL}
             </Button>
           </div>
         )}
 
-        {summaryMutation.isPending && (
+        {briefMutation.isPending && (
           <div className="flex flex-col items-center gap-2.5 py-4">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <p className="text-xs text-muted-foreground">Analyzing your conversations and documents…</p>
+            <p className="text-xs text-muted-foreground">Compiling your structured case brief…</p>
           </div>
         )}
 
-        {summary && open && (
-          <div className="space-y-3" data-testid="section-summary-output">
-            {/* Themes */}
-            {summary.themes.length > 0 && (
+        {brief && open && (
+          <div className="space-y-3" data-testid="section-brief-output">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Current Situation</p>
+              <p className="text-sm text-foreground leading-relaxed">{brief.currentSituation}</p>
+            </div>
+
+            {brief.whatMattersMost.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Key Themes</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {summary.themes.map((t, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium"
-                      data-testid={`tag-theme-${i}`}
-                    >
-                      <Tag className="w-2.5 h-2.5" />
-                      {t}
-                    </span>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">What Matters Most</p>
+                <ol className="space-y-1.5">
+                  {brief.whatMattersMost.map((item, i) => (
+                    <li key={`${item.priority}-${i}`} className="text-sm text-foreground">
+                      <span className="font-semibold mr-1.5">{i + 1}.</span>
+                      <span className="font-medium">{item.priority}</span>{" "}
+                      <span className="text-muted-foreground">— {item.reason}</span>
+                    </li>
                   ))}
-                </div>
+                </ol>
               </div>
             )}
 
-            {/* Custody factors */}
-            {summary.custodyFactors.length > 0 && (
+            {brief.keyDatesAndDeadlines.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">General Custody Factors</p>
-                <ul className="space-y-1.5">
-                  {summary.custodyFactors.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-foreground" data-testid={`item-factor-${i}`}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
-                      {f}
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Key Dates &amp; Deadlines</p>
+                <ul className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {brief.keyDatesAndDeadlines.map((item, i) => (
+                    <li key={`${item.date}-${i}`} className="text-sm text-foreground">
+                      <span className="font-medium">{item.date}</span> — {item.label}
+                      <span className="text-xs text-muted-foreground"> ({item.source})</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Insights */}
-            {summary.insights.length > 0 && (
+            {brief.risksWatchItems.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Informational Insights</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Risks / Watch Items</p>
                 <ul className="space-y-2">
-                  {summary.insights.map((ins, i) => (
-                    <li
-                      key={i}
-                      className="flex items-start gap-2.5 rounded-lg bg-muted/50 border px-3 py-2 text-sm text-foreground"
-                      data-testid={`item-insight-${i}`}
-                    >
-                      <Lightbulb className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-                      {ins}
+                  {brief.risksWatchItems.map((risk, i) => (
+                    <li key={`${risk}-${i}`} className="rounded-lg bg-muted/50 border px-3 py-2 text-sm text-foreground">{risk}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {brief.documentInsights.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Document Insights</p>
+                <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {brief.documentInsights.map((insight) => (
+                    <li key={insight.documentId} className="rounded-md border px-2.5 py-2">
+                      <p className="text-xs font-semibold text-foreground">{insight.fileName}</p>
+                      <p className="text-xs text-foreground mt-0.5">{insight.insight}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{insight.whyItMatters}</p>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Disclaimer */}
-            {summary.disclaimer && (
-              <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 px-3 py-2.5">
-                <Scale className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-                  {summary.disclaimer}
+            {brief.missingInformationGaps.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Missing Information / Gaps</p>
+                <ul className="space-y-1.5">
+                  {brief.missingInformationGaps.map((gap, i) => (
+                    <li key={`${gap}-${i}`} className="text-sm text-foreground">{gap}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {brief.recommendedNextActions.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Recommended Next Actions</p>
+                <ul className="space-y-1.5">
+                  {brief.recommendedNextActions.map((action, i) => (
+                    <li key={`${action}-${i}`} className="text-sm text-foreground">{action}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {brief.evidenceBasis.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Evidence Basis</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {brief.evidenceBasis.map((e) => e.fileName).join(", ")}
                 </p>
               </div>
             )}
 
-            {/* Regenerate */}
             <button
               className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors"
-              onClick={() => { setSummary(null); }}
-              data-testid="button-regenerate-summary"
+              onClick={() => { setBrief(null); }}
+              data-testid="button-regenerate-brief"
             >
-              Regenerate summary
+              Regenerate brief
             </button>
           </div>
         )}
@@ -1307,7 +1354,7 @@ export default function WorkspacePage() {
       : null;
 
     if (scenario === "no-jurisdiction") return "/location";
-    if (scenario === "pro-summarize") return "#case-summary";
+    if (scenario === "pro-summarize") return "#case-brief";
     if (scenario === "intake-pending") return "/upload-document";
 
     if (scenario === "ask-about-docs") {
@@ -1392,7 +1439,7 @@ export default function WorkspacePage() {
             timelineEventCount={timelineEvents.length}
           >
             <p className="text-xs text-muted-foreground">
-              View your recent activity and summary below for a unified case snapshot.
+              View your recent activity and case brief below for a unified case snapshot.
             </p>
           </CaseContextPanel>
 
@@ -1433,17 +1480,17 @@ export default function WorkspacePage() {
 
         <div className="h-full">
           {user ? (
-            <CaseSummarySection />
+            <CaseBriefSection caseIdParam={caseIdParam} />
           ) : (
-            <Panel testId="card-case-summary-unauth" className="h-full">
-              <PanelHeader icon={Sparkles} label="Case Summary" />
+            <Panel testId="card-case-brief-unauth" className="h-full">
+              <PanelHeader icon={Sparkles} label={CASE_BRIEF_LABEL} />
               <PanelContent className="p-2.5">
                 <EmptyState
                   icon={Sparkles}
-                  message="Sign in to generate a summary of your custody documents and conversations"
+                  message="Sign in to generate a structured case brief from your custody documents and activity"
                   ctaLabel="Ask Atlas"
                   ctaHref={askAIPath}
-                  testId="empty-summary-unauth"
+                  testId="empty-brief-unauth"
                 />
               </PanelContent>
             </Panel>
