@@ -54,7 +54,17 @@ interface ChatBoxProps {
    * Undefined = use all user documents (backward compat / legacy).
    */
   selectedDocumentIds?: string[];
+  /** Ask page callback to switch the active case after ambiguity detection. */
+  onSelectCase?: (caseId: string) => void;
+  /** Optional scope label shown near input for visual clarity. */
+  answeringScopeLabel?: string;
 }
+
+type CaseSelectionRequiredResponse = {
+  type: "case_selection_required";
+  message: string;
+  cases: Array<{ id: string; name: string }>;
+};
 
 function getSuggestedQuestions(state: string): string[] {
   const s = state || "my state";
@@ -386,12 +396,28 @@ function FollowUpChips({
   );
 }
 
-export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initialThreadId, initialConversationId, caseId, documentId, selectedDocumentIds }: ChatBoxProps) {
+export function ChatBox({
+  jurisdiction,
+  initialQuestion,
+  initialMessages,
+  initialThreadId,
+  initialConversationId,
+  caseId,
+  documentId,
+  selectedDocumentIds,
+  onSelectCase,
+  answeringScopeLabel,
+}: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [savedToWorkspace, setSavedToWorkspace] = useState(!!initialThreadId || !!caseId);
+  const [pendingCaseSelection, setPendingCaseSelection] = useState<{
+    message: string;
+    question: string;
+    cases: Array<{ id: string; name: string }>;
+  } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lastAssistantRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -481,7 +507,7 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
     }
   };
 
-  const sendMessage = async (question: string) => {
+  const sendMessage = async (question: string, forcedCaseId?: string) => {
     const trimmed = question.trim();
     if (!trimmed || isLoading) return;
 
@@ -521,9 +547,9 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
         userQuestion: trimmed,
         // When using a case, the server loads history from the messages table.
         // We still send client history on the legacy path (no caseId).
-        history: caseId ? undefined : historySnapshot.length > 0 ? historySnapshot : undefined,
+        history: (forcedCaseId ?? caseId) ? undefined : historySnapshot.length > 0 ? historySnapshot : undefined,
         // Case context — when present, the server handles persistence
-        ...(caseId ? { caseId, conversationId: conversationIdRef.current } : {}),
+        ...((forcedCaseId ?? caseId) ? { caseId: (forcedCaseId ?? caseId), conversationId: conversationIdRef.current } : {}),
         // Document scope — when present, the server loads this specific document
         // and answers from its text/analysis before falling back to jurisdiction law.
         ...(documentId ? { documentId } : {}),
@@ -543,10 +569,23 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
         throw new Error(errData.error || `Server error (${res.status})`);
       }
 
-      const data: AILegalResponse & { conversationId?: string } = await res.json();
+      const rawData: (AILegalResponse & { conversationId?: string }) | CaseSelectionRequiredResponse = await res.json();
+
+      if ((rawData as CaseSelectionRequiredResponse).type === "case_selection_required") {
+        const selection = rawData as CaseSelectionRequiredResponse;
+        setPendingCaseSelection({
+          message: selection.message,
+          question: trimmed,
+          cases: selection.cases,
+        });
+        // Remove the just-added user message until they choose a case and retry.
+        setMessages((prev) => prev.slice(0, -1));
+        return;
+      }
+      const data = rawData as AILegalResponse & { conversationId?: string };
 
       // Track conversation ID returned by the server for subsequent messages
-      if (caseId && data.conversationId && !conversationIdRef.current) {
+      if ((forcedCaseId ?? caseId) && data.conversationId && !conversationIdRef.current) {
         conversationIdRef.current = data.conversationId;
         setSavedToWorkspace(true);
         queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
@@ -562,7 +601,7 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
 
       // When using a case, the server has already persisted the messages.
       // Only call ensureAndSave on the legacy (no-case) path.
-      if (!caseId) {
+      if (!(forcedCaseId ?? caseId)) {
         ensureAndSave(trimmed, data.summary, data as unknown as Record<string, unknown>);
       }
     } catch (err: any) {
@@ -602,6 +641,11 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
     const timer = setTimeout(() => _sendRef.current(initialQuestion), 300);
     return () => clearTimeout(timer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    // When switching cases on the Ask page, force a fresh case conversation.
+    conversationIdRef.current = initialConversationId;
+  }, [caseId, initialConversationId]);
 
   // Auto-focus input on mount so users can type immediately
   useEffect(() => {
@@ -712,6 +756,36 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
           {/* Upgrade prompt if limit hit */}
           {limitReached && <UpgradePromptCard type="question" />}
 
+          <div className="text-xs text-muted-foreground" data-testid="label-answering-scope">
+            {answeringScopeLabel ?? "Answering from: General workspace (no case selected)"}
+          </div>
+
+          {pendingCaseSelection && (
+            <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                {pendingCaseSelection.message}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {pendingCaseSelection.cases.map((c) => (
+                  <Button
+                    key={c.id}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      onSelectCase?.(c.id);
+                      setPendingCaseSelection(null);
+                      setTimeout(() => sendMessage(pendingCaseSelection.question, c.id), 0);
+                    }}
+                    data-testid={`button-case-required-${c.id}`}
+                  >
+                    {c.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Textarea + controls */}
           <form onSubmit={handleSubmit} className="space-y-2">
             <div className="relative">
@@ -727,7 +801,7 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
                     ? `Ask a question about custody in ${jurisdiction.state}...`
                     : "Ask a question about child custody laws..."
                 }
-                disabled={isLoading || limitReached}
+                disabled={isLoading || limitReached || !!pendingCaseSelection}
                 className="resize-none min-h-[72px] max-h-40 pr-3 text-sm"
                 rows={hasMessages ? 2 : 3}
                 data-testid="input-question"
@@ -755,12 +829,12 @@ export function ChatBox({ jurisdiction, initialQuestion, initialMessages, initia
                   onStart={startRecording}
                   onStop={stopRecording}
                   onCancel={cancelRecording}
-                  disabled={isLoading || limitReached}
+                  disabled={isLoading || limitReached || !!pendingCaseSelection}
                 />
                 <Button
                   type="submit"
                   size="icon"
-                  disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached}
+                  disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached || !!pendingCaseSelection}
                   data-testid="button-send"
                   title="Send message"
                   className="h-10 w-10"

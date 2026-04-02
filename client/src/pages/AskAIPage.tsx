@@ -803,6 +803,9 @@ export default function AskAIPage() {
   const prioritySignal = askPageState === "urgent_case"
     ? derivePrioritySignal({ overdueActions, urgentActions, hearingDaysAway, baseAskHref })
     : null;
+  const answeringScopeLabel = activeCase
+    ? `Answering from: ${activeCase.title}`
+    : "Answering from: General workspace (no case selected)";
 
   /* ── Main Ask AI layout ───────────────────────────────────────────────── */
   return (
@@ -984,6 +987,8 @@ export default function AskAIPage() {
         initialConversationId={conversationIdParam}
         caseId={activeCaseId}
         selectedDocumentIds={chatSelectedDocumentIds}
+        onSelectCase={(id) => setActiveCaseId(id)}
+        answeringScopeLabel={answeringScopeLabel}
       />
 
       {/* Trust signal footer */}

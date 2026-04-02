@@ -811,6 +811,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
+      // ── Case ambiguity protection ────────────────────────────────────────────
+      // Never allow /api/ask to run across multiple cases when no caseId is given.
+      // - 0 cases: continue in general workspace mode
+      // - 1 case : auto-scope to that case (no prompt needed)
+      // - 2+ cases with no caseId: require explicit case selection
+      let effectiveCaseId = caseId;
+      if (userId) {
+        const userCases = await listCases(userId, 200);
+        if (!effectiveCaseId) {
+          if (userCases.length === 1) {
+            effectiveCaseId = userCases[0].id;
+          } else if (userCases.length > 1) {
+            return res.status(200).json({
+              type: "case_selection_required",
+              message: "Which case are we referring to?",
+              cases: userCases.map((c) => ({ id: c.id, name: c.title })),
+            });
+          }
+        }
+      }
+
       // ── Case-aware path ──────────────────────────────────────────────────────
       // When a caseId is provided, we: verify ownership, resolve or create the
       // conversation, load server-side message history, inject case_memory into
@@ -818,31 +839,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // This path is ADDITIVE — the legacy thread path below is fully preserved.
       let activeConversationId: string | undefined;
 
-      if (caseId && userId) {
+      if (effectiveCaseId && userId) {
         // 1. Ownership check — server enforces this, never trust client claims
-        const caseRecord = await getCaseById(caseId, userId);
+        const caseRecord = await getCaseById(effectiveCaseId, userId);
         if (!caseRecord) {
-          console.warn(`[ask] Case not found or unauthorized. caseId=${caseId} userId=${userId}`);
+          console.warn(`[ask] Case not found or unauthorized. caseId=${effectiveCaseId} userId=${userId}`);
           return res.status(403).json({ error: "Case not found or access denied." });
         }
 
         // 2. Resolve conversation: use the one sent by the client, or create a new one
         if (incomingConvId) {
           const convRecord = await getConversationById(incomingConvId, userId);
-          if (!convRecord || convRecord.caseId !== caseId) {
-            console.warn(`[ask] Conversation mismatch. convId=${incomingConvId} caseId=${caseId}`);
+          if (!convRecord || convRecord.caseId !== effectiveCaseId) {
+            console.warn(`[ask] Conversation mismatch. convId=${incomingConvId} caseId=${effectiveCaseId}`);
             return res.status(403).json({ error: "Conversation not found or does not belong to this case." });
           }
           activeConversationId = incomingConvId;
         } else {
-          const newConv = await createConversation(userId, caseId, {
+          const newConv = await createConversation(userId, effectiveCaseId, {
             title: userQuestion.slice(0, 120),
             threadType: "general",
             jurisdictionState: jurisdiction.state,
             jurisdictionCounty: jurisdiction.county,
           });
           if (!newConv) {
-            console.warn(`[ask] Failed to create conversation for caseId=${caseId}`);
+            console.warn(`[ask] Failed to create conversation for caseId=${effectiveCaseId}`);
             // Non-fatal: fall back to legacy path rather than failing the whole request
           } else {
             activeConversationId = newConv.id;
@@ -892,8 +913,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // resolvedCaseMemories is also passed to the deterministic fact resolver below.
       let caseMemoryText = "";
       let resolvedCaseMemories: Array<{ content: string; memoryType: string }> = [];
-      if (caseId && userId) {
-        resolvedCaseMemories = await listCaseMemory(caseId, userId);
+      if (effectiveCaseId && userId) {
+        resolvedCaseMemories = await listCaseMemory(effectiveCaseId, userId);
         if (resolvedCaseMemories.length > 0) {
           caseMemoryText = "\n\n---\nCASE MEMORY (facts saved from prior sessions):\n" +
             resolvedCaseMemories.map((m) => `[${m.memoryType}] ${m.content}`).join("\n");
@@ -912,6 +933,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!scopedDocument) {
           console.warn(`[ask] documentId provided but not found/unauthorized: id=${documentId.slice(0, 8)} userId=${userId}`);
           return res.status(403).json({ error: "Document not found or access denied." });
+        }
+        if (effectiveCaseId) {
+          const docCaseIds = await getDocumentCaseIds(scopedDocument.id, userId);
+          if (!docCaseIds.includes(effectiveCaseId)) {
+            return res.status(403).json({ error: "Document is not linked to the selected case." });
+          }
         }
         const hasText = scopedDocument.extractedText.trim().length > 0;
         const hasAnalysis = Object.keys(scopedDocument.analysisJson).length > 0;
@@ -974,7 +1001,9 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
         if (scopedDocument) {
           intentUserDocs = [scopedDocument];
         } else {
-          const allDocs = await getDocuments(userId);
+          const allDocs = effectiveCaseId
+            ? await getDocumentsByCase(userId, effectiveCaseId)
+            : await getDocuments(userId);
           // If selectedDocumentIds is provided, filter to only those docs.
           // Empty array = no docs selected = skip doc context.
           intentUserDocs = selectedDocumentIds !== undefined
@@ -982,7 +1011,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
             : allDocs;
         }
         const resolverResult = await resolveFactDeterministically(
-          factFields, intentUserDocs, resolvedCaseMemories, caseId, userId,
+          factFields, intentUserDocs, resolvedCaseMemories, effectiveCaseId, userId,
         );
 
         if (resolverResult) {
@@ -1034,7 +1063,11 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
       const noDocsSelected = Array.isArray(selectedDocumentIds) && selectedDocumentIds.length === 0;
 
       if (intent !== "FACT" && !scopedDocument && !noDocsSelected && userId) {
-        const allRecentDocs = await getDocuments(userId).catch(() => []);
+        const allRecentDocs = await (
+          effectiveCaseId
+            ? getDocumentsByCase(userId, effectiveCaseId)
+            : getDocuments(userId)
+        ).catch(() => []);
         // Filter to selected docs if provided; otherwise use all
         const recentDocs = selectedDocumentIds !== undefined && selectedDocumentIds.length > 0
           ? allRecentDocs.filter((d) => selectedDocumentIds.includes(d.id))
