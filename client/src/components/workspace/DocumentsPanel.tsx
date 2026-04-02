@@ -15,7 +15,7 @@ export function DocumentsPanel({ groupedCaseCount, children }: DocumentsPanelPro
         label="Documents"
         meta={<Badge variant="outline" className="text-[10px] h-5 px-1.5">{groupedCaseCount} groups</Badge>}
       />
-      <PanelContent>{children}</PanelContent>
+      <PanelContent className="p-3">{children}</PanelContent>
     </Panel>
   );
 }
