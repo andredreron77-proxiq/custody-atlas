@@ -29,9 +29,6 @@ import {
   Panel, PanelHeader, PanelContent,
 } from "@/components/app/ProductLayout";
 import {
-  WorkspaceHeaderSection,
-} from "@/components/app/WorkspaceV0Layout";
-import {
   DocFactChips, DocKeyDatesRow, DocObligationBadge,
 } from "@/components/app/DocIntelPanel";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
@@ -987,31 +984,88 @@ function WorkspaceSummaryBar({
   );
 }
 
-function QuickActionsPanel({ askAIPath, lawPagePath }: { askAIPath: string; lawPagePath: string | null }) {
+function WorkspaceEntryHeader({
+  activeCaseName,
+  isProUser,
+  isFreeUser,
+  documentCount,
+  deadlineCount,
+  recentActivityCount,
+}: {
+  activeCaseName: string | null;
+  isProUser: boolean;
+  isFreeUser: boolean;
+  documentCount: number;
+  deadlineCount: number;
+  recentActivityCount: number;
+}) {
+  return (
+    <HeroPanel testId="hero-workspace-entry">
+      <HeroPanelHeader className="space-y-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="space-y-2">
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-semibold">
+              Workspace
+            </Badge>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground" data-testid="heading-workspace">
+              Welcome to your case workspace
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {activeCaseName
+                ? `Active case: ${activeCaseName}`
+                : "General Workspace · Organize documents, track cases, and keep momentum."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isProUser && (
+              <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium" data-testid="badge-workspace-plan-pro">
+                <Zap className="w-3 h-3" />
+                Pro
+              </Badge>
+            )}
+            {isFreeUser && (
+              <Badge variant="outline" className="text-xs font-medium" data-testid="badge-workspace-plan-free">
+                Free plan
+              </Badge>
+            )}
+          </div>
+        </div>
+      </HeroPanelHeader>
+      <HeroPanelContent className="pt-0">
+        <WorkspaceSummaryBar
+          activeCaseName={activeCaseName}
+          documentCount={documentCount}
+          actionDeadlineCount={deadlineCount}
+          recentActivityCount={recentActivityCount}
+        />
+      </HeroPanelContent>
+    </HeroPanel>
+  );
+}
+
+function QuickActionsPanel({ askAIPath }: { askAIPath: string }) {
   return (
     <Panel testId="panel-quick-actions" className="border-border/50 bg-card/70">
       <PanelHeader icon={Zap} label="Quick Actions" />
       <PanelContent className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+        <Link href="/upload-document">
+          <Button className="w-full justify-between" data-testid="button-upload-new-doc">
+            Upload Document
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </Link>
         <Link href={askAIPath}>
-          <Button className="w-full justify-between" data-testid="button-go-ask-atlas">
+          <Button variant="outline" className="w-full justify-between" data-testid="button-go-ask-atlas">
             Ask Atlas
             <ArrowRight className="w-4 h-4" />
           </Button>
         </Link>
-        <Link href="/upload-document">
-          <Button variant="outline" className="w-full justify-between" data-testid="button-upload-new-doc">
-            Analyze a document
+        <Link href="/custody-map">
+          <Button variant="outline" className="w-full justify-between" data-testid="button-view-custody-map">
+            Custody Map
             <ArrowRight className="w-4 h-4" />
           </Button>
         </Link>
-        {lawPagePath && (
-          <Link href={lawPagePath}>
-            <Button variant="outline" className="w-full justify-between" data-testid="button-view-law-summary">
-              View law summary
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-          </Link>
-        )}
       </PanelContent>
     </Panel>
   );
@@ -1507,14 +1561,6 @@ export default function WorkspacePage() {
     return threadParam ? `/ask?${threadParam}` : "/ask";
   })();
 
-  const lawPagePath = jurisdiction
-    ? `/jurisdiction/${encodeURIComponent(jurisdiction.state)}/${encodeURIComponent(jurisdiction.county)}` +
-      `?country=${encodeURIComponent(jurisdiction.country ?? "United States")}` +
-      (jurisdiction.formattedAddress ? `&address=${encodeURIComponent(jurisdiction.formattedAddress)}` : "") +
-      (jurisdiction.latitude !== undefined ? `&lat=${jurisdiction.latitude}` : "") +
-      (jurisdiction.longitude !== undefined ? `&lng=${jurisdiction.longitude}` : "")
-    : null;
-
   const askAIPath = jurisdiction
     ? `/ask?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}&country=${encodeURIComponent(jurisdiction.country ?? "United States")}`
     : "/ask";
@@ -1541,35 +1587,16 @@ export default function WorkspacePage() {
         <span className="text-foreground font-medium">Workspace</span>
       </nav>
 
-      <WorkspaceHeaderSection
-        title="Case Workspace"
-        description="A focused command center for your case priorities, documents, and activity."
-        right={(
-          <>
-            {isProUser && (
-              <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium" data-testid="badge-workspace-plan-pro">
-                <Zap className="w-3 h-3" />
-                Pro
-              </Badge>
-            )}
-            {isFreeUser && (
-              <Badge variant="outline" className="text-xs font-medium" data-testid="badge-workspace-plan-free">
-                Free plan
-              </Badge>
-            )}
-          </>
-        )}
-        summary={(
-          <WorkspaceSummaryBar
-            activeCaseName={activeCaseName}
-            documentCount={documents.length}
-            actionDeadlineCount={documents.filter(docHasRiskSignals).length}
-            recentActivityCount={Math.min(threads.length + documents.length + timelineEvents.length, 8)}
-          />
-        )}
+      <WorkspaceEntryHeader
+        activeCaseName={activeCaseName}
+        isProUser={!!isProUser}
+        isFreeUser={!!isFreeUser}
+        documentCount={documents.length}
+        deadlineCount={documents.filter(docHasRiskSignals).length}
+        recentActivityCount={Math.min(threads.length + documents.length + timelineEvents.length, 8)}
       />
 
-      <QuickActionsPanel askAIPath={askAIPath} lawPagePath={lawPagePath} />
+      <QuickActionsPanel askAIPath={askAIPath} />
 
       <section className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         <div id="documents" className="xl:col-span-3">
