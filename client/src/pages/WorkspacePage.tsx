@@ -23,11 +23,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  PageContainer, PageIntro,
+  PageContainer,
   HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
   Panel, PanelHeader, PanelContent,
-  SectionStack,
 } from "@/components/app/ProductLayout";
+import {
+  WorkspaceHeaderSection,
+  WorkspaceMainLayout,
+  WorkspacePrimaryGroup,
+  WorkspaceSecondaryGroup,
+} from "@/components/app/WorkspaceV0Layout";
 import {
   DocFactChips, DocKeyDatesRow, DocObligationBadge,
 } from "@/components/app/DocIntelPanel";
@@ -1469,13 +1474,11 @@ export default function WorkspacePage() {
         <span className="text-foreground font-medium">Workspace</span>
       </nav>
 
-      {/* 2. Page intro */}
-      <PageIntro
+      <WorkspaceHeaderSection
         title="Case Workspace"
-        titleTestId="heading-workspace"
         description="A focused command center for your case priorities, documents, and activity."
-        right={
-          <div className="flex items-center gap-2">
+        right={(
+          <>
             {isProUser && (
               <Badge className="text-xs gap-1 bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 font-medium" data-testid="badge-workspace-plan-pro">
                 <Zap className="w-3 h-3" />
@@ -1487,95 +1490,99 @@ export default function WorkspacePage() {
                 Free plan
               </Badge>
             )}
-          </div>
-        }
-      />
-
-      <WorkspaceSummaryBar
-        activeCaseName={activeCaseName}
-        documentCount={documents.length}
-        actionDeadlineCount={documents.filter(docHasRiskSignals).length}
-        recentActivityCount={Math.min(threads.length + documents.length + timelineEvents.length, 8)}
-      />
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 space-y-6">
-          <WhatMattersNowPanel
-            workspaceState={workspaceState}
-            scenario={scenario}
-            ctaHref={scenarioCta}
-            documents={documents}
-            timelineEvents={timelineEvents}
-            resumeHref={resumeHref}
-            askAIPath={askAIPath}
-            conversationCount={conversationCount}
-            analyzedCount={analyzedCount}
+          </>
+        )}
+        summary={(
+          <WorkspaceSummaryBar
+            activeCaseName={activeCaseName}
+            documentCount={documents.length}
+            actionDeadlineCount={documents.filter(docHasRiskSignals).length}
+            recentActivityCount={Math.min(threads.length + documents.length + timelineEvents.length, 8)}
           />
+        )}
+      />
 
-          <div id="documents">
-          <Panel testId="card-recent-documents">
-            <PanelHeader icon={FileText} label="Documents" />
-            <PanelContent>
-              <DocumentsSection
-                documents={documents}
-                isLoading={isLoadingWorkspace && !!user}
-                askAIPath={askAIPath}
-                caseNameById={caseNameById}
-              />
-            </PanelContent>
-          </Panel>
-          </div>
-        </div>
+      <WorkspaceMainLayout
+        primary={(
+          <WorkspacePrimaryGroup>
+            <WhatMattersNowPanel
+              workspaceState={workspaceState}
+              scenario={scenario}
+              ctaHref={scenarioCta}
+              documents={documents}
+              timelineEvents={timelineEvents}
+              resumeHref={resumeHref}
+              askAIPath={askAIPath}
+              conversationCount={conversationCount}
+              analyzedCount={analyzedCount}
+            />
 
-        <SectionStack gap="md">
-          <div id="recent-activity">
-            {user ? (
-              <TimelineAndActivityPanel
-                events={timelineEvents}
-                threads={threads}
-                documents={documents}
-                isLoading={isLoadingWorkspace && !!user}
-                askAIPath={askAIPath}
-              />
-            ) : (
-              <Panel testId="card-timeline-activity">
-                <PanelHeader icon={Clock} label="Recent Activity" />
+            <div id="documents">
+              <Panel testId="card-recent-documents">
+                <PanelHeader icon={FileText} label="Documents" />
                 <PanelContent>
-                  <EmptyState
-                    icon={MessageSquare}
-                    message="Sign in to save conversations and track your case timeline"
-                    ctaLabel="Ask Atlas"
-                    ctaHref={askAIPath}
-                    testId="empty-activity-unauth"
+                  <DocumentsSection
+                    documents={documents}
+                    isLoading={isLoadingWorkspace && !!user}
+                    askAIPath={askAIPath}
+                    caseNameById={caseNameById}
                   />
                 </PanelContent>
               </Panel>
-            )}
-          </div>
+            </div>
+          </WorkspacePrimaryGroup>
+        )}
+        secondary={(
+          <WorkspaceSecondaryGroup>
+            <div id="recent-activity">
+              {user ? (
+                <TimelineAndActivityPanel
+                  events={timelineEvents}
+                  threads={threads}
+                  documents={documents}
+                  isLoading={isLoadingWorkspace && !!user}
+                  askAIPath={askAIPath}
+                />
+              ) : (
+                <Panel testId="card-timeline-activity">
+                  <PanelHeader icon={Clock} label="Recent Activity" />
+                  <PanelContent>
+                    <EmptyState
+                      icon={MessageSquare}
+                      message="Sign in to save conversations and track your case timeline"
+                      ctaLabel="Ask Atlas"
+                      ctaHref={askAIPath}
+                      testId="empty-activity-unauth"
+                    />
+                  </PanelContent>
+                </Panel>
+              )}
+            </div>
 
-          <QuickActionsPanel askAIPath={askAIPath} lawPagePath={lawPagePath} />
+            <QuickActionsPanel askAIPath={askAIPath} lawPagePath={lawPagePath} />
 
-          {user && <CaseSummarySection />}
+            {user && <CaseSummarySection />}
 
-        {/* Privacy strip */}
-        <div
-          className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4"
-          data-testid="card-privacy-trust"
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-            <p className="text-xs text-muted-foreground leading-snug">
-              Documents are analyzed privately and never retained. Your questions are confidential.
-            </p>
-          </div>
-          <Link href="/privacy">
-            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
-              Privacy Policy
-            </Button>
-          </Link>
-        </div>
-        </SectionStack>
-      </div>
+            {/* Privacy strip */}
+            <div
+              className="rounded-lg border border-border/40 bg-muted/10 px-4 py-3 flex items-center justify-between gap-4"
+              data-testid="card-privacy-trust"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <p className="text-xs text-muted-foreground leading-snug">
+                  Documents are analyzed privately and never retained. Your questions are confidential.
+                </p>
+              </div>
+              <Link href="/privacy">
+                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 flex-shrink-0 px-2" data-testid="button-view-privacy">
+                  Privacy Policy
+                </Button>
+              </Link>
+            </div>
+          </WorkspaceSecondaryGroup>
+        )}
+      />
 
     </PageContainer>
   );
