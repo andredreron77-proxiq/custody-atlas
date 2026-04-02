@@ -1584,6 +1584,14 @@ CRITICAL RULES:
         }
       }
 
+      if (docUserId && req.file && !savedDocumentId) {
+        console.error("[analyze-document] persistence failure: analysis succeeded but document row was not saved");
+        return res.status(500).json({
+          error: "Document analysis completed, but we could not persist this upload. Please retry.",
+          code: "DOCUMENT_PERSISTENCE_FAILED",
+        });
+      }
+
       return res.json({
         ...validated.data,
         extractedText: truncatedText,
