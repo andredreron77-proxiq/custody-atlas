@@ -2345,109 +2345,318 @@ CRITICAL RULES:
     }
   });
 
-  /* ── AI Case Summary ─────────────────────────────────────────────────────── */
+  /* ── AI Case Brief ───────────────────────────────────────────────────────── */
+
+  type BriefPriority = {
+    title: string;
+    reason: string;
+    level: "high" | "medium";
+    score: number;
+  };
+
+  type BriefKeyDate = {
+    label: string;
+    value: string;
+    sourceDocument: string;
+    urgency: "upcoming" | "future" | "unknown";
+  };
+
+  type BriefDocumentSignal = {
+    id: string;
+    fileName: string;
+    docType: string;
+    caseId: string | null;
+    createdAt: string;
+    summary: string;
+    keyDates: string[];
+    alerts: string[];
+    implications: string[];
+    extractedFacts: Record<string, string>;
+  };
+
+  function asStringList(input: unknown): string[] {
+    if (!Array.isArray(input)) return [];
+    return input
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean);
+  }
+
+  function parseDocumentSignals(doc: SavedDocument): BriefDocumentSignal {
+    const analysis = (doc.analysisJson ?? {}) as Record<string, unknown>;
+    const extractedFactsRaw = (analysis.extracted_facts ?? {}) as Record<string, unknown>;
+    const extractedFacts: Record<string, string> = {};
+
+    for (const [k, v] of Object.entries(extractedFactsRaw)) {
+      if (typeof v === "string" && v.trim()) extractedFacts[k] = v.trim();
+    }
+
+    const summaryValue = analysis.summary;
+    const summary = typeof summaryValue === "string"
+      ? summaryValue.trim()
+      : Array.isArray(summaryValue)
+        ? summaryValue.filter((v): v is string => typeof v === "string").join("; ")
+        : "";
+
+    const keyDates = asStringList(analysis.key_dates);
+    const alerts = [
+      ...asStringList(analysis.document_alerts),
+      ...asStringList(analysis.alerts),
+    ];
+
+    return {
+      id: doc.id,
+      fileName: doc.fileName,
+      docType: doc.docType,
+      caseId: doc.caseId ?? null,
+      createdAt: doc.createdAt,
+      summary,
+      keyDates,
+      alerts,
+      implications: asStringList(analysis.possible_implications),
+      extractedFacts,
+    };
+  }
+
+  function computeDateUrgency(value: string): "upcoming" | "future" | "unknown" {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "unknown";
+
+    const today = new Date();
+    const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+    const dateUtc = Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
+    const diffDays = Math.floor((dateUtc - todayUtc) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 14) return "upcoming";
+    return "future";
+  }
+
+  function buildPriorities(
+    docs: BriefDocumentSignal[],
+    missingSignals: string[],
+    recentActivityCount: number,
+  ): BriefPriority[] {
+    const priorities: BriefPriority[] = [];
+    const emergencyKeywords = ["emergency", "immediate", "safety", "violence", "restraining", "protective"];
+
+    const upcomingDateCount = docs.flatMap((d) => [...d.keyDates, d.extractedFacts.hearing_date ?? ""])
+      .filter(Boolean)
+      .filter((dateValue) => computeDateUrgency(dateValue) === "upcoming")
+      .length;
+
+    if (upcomingDateCount > 0) {
+      priorities.push({
+        title: `Upcoming legal dates (${upcomingDateCount})`,
+        reason: "Upcoming hearings and deadlines are most time-sensitive.",
+        level: "high",
+        score: 100,
+      });
+    }
+
+    const emergencyCount = docs.reduce((acc, d) => {
+      const text = [d.summary, ...d.alerts, ...d.implications].join(" ").toLowerCase();
+      if (emergencyKeywords.some((kw) => text.includes(kw))) return acc + 1;
+      return acc;
+    }, 0);
+
+    if (emergencyCount > 0) {
+      priorities.push({
+        title: `Emergency/safety language found (${emergencyCount} doc${emergencyCount > 1 ? "s" : ""})`,
+        reason: "Potential safety risk signals need immediate review.",
+        level: "high",
+        score: 95,
+      });
+    }
+
+    if (missingSignals.length > 0) {
+      priorities.push({
+        title: `Missing required case elements (${missingSignals.length})`,
+        reason: "Missing core facts create filing and preparation risk.",
+        level: "high",
+        score: 90,
+      });
+    }
+
+    if (recentActivityCount > 0) {
+      priorities.push({
+        title: `Recent activity (${recentActivityCount})`,
+        reason: "Recent conversations may indicate active case movement.",
+        level: "medium",
+        score: 60,
+      });
+    }
+
+    return priorities.sort((a, b) => b.score - a.score).slice(0, 6);
+  }
 
   /**
-   * POST /api/workspace/summarize
-   * Generate an informational AI summary of the user's custody situation
-   * based on their conversation history and uploaded documents.
-   * Returns { themes, custodyFactors, insights, disclaimer }.
+   * POST /api/workspace/case-brief
+   * Generate a structured, scoped case brief from extracted intelligence.
    */
-  app.post("/api/workspace/summarize", requireAuth, async (req, res) => {
+  app.post("/api/workspace/case-brief", requireAuth, async (req, res) => {
     const user = (req as any).user;
+    const requestedCaseId = typeof req.body?.caseId === "string" && req.body.caseId.trim().length > 0
+      ? req.body.caseId.trim()
+      : null;
+
     try {
-      // Gather context — recent threads and documents
-      const [threads, documents] = await Promise.all([
-        listThreads(user.id, 8),
+      const [allCases, allDocs, threads] = await Promise.all([
+        listCases(user.id, 100),
         getDocuments(user.id),
+        listThreads(user.id, 20),
       ]);
 
-      if (threads.length === 0 && documents.length === 0) {
+      const activeCase = requestedCaseId
+        ? allCases.find((c) => c.id === requestedCaseId) ?? null
+        : null;
+
+      if (requestedCaseId && !activeCase) {
+        return res.status(404).json({ error: "Selected case not found." });
+      }
+
+      const docs = activeCase
+        ? await getDocumentsByCase(activeCase.id, user.id)
+        : allDocs.filter((d) => !d.caseId);
+
+      const caseDocIdSet = new Set(docs.map((d) => d.id));
+      const scopedThreads = activeCase
+        ? threads.filter((t) => !!t.documentId && caseDocIdSet.has(t.documentId))
+        : threads.filter((t) => !t.documentId || allDocs.find((d) => d.id === t.documentId && !d.caseId));
+
+      if (docs.length === 0 && scopedThreads.length === 0) {
         return res.status(400).json({
-          error: "Not enough context yet. Ask some custody questions or upload a document first.",
+          error: activeCase
+            ? "No documents or activity are linked to this case yet."
+            : "No unassigned documents or activity found for a workspace brief.",
         });
       }
 
-      // Pull recent messages from up to 5 threads
-      const messageChunks = await Promise.all(
-        threads.slice(0, 5).map((t) => getRecentMessages(t.id, 6)),
-      );
-      const allMessages = messageChunks.flat();
+      const parsedDocs = docs.map(parseDocumentSignals);
+      const [caseFactsRows, messageChunks] = await Promise.all([
+        activeCase ? getCaseFacts(activeCase.id, user.id) : Promise.resolve([]),
+        Promise.all(scopedThreads.slice(0, 6).map((t) => getRecentMessages(t.id, 4))),
+      ]);
 
-      // Build conversation context
-      const conversationText = allMessages
-        .map((m) => `[${m.role === "user" ? "User" : "Atlas"}]: ${m.messageText}`)
-        .join("\n");
+      const keyDates: BriefKeyDate[] = [];
+      for (const doc of parsedDocs) {
+        for (const dateStr of doc.keyDates.slice(0, 4)) {
+          keyDates.push({
+            label: "Key date",
+            value: dateStr,
+            sourceDocument: doc.fileName,
+            urgency: computeDateUrgency(dateStr),
+          });
+        }
+        if (doc.extractedFacts.hearing_date) {
+          keyDates.push({
+            label: "Hearing date",
+            value: doc.extractedFacts.hearing_date,
+            sourceDocument: doc.fileName,
+            urgency: computeDateUrgency(doc.extractedFacts.hearing_date),
+          });
+        }
+      }
 
-      // Build document context (title + analysis summary)
-      const documentText = documents
-        .map((d) => {
-          const analysis = d.analysisJson as any;
-          const summary = analysis?.summary ?? analysis?.extractedInfo ?? analysis?.keyPoints ?? "";
-          const summaryStr = typeof summary === "string"
-            ? summary
-            : Array.isArray(summary)
-              ? summary.join("; ")
-              : "";
-          return `Document: "${d.fileName}"\n${summaryStr ? `Summary: ${summaryStr}` : "(analysis available)"}`;
-        })
-        .join("\n\n");
+      const requiredFactKeys = ["case_number", "court_name", "hearing_date"];
+      const missingSignals = requiredFactKeys.filter((key) => {
+        const foundInDocs = parsedDocs.some((d) => !!d.extractedFacts[key]);
+        const foundInCaseFacts = caseFactsRows.some((f) => f.factType === key && !!f.value);
+        return !foundInDocs && !foundInCaseFacts;
+      });
 
-      const systemPrompt = `You are a neutral, informational legal research assistant helping someone understand their custody situation. 
-Your role is strictly educational — you summarize themes and general legal context, never advise on strategy or predict outcomes.
+      const flattenedMessages = messageChunks.flat();
+      const recentActivity = flattenedMessages
+        .filter((m) => m.role === "user")
+        .slice(-6)
+        .map((m) => m.messageText.trim())
+        .filter(Boolean);
 
-CRITICAL TONE RULES:
-- Use language like "courts typically consider...", "in many jurisdictions...", "one factor courts look at..."
-- NEVER say "you should...", "you must...", "you will win/lose...", "your best option is..."
-- NEVER make predictions about outcomes
-- NEVER give strategic advice
-- Frame everything as general information about how custody law works
+      const priorities = buildPriorities(parsedDocs, missingSignals, recentActivity.length);
 
-Return a JSON object with exactly these fields:
-{
-  "themes": ["3-5 short phrases describing the main topics the user has been exploring"],
-  "custodyFactors": ["4-6 general factors courts typically consider that appear relevant to the conversations"],
-  "insights": ["3-4 informational observations about what the user has been learning"],
-  "disclaimer": "One sentence reminding the user this is general information, not legal advice."
-}`;
-
-      const userPrompt = `Below is the custody-related conversation history and document context for this user. 
-Generate an informational summary based on this content.
-
-${conversationText ? `=== Conversation History ===\n${conversationText}\n` : ""}
-${documentText ? `\n=== Uploaded Documents ===\n${documentText}\n` : ""}
-
-Respond only with the JSON object. No markdown, no extra text.`;
+      const evidenceBasis = parsedDocs.map((d) => ({
+        documentId: d.id,
+        fileName: d.fileName,
+        docType: d.docType,
+        createdAt: d.createdAt,
+        caseId: d.caseId,
+        facts: {
+          case_number: d.extractedFacts.case_number ?? null,
+          court_name: d.extractedFacts.court_name ?? null,
+          hearing_date: d.extractedFacts.hearing_date ?? null,
+          filing_date: d.extractedFacts.filing_date ?? null,
+        },
+        alerts: d.alerts,
+      }));
 
       const openai = getOpenAIClient();
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.4,
-        max_tokens: 800,
+        temperature: 0.25,
+        max_tokens: 1200,
         response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `You generate concise, high-signal case briefs from structured legal intelligence.
+Return JSON only.
+Do not include legal disclaimers.
+Do not add facts not present in the provided evidence.`,
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              mode: activeCase ? "case" : "general_workspace",
+              briefLabel: activeCase ? `Case Brief: ${activeCase.title}` : "General Workspace Brief",
+              priorities,
+              keyDates,
+              missingSignals,
+              recentActivity,
+              caseFacts: caseFactsRows.map((f) => ({ factType: f.factType, value: f.value, sourceName: f.sourceName })),
+              documents: parsedDocs,
+              requiredOutputShape: {
+                currentSituation: "string",
+                whatMattersMost: [{ priority: "string", reason: "string", level: "high|medium" }],
+                keyDatesAndDeadlines: [{ date: "string", label: "string", source: "string", urgency: "upcoming|future|unknown" }],
+                risksWatchItems: ["string"],
+                documentInsights: [{ documentId: "string", fileName: "string", insight: "string", whyItMatters: "string" }],
+                missingInformationGaps: ["string"],
+                recommendedNextActions: ["string"],
+              },
+            }),
+          },
+        ],
       });
 
-      const rawJson = completion.choices[0]?.message?.content ?? "{}";
+      const raw = completion.choices[0]?.message?.content ?? "{}";
       let parsed: any;
       try {
-        parsed = JSON.parse(rawJson);
+        parsed = JSON.parse(raw);
       } catch {
-        return res.status(500).json({ error: "Failed to parse AI response." });
+        return res.status(500).json({ error: "Failed to parse case brief response." });
       }
 
       return res.json({
-        themes: Array.isArray(parsed.themes) ? parsed.themes.slice(0, 5) : [],
-        custodyFactors: Array.isArray(parsed.custodyFactors) ? parsed.custodyFactors.slice(0, 6) : [],
-        insights: Array.isArray(parsed.insights) ? parsed.insights.slice(0, 4) : [],
-        disclaimer: typeof parsed.disclaimer === "string" ? parsed.disclaimer : "This summary is general information only, not legal advice.",
+        title: activeCase ? `Case Brief: ${activeCase.title}` : "General Workspace Brief",
+        scope: activeCase
+          ? { type: "case", caseId: activeCase.id, caseTitle: activeCase.title }
+          : { type: "general", caseId: null, caseTitle: null },
+        currentSituation: typeof parsed.currentSituation === "string" ? parsed.currentSituation : "No clear case narrative yet.",
+        whatMattersMost: Array.isArray(parsed.whatMattersMost) ? parsed.whatMattersMost.slice(0, 6) : priorities.map((p) => ({ priority: p.title, reason: p.reason, level: p.level })),
+        keyDatesAndDeadlines: Array.isArray(parsed.keyDatesAndDeadlines) ? parsed.keyDatesAndDeadlines.slice(0, 8) : keyDates.map((k) => ({ date: k.value, label: k.label, source: k.sourceDocument, urgency: k.urgency })),
+        risksWatchItems: Array.isArray(parsed.risksWatchItems) ? parsed.risksWatchItems.slice(0, 8) : [],
+        documentInsights: Array.isArray(parsed.documentInsights) ? parsed.documentInsights.slice(0, 20) : parsedDocs.map((d) => ({
+          documentId: d.id,
+          fileName: d.fileName,
+          insight: d.summary || `Contains ${Object.keys(d.extractedFacts).length} extracted facts.`,
+          whyItMatters: d.extractedFacts.hearing_date
+            ? `Contains hearing date (${d.extractedFacts.hearing_date}) for planning.`
+            : "Contributes to case evidence context.",
+        })),
+        missingInformationGaps: Array.isArray(parsed.missingInformationGaps) ? parsed.missingInformationGaps.slice(0, 8) : missingSignals,
+        recommendedNextActions: Array.isArray(parsed.recommendedNextActions) ? parsed.recommendedNextActions.slice(0, 8) : [],
+        evidenceBasis,
       });
     } catch (err) {
-      console.error("[workspace] summarize error:", err);
-      return res.status(500).json({ error: "Failed to generate summary." });
+      console.error("[workspace] case-brief error:", err);
+      return res.status(500).json({ error: "Failed to generate case brief." });
     }
   });
 
