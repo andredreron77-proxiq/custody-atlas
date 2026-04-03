@@ -755,6 +755,13 @@ export default function DocumentDetailPage() {
                   <span className="text-sm text-muted-foreground">
                     {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
                   </span>
+                  {doc.caseId && (
+                    <Link href={`/case/${doc.caseId}`}>
+                      <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" data-testid="link-document-case-dashboard">
+                        Open case dashboard
+                      </Button>
+                    </Link>
+                  )}
                   {analyzed && (
                     <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 font-medium">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
