@@ -5,9 +5,11 @@ import { FolderOpen, ChevronsUpDown } from "lucide-react";
 interface WorkspaceHeaderProps {
   activeCaseName: string | null;
   caseCount: number;
+  timelineEventCount: number;
+  activeCaseId?: string;
 }
 
-export function WorkspaceHeader({ activeCaseName, caseCount }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ activeCaseName, caseCount, timelineEventCount, activeCaseId }: WorkspaceHeaderProps) {
   const hasActiveCase = !!activeCaseName;
 
   return (
@@ -31,6 +33,20 @@ export function WorkspaceHeader({ activeCaseName, caseCount }: WorkspaceHeaderPr
           Switch case
           <span className="text-[10px] text-muted-foreground">({caseCount})</span>
         </Button>
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 flex-wrap" data-testid="workspace-context-row">
+        <Badge variant="outline" className="text-[11px] font-medium normal-case">
+          {timelineEventCount} recent event{timelineEventCount === 1 ? "" : "s"}
+        </Badge>
+        <Badge variant="outline" className="text-[11px] font-medium normal-case">
+          {hasActiveCase ? "Case linked" : "General workspace"}
+        </Badge>
+        {activeCaseId && (
+          <Badge variant="outline" className="text-[11px] font-medium normal-case">
+            ID: {activeCaseId.slice(0, 8)}…
+          </Badge>
+        )}
       </div>
     </div>
   );
