@@ -67,6 +67,14 @@ interface WorkspaceDocument {
   isAnalysisAvailable: boolean;
   analysisStatus: "uploaded" | "analyzing" | "analyzed" | "failed";
   integrityIssue: "missing_analysis" | null;
+  caseAssignment?: {
+    status: "assigned" | "suggested" | "unassigned";
+    caseId: string | null;
+    suggestedCaseId: string | null;
+    confidenceScore: number | null;
+    reason: string | null;
+    autoAssigned: boolean;
+  };
 }
 
 interface WorkspaceTimelineEvent {
@@ -764,13 +772,14 @@ function CaseBriefSection({ caseIdParam }: { caseIdParam?: string }) {
 /* ── Documents — compact dashboard preview ────────────────────────────────── */
 
 function DocumentsSection({
-  documents, isLoading, askAIPath, caseNameById, onOpenDocumentSafely,
+  documents, isLoading, askAIPath, caseNameById, onOpenDocumentSafely, cases,
 }: {
   documents: WorkspaceDocument[];
   isLoading: boolean;
   askAIPath: string;
   caseNameById: Record<string, string>;
   onOpenDocumentSafely: (documentId: string) => Promise<void>;
+  cases: CaseRecord[];
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -796,6 +805,22 @@ function DocumentsSection({
     onError: (err: Error) => {
       toast({ title: "Delete failed", description: err.message, variant: "destructive" });
       setPendingDelete(null);
+    },
+  });
+  const assignmentMutation = useMutation({
+    mutationFn: async ({ docId, caseId }: { docId: string; caseId: string | null }) => {
+      const res = await apiRequestRaw("PATCH", `/api/documents/${docId}/case-assignment`, { caseId });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not update case assignment.");
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
+      qc.invalidateQueries({ queryKey: ["/api/documents"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Assignment update failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -827,9 +852,14 @@ function DocumentsSection({
     <div className="space-y-3" data-testid="list-documents-grouped">
       <ul className="space-y-1.5">
         {visibleDocs.map((doc) => {
-          const caseLabel = doc.caseId
-            ? caseNameById[doc.caseId] ?? "Unnamed Case"
-            : "Unassigned";
+          const assignedCaseId = doc.caseId ?? null;
+          const suggestedCaseId = doc.caseAssignment?.suggestedCaseId ?? null;
+          const assignmentStatus = doc.caseAssignment?.status ?? (assignedCaseId ? "assigned" : "unassigned");
+          const caseLabel = assignmentStatus === "assigned" && assignedCaseId
+            ? `Assigned to ${caseNameById[assignedCaseId] ?? "Unnamed Case"}`
+            : assignmentStatus === "suggested" && suggestedCaseId
+              ? `Suggested for ${caseNameById[suggestedCaseId] ?? "Unnamed Case"}`
+              : "Unassigned";
           const topSignal = getTopDocumentSignal(doc);
           const hasRisk = docHasRiskSignals(doc);
           return (
@@ -883,6 +913,32 @@ function DocumentsSection({
                       {caseLabel}
                     </Badge>
                     <span className="text-[11px] text-muted-foreground">{relativeTime(doc.createdAt)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={assignedCaseId ?? "unassigned"}
+                      onValueChange={(value) => {
+                        assignmentMutation.mutate({
+                          docId: doc.id,
+                          caseId: value === "unassigned" ? null : value,
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="h-7 text-[11px] w-[220px]" data-testid={`select-case-assignment-${doc.id}`}>
+                        <SelectValue placeholder="Assign to case" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Leave unassigned</SelectItem>
+                        {cases.map((caseItem) => (
+                          <SelectItem key={caseItem.id} value={caseItem.id}>
+                            {caseItem.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {doc.caseAssignment?.autoAssigned && doc.caseAssignment.status === "assigned" && (
+                      <span className="text-[10px] text-muted-foreground">Auto-assigned (editable)</span>
+                    )}
                   </div>
                   {topSignal && (
                     <p className={`text-[11px] truncate ${hasRisk ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
@@ -1485,6 +1541,7 @@ export default function WorkspacePage() {
                 askAIPath={askAIPath}
                 caseNameById={caseNameById}
                 onOpenDocumentSafely={openDocumentSafely}
+                cases={cases}
               />
             </DocumentsPanel>
           </div>

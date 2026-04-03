@@ -26,11 +26,19 @@ import {
   Panel, PanelHeader, PanelContent,
   InsetPanel, ActionRow as ProdActionRow, SectionStack,
 } from "@/components/app/ProductLayout";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DocumentAnalysisResult, DocumentQAResponse, ExtractedFacts } from "@shared/schema";
 
 interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
   documentId?: string | null;
+  caseAssignment?: {
+    status: "assigned" | "suggested" | "unassigned";
+    assignedCaseId: string | null;
+    suggestedCaseId: string | null;
+    confidenceScore: number | null;
+    reason: string;
+    autoAssigned: boolean;
+  };
   dedupe?: {
     isDuplicate: boolean;
     message: string | null;
@@ -1057,7 +1065,21 @@ export default function UploadDocumentPage() {
   const [docLimitReached, setDocLimitReached] = useState(false);
   // Stored after a successful analysis — used for re-analysis without creating a duplicate record
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const [caseAssignment, setCaseAssignment] = useState<AnalyzeDocumentResponse["caseAssignment"] | null>(null);
+  const [pendingCaseSelection, setPendingCaseSelection] = useState<string>("unassigned");
   const queryClient = useQueryClient();
+  const { data: casesData } = useQuery({
+    queryKey: ["/api/cases"],
+    queryFn: async () => {
+      const headers: Record<string, string> = {};
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch("/api/cases", { headers });
+      if (!res.ok) return { cases: [] as Array<{ id: string; title: string }> };
+      return res.json() as Promise<{ cases: Array<{ id: string; title: string }> }>;
+    },
+  });
+  const userCases = casesData?.cases ?? [];
 
   // Hidden file input refs
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -1267,6 +1289,8 @@ export default function UploadDocumentPage() {
     setResult(null);
     setError(null);
     setDocumentId(null);
+    setCaseAssignment(null);
+    setPendingCaseSelection("unassigned");
   };
 
   /* ── Drag and drop ───────────────────────────────────────────────────── */
@@ -1364,6 +1388,8 @@ export default function UploadDocumentPage() {
       }
 
       setResult(data as DocumentAnalysisResult);
+      setCaseAssignment(data.caseAssignment ?? null);
+      setPendingCaseSelection(data.caseAssignment?.assignedCaseId ?? data.caseAssignment?.suggestedCaseId ?? "unassigned");
       if (data.documentId) setDocumentId(data.documentId as string);
       if (data.dedupe?.isDuplicate) {
         toast({
@@ -1412,6 +1438,7 @@ export default function UploadDocumentPage() {
       if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
 
       setResult(data as DocumentAnalysisResult);
+      setCaseAssignment(null);
       // documentId stays the same — no new record was created
     } catch (err: any) {
       const message = err?.message || "Re-analysis failed. Please try again.";
@@ -1419,6 +1446,36 @@ export default function UploadDocumentPage() {
       toast({ title: "Re-analysis Failed", description: message, variant: "destructive" });
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const applyCaseSelection = async () => {
+    if (!documentId) return;
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const selectedCaseId = pendingCaseSelection === "unassigned" ? null : pendingCaseSelection;
+      const res = await fetch(`/api/documents/${documentId}/case-assignment`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ caseId: selectedCaseId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update case assignment.");
+      setCaseAssignment((prev) => ({
+        status: selectedCaseId ? "assigned" : "unassigned",
+        assignedCaseId: selectedCaseId,
+        suggestedCaseId: null,
+        confidenceScore: prev?.confidenceScore ?? null,
+        reason: "user_selected_case",
+        autoAssigned: false,
+      }));
+      queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      toast({ title: "Case updated", description: selectedCaseId ? "Document assigned to case." : "Document left unassigned." });
+    } catch (err: any) {
+      toast({ title: "Could not update case", description: err?.message ?? "Please try again.", variant: "destructive" });
     }
   };
 
@@ -1654,6 +1711,38 @@ export default function UploadDocumentPage() {
           {/* Tabbed results */}
           {result && !isAnalyzing && (
             <SectionStack gap="md">
+              {caseAssignment && (
+                <Panel>
+                  <PanelHeader icon={FileText} label="Case assignment" />
+                  <PanelContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      {caseAssignment.status === "assigned"
+                        ? `Assigned to ${userCases.find((c) => c.id === caseAssignment.assignedCaseId)?.title ?? "selected case"}.`
+                        : caseAssignment.status === "suggested"
+                          ? `Suggested for ${userCases.find((c) => c.id === caseAssignment.suggestedCaseId)?.title ?? "a case"}.`
+                          : "Unassigned."}
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <select
+                        className="h-9 rounded-md border bg-background px-3 text-sm"
+                        value={pendingCaseSelection}
+                        onChange={(e) => setPendingCaseSelection(e.target.value)}
+                      >
+                        <option value="unassigned">Leave unassigned</option>
+                        {userCases.map((caseItem) => (
+                          <option key={caseItem.id} value={caseItem.id}>{caseItem.title}</option>
+                        ))}
+                      </select>
+                      <Button size="sm" variant="outline" onClick={applyCaseSelection}>
+                        Confirm case selection
+                      </Button>
+                    </div>
+                    {caseAssignment.autoAssigned && (
+                      <p className="text-xs text-muted-foreground">Auto-assigned from document signals. You can change it anytime.</p>
+                    )}
+                  </PanelContent>
+                </Panel>
+              )}
               <Tabs defaultValue="summary" className="w-full">
                 <TabsList className="w-full grid grid-cols-3 h-9 bg-muted/40 border border-border/40">
                   <TabsTrigger value="summary" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none data-[state=active]:font-semibold">Summary</TabsTrigger>

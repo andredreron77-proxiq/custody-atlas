@@ -21,6 +21,7 @@ import {
 import { buildRetentionWindow } from "./lib/documentRetention";
 import { planUploadAssociation } from "./lib/documentIdentity";
 import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
+import { decideCaseAssignment, type AssignmentCandidate } from "./lib/documentCaseAssignment";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -39,7 +40,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, type DocumentType, type SavedDocument } from "./services/documents";
 import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
@@ -1488,7 +1489,79 @@ CRITICAL RULES:
 
       // Save document + optionally populate case_facts if a caseId was provided.
       const docUserId = (req as any).user?.id as string | undefined;
-      const docCaseId: string | undefined = req.body?.caseId || undefined;
+      const requestedCaseId: string | undefined = req.body?.caseId || undefined;
+      let docCaseId: string | undefined = requestedCaseId;
+      let assignmentDecision: {
+        status: "assigned" | "suggested" | "unassigned";
+        assignedCaseId: string | null;
+        suggestedCaseId: string | null;
+        confidenceScore: number | null;
+        reason: string;
+        autoAssigned: boolean;
+      } | null = null;
+
+      if (docUserId && !requestedCaseId) {
+        const userCases = await listCases(docUserId);
+        if (userCases.length === 0) {
+          const extractedFacts = (validated.data.extracted_facts ?? {}) as Record<string, unknown>;
+          const newTitle =
+            (typeof extractedFacts.case_number === "string" && extractedFacts.case_number.trim())
+            || (typeof validated.data.document_type === "string" && validated.data.document_type.trim())
+            || "My First Case";
+          const created = await createCase(docUserId, { title: newTitle.slice(0, 120) });
+          if (created) {
+            docCaseId = created.id;
+            assignmentDecision = {
+              status: "assigned",
+              assignedCaseId: created.id,
+              suggestedCaseId: null,
+              confidenceScore: 100,
+              reason: "auto_created_first_case",
+              autoAssigned: true,
+            };
+          }
+        } else if (userCases.length === 1) {
+          docCaseId = userCases[0].id;
+          assignmentDecision = {
+            status: "assigned",
+            assignedCaseId: userCases[0].id,
+            suggestedCaseId: null,
+            confidenceScore: 100,
+            reason: "single_case_default",
+            autoAssigned: true,
+          };
+        } else {
+          const extractedFacts = (validated.data.extracted_facts ?? {}) as Record<string, unknown>;
+          const candidates: AssignmentCandidate[] = await Promise.all(
+            userCases.map(async (caseRecord) => ({
+              caseRecord,
+              priorDocuments: await getDocumentsByCase(caseRecord.id, docUserId),
+            })),
+          );
+          const signals = {
+            caseNumber: typeof extractedFacts.case_number === "string" ? extractedFacts.case_number : null,
+            courtName: typeof extractedFacts.court_name === "string" ? extractedFacts.court_name : null,
+            filingParty: typeof extractedFacts.filing_party === "string" ? extractedFacts.filing_party : null,
+            opposingParty: typeof extractedFacts.opposing_party === "string" ? extractedFacts.opposing_party : null,
+            jurisdictionState: typeof req.body?.jurisdictionState === "string" ? req.body.jurisdictionState : null,
+          };
+          assignmentDecision = decideCaseAssignment(signals, candidates);
+          if (assignmentDecision.status === "assigned" && assignmentDecision.assignedCaseId) {
+            docCaseId = assignmentDecision.assignedCaseId;
+          } else {
+            docCaseId = undefined;
+          }
+        }
+      } else if (requestedCaseId) {
+        assignmentDecision = {
+          status: "assigned",
+          assignedCaseId: requestedCaseId,
+          suggestedCaseId: null,
+          confidenceScore: 100,
+          reason: "user_selected_case",
+          autoAssigned: false,
+        };
+      }
 
       let savedDocumentId: string | null = null;
       let duplicateUpload = false;
@@ -1506,6 +1579,15 @@ CRITICAL RULES:
           ...(validated.data as Record<string, unknown>),
           analysis_status: "analyzed",
           source_file_sha256: sourceFileSha256,
+          case_assignment: assignmentDecision
+            ? {
+              status: assignmentDecision.status,
+              suggested_case_id: assignmentDecision.suggestedCaseId,
+              confidence_score: assignmentDecision.confidenceScore,
+              reason: assignmentDecision.reason,
+              auto_assigned: assignmentDecision.autoAssigned,
+            }
+            : undefined,
         };
 
         // Await the save so we can return the document ID and use it for case_facts population.
@@ -1637,6 +1719,14 @@ CRITICAL RULES:
         ...validated.data,
         extractedText: truncatedText,
         documentId: savedDocumentId,
+        caseAssignment: assignmentDecision ?? {
+          status: docCaseId ? "assigned" : "unassigned",
+          assignedCaseId: docCaseId ?? null,
+          suggestedCaseId: null,
+          confidenceScore: null,
+          reason: docCaseId ? "requested_case" : "no_case_match",
+          autoAssigned: false,
+        },
         dedupe: {
           isDuplicate: duplicateUpload,
           message: duplicateMessage,
@@ -1958,8 +2048,10 @@ ${userQuestion}`;
       // expose hasStoragePath flag so the UI can show a broken-file indicator.
       const documents = rawDocuments.map(({ storagePath, extractedText, ...safe }) => {
         const integrity = getDocumentIntegrity(safe);
+        const caseAssignment = getDocumentCaseAssignmentView(safe);
         return {
           ...safe,
+          caseAssignment,
           hasStoragePath: !!storagePath,
           isAnalysisAvailable: integrity.isAnalysisAvailable,
           analysisStatus: integrity.analysisStatus,
@@ -2136,8 +2228,10 @@ ${userQuestion}`;
       const rawDocs = await getDocuments(user.id);
       const documents = rawDocs.map(({ extractedText, storagePath, ...safe }) => {
         const integrity = getDocumentIntegrity(safe);
+        const caseAssignment = getDocumentCaseAssignmentView(safe);
         return {
           ...safe,
+          caseAssignment,
           hasStoragePath: !!storagePath,
           isAnalysisAvailable: integrity.isAnalysisAvailable,
           analysisStatus: integrity.analysisStatus,
@@ -2298,6 +2392,7 @@ CRITICAL RULES:
           docType: doc.docType,
           pageCount: doc.pageCount,
           caseId: doc.caseId,
+          caseAssignment: getDocumentCaseAssignmentView(doc),
           analysisJson: doc.analysisJson,
           createdAt: doc.createdAt,
           // Boolean only — never expose raw storage_path to client
@@ -2395,6 +2490,32 @@ CRITICAL RULES:
     } catch (err) {
       console.error("[documents] PATCH type error:", err);
       return res.status(500).json({ error: "Failed to update document type." });
+    }
+  });
+
+  app.patch("/api/documents/:documentId/case-assignment", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { documentId } = req.params;
+    const schema = z.object({
+      caseId: z.string().uuid().nullable(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid case assignment payload." });
+    }
+    try {
+      if (parsed.data.caseId) {
+        const caseRecord = await getCaseById(parsed.data.caseId, user.id);
+        if (!caseRecord) {
+          return res.status(404).json({ error: "Case not found." });
+        }
+      }
+      const ok = await setDocumentCaseAssignment(documentId, user.id, parsed.data.caseId);
+      if (!ok) return res.status(404).json({ error: "Document not found or update failed." });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[documents] PATCH case-assignment error:", err);
+      return res.status(500).json({ error: "Failed to update document case assignment." });
     }
   });
 
