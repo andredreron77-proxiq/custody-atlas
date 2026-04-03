@@ -1587,6 +1587,14 @@ export default function WorkspacePage() {
         timelineEventCount={timelineEvents.length}
         activeCaseId={caseIdParam}
         preferredName={preferredName}
+        cases={cases}
+        onSelectCase={(nextCaseId) => {
+          if (nextCaseId === "all") {
+            navigate("/workspace");
+            return;
+          }
+          navigate(`/case/${nextCaseId}`);
+        }}
       />
 
       <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">

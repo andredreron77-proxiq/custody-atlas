@@ -1,6 +1,12 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { FolderOpen, ChevronsUpDown } from "lucide-react";
+import { FolderOpen } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface WorkspaceHeaderProps {
   activeCaseName: string | null;
@@ -8,9 +14,19 @@ interface WorkspaceHeaderProps {
   timelineEventCount: number;
   activeCaseId?: string;
   preferredName?: string | null;
+  cases: Array<{ id: string; title: string }>;
+  onSelectCase: (caseId: string) => void;
 }
 
-export function WorkspaceHeader({ activeCaseName, caseCount, timelineEventCount, activeCaseId, preferredName }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({
+  activeCaseName,
+  caseCount,
+  timelineEventCount,
+  activeCaseId,
+  preferredName,
+  cases,
+  onSelectCase,
+}: WorkspaceHeaderProps) {
   const hasActiveCase = !!activeCaseName;
 
   return (
@@ -31,11 +47,25 @@ export function WorkspaceHeader({ activeCaseName, caseCount, timelineEventCount,
           </div>
         </div>
 
-        <Button variant="outline" size="sm" className="gap-1.5 h-8" data-testid="button-switch-case">
-          <ChevronsUpDown className="w-3.5 h-3.5" />
-          Switch case
-          <span className="text-[10px] text-muted-foreground">({caseCount})</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select
+            value={activeCaseId ?? "all"}
+            onValueChange={(value) => onSelectCase(value)}
+          >
+            <SelectTrigger className="w-[210px] h-8" data-testid="button-switch-case">
+              <SelectValue placeholder="Switch case" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All workspace documents</SelectItem>
+              {cases.map((caseRecord) => (
+                <SelectItem key={caseRecord.id} value={caseRecord.id}>
+                  {caseRecord.title || "Untitled Case"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+        </div>
       </div>
 
       <div className="mt-2 flex items-center gap-2 flex-wrap" data-testid="workspace-context-row">
@@ -45,11 +75,9 @@ export function WorkspaceHeader({ activeCaseName, caseCount, timelineEventCount,
         <Badge variant="outline" className="text-[11px] font-medium normal-case">
           {hasActiveCase ? "Case linked" : "General workspace"}
         </Badge>
-        {activeCaseId && (
-          <Badge variant="outline" className="text-[11px] font-medium normal-case">
-            ID: {activeCaseId.slice(0, 8)}…
-          </Badge>
-        )}
+        <Badge variant="outline" className="text-[11px] font-medium normal-case">
+          {caseCount} case{caseCount === 1 ? "" : "s"}
+        </Badge>
       </div>
     </div>
   );

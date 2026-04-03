@@ -1,2052 +1,364 @@
-/**
- * CaseDashboardPage — command center for a single case.
- *
- * Route: /case/:caseId
- *
- * Panels (all queries share cache keys — TanStack deduplicates):
- *   • Case metadata          GET /api/cases/:caseId
- *   • Key facts              GET /api/cases/:caseId/facts
- *   • Actions (enriched)     GET /api/cases/:caseId/actions
- *   • Conversations          GET /api/cases/:caseId/conversations
- *   • Documents              GET /api/cases/:caseId/documents
- *
- * Bug fixes applied in this version:
- *   • Added useQueryClient import (was missing — ActionsPanel broke on every render)
- *   • Fixed WhatMattersNow: fact.factValue → fact.value (CaseFactItem has .value)
- *   • Fixed WhatMattersNow: action.actionTitle → action.title (API returns .title)
- */
-
-import { useParams, Link } from "wouter";
+import { useMemo } from "react";
+import { Link, useLocation, useParams } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft, ArrowRight, FolderOpen, MessageSquare, Upload, MapPin, Building2,
-  Hash, Calendar, User2, ClipboardList, Loader2, CircleCheck, X,
-  ChevronRight, CheckCheck, Zap, ExternalLink, FileText, AlertTriangle,
-  File, ChevronDown, ChevronUp, History, Info, Scale, Trash2,
+  AlertTriangle,
+  ArrowLeft,
+  CalendarClock,
+  ChevronRight,
+  Clock3,
+  FileText,
+  MessageSquare,
+  ShieldAlert,
 } from "lucide-react";
-import {
-  DocFactChips, DocKeyDatesRow, DocQuickActions,
-  DocObligationBadge, DocImplicationsSection, DocActionInsight,
-} from "@/components/app/DocIntelPanel";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type ComponentType, type ReactNode } from "react";
-import { useToast } from "@/hooks/use-toast";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CaseScopeBadge } from "@/components/app/CaseScopeBadge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-
-/* ── Shared helpers ───────────────────────────────────────────────────────── */
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-/* ── Types ────────────────────────────────────────────────────────────────── */
 
 interface CaseRecord {
   id: string;
   title: string;
   description: string | null;
-  jurisdictionState: string | null;
-  jurisdictionCounty: string | null;
   status: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 interface CaseFactItem {
   id: number;
   factType: string;
-  value: string;      // ← the real field name from the API
-  source: string;
-  sourceName: string | null;
-  confidence: string;
+  value: string;
 }
 
 interface CaseActionItem {
   id: number;
-  actionType: string;
-  title: string;       // ← the real field name from the API
+  title: string;
   description: string;
   status: "open" | "completed" | "dismissed";
   urgency: "overdue" | "urgent" | "soon" | "normal";
-  daysUntilHearing: number | null;
-  createdAt: string;
 }
 
-interface ConversationRecord {
-  id: string;
-  caseId: string;
-  title: string | null;
-  threadType: string;
-  jurisdictionState: string | null;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-interface DocumentRow {
-  id: string;
-  fileName: string;
-  docType: string;
-  pageCount: number;
-  createdAt: string;
-  analysisJson: Record<string, unknown>;
-}
-
-/* ── Urgency styling ──────────────────────────────────────────────────────── */
-
-const URGENCY: Record<
-  CaseActionItem["urgency"],
-  { badge: string; border: string; label: (d: number | null) => string }
-> = {
-  overdue: {
-    badge:  "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300",
-    border: "border-l-2 border-l-red-400 dark:border-l-red-600",
-    label:  () => "Overdue",
-  },
-  urgent: {
-    badge:  "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300",
-    border: "border-l-2 border-l-orange-400 dark:border-l-orange-600",
-    label:  (d) => d === 0 ? "Due today" : d != null ? `Due in ${d}d` : "Due soon",
-  },
-  soon: {
-    badge:  "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300",
-    border: "border-l-2 border-l-amber-400 dark:border-l-amber-600",
-    label:  (d) => d != null ? `In ${d} days` : "Coming up",
-  },
-  normal: { badge: "", border: "", label: () => "" },
-};
-
-/* ── Fact display labels ──────────────────────────────────────────────────── */
-
-const FACT_TYPE_LABELS: Record<string, string> = {
-  court_name:            "Court",
-  case_number:           "Case number",
-  hearing_date:          "Next hearing",
-  court_address:         "Courthouse address",
-  judge_name:            "Judge",
-  attorney_name:         "My attorney",
-  opposing_counsel:      "Opposing counsel",
-  filing_date:           "Filing date",
-  child_name:            "Child name",
-  child_dob:             "Child date of birth",
-  custody_type:          "Custody type",
-  visitation_schedule:   "Visitation schedule",
-  modification_reason:   "Modification reason",
-  state:                 "State",
-  county:                "County",
-};
-
-const FACT_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
-  user_confirmed:  { label: "Confirmed by you",  color: "text-emerald-600 dark:text-emerald-400" },
-  ai_extracted:    { label: "AI extracted",       color: "text-blue-600 dark:text-blue-400" },
-  document_ocr:    { label: "From document",      color: "text-violet-600 dark:text-violet-400" },
-  attorney_input:  { label: "Attorney",           color: "text-amber-600 dark:text-amber-400" },
-  system_inferred: { label: "System",             color: "text-muted-foreground" },
-};
-
-const DOC_TYPE_LABELS: Record<string, string> = {
-  custody_order:  "Custody Order",
-  communication:  "Communication",
-  financial:      "Financial",
-  other:          "Document",
-};
-
-const THREAD_TYPE_LABELS: Record<string, string> = {
-  general:           "General",
-  custody_question:  "Custody Q&A",
-  document_review:   "Doc Review",
-  strategy:          "Strategy",
-  qa:                "Q&A",
-};
-
-/* ── Dashboard state ──────────────────────────────────────────────────────────
- * Derived from existing cached data (facts at page level).
- * No new API calls — uses hearing_date fact from the page-level facts query.
- *
- *   urgent      → hearing ≤ 7 days, or overdue hearing date
- *   in_progress → everything else (default calm state)
- *
- * Used to drive defaultOpen state for collapsible sections and to cap alerts.
- * ─────────────────────────────────────────────────────────────────────────── */
-
-/**
- * Dashboard UI states — derived from facts + actions at the page level.
- *
- *  quiet_case   No urgency signals; hearing is distant or unknown; no overdue/urgent actions.
- *  active_case  Case is in progress with facts/actions but no pressing deadline.
- *  urgent_case  Hearing ≤ 7 days, or overdue/urgent actions exist — highest-urgency layout.
- */
-type DashboardState = "quiet_case" | "active_case" | "urgent_case";
-
-/**
- * Derive dashboard state from the fact list and enriched action list.
- * Both are loaded at the page level and shared with sub-panels via TanStack cache.
- * Uses `diffDaysFromNow` (function declaration — JS hoisting makes it available here).
- */
-function resolveDashboardState(
-  facts: CaseFactItem[],
-  actions: CaseActionItem[],
-): DashboardState {
-  const openActions    = actions.filter(a => a.status === "open");
-  const hasOverdue     = openActions.some(a => a.urgency === "overdue");
-  const hasUrgent      = openActions.some(a => a.urgency === "urgent");
-  const hearingFact    = facts.find(f => f.factType === "hearing_date");
-  const hearingDays    = hearingFact?.value ? diffDaysFromNow(hearingFact.value) : null;
-  const hearingIsClose = hearingDays !== null && hearingDays <= 7; // includes negative (overdue)
-
-  if (hasOverdue || hasUrgent || hearingIsClose) return "urgent_case";
-  if (facts.length > 0 || openActions.length > 0)  return "active_case";
-  return "quiet_case";
-}
-
-/* ── Collapsible section ──────────────────────────────────────────────────────
- * Lightweight show/hide toggle for secondary dashboard sections.
- * Sections collapse to a single header row, keeping the page scannable.
- * ─────────────────────────────────────────────────────────────────────────── */
-
-function CollapsibleSection({
-  title,
-  icon: Icon,
-  badge,
-  children,
-  defaultOpen = false,
-  testId,
-}: {
-  title: string;
-  icon: ComponentType<{ className?: string }>;
-  badge?: string | number | null;
-  children: ReactNode;
-  defaultOpen?: boolean;
-  testId?: string;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div data-testid={testId}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        aria-expanded={open}
-        className="w-full flex items-center gap-2 py-1.5 px-0 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        data-testid={`toggle-${testId ?? title.toLowerCase().replace(/\s+/g, "-")}`}
-      >
-        <Icon className="w-4 h-4 flex-shrink-0" />
-        <span className="font-semibold text-foreground/80">{title}</span>
-        {badge !== undefined && badge !== null && (
-          <span className="text-[10px] bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-medium">
-            {badge}
-          </span>
-        )}
-        <span className="ml-auto">
-          {open
-            ? <ChevronUp className="w-3.5 h-3.5" />
-            : <ChevronDown className="w-3.5 h-3.5" />}
-        </span>
-      </button>
-      {open && <div className="mt-2 animate-fade-in">{children}</div>}
-    </div>
-  );
-}
-
-/* ── Case Snapshot Panel ──────────────────────────────────────────────────── */
-
-/**
- * Compact at-a-glance bar: shows the 4–5 core court facts + live action/doc counts.
- * Replaces the old CourtInfoBar and adds aggregate stat pills.
- */
-function CaseSnapshotPanel({
-  facts,
-  caseId,
-  askHref,
-  suppressFactTypes = [],
-}: {
-  facts: CaseFactItem[];
-  caseId: string;
-  askHref: string;
-  /**
-   * Fact types to omit from the chip row.
-   * Pass ["hearing_date"] in urgent_case — WhatMattersNow owns that signal.
-   */
-  suppressFactTypes?: string[];
-}) {
-  const byType = new Map<string, CaseFactItem>();
-  for (const f of facts) {
-    const cur = byType.get(f.factType);
-    if (!cur || f.source === "user_confirmed") byType.set(f.factType, f);
-  }
-
-  const TOP_FACTS = ["court_name", "case_number", "hearing_date", "court_address", "judge_name"];
-  const visible = TOP_FACTS
-    .map((key) => ({ key, fact: byType.get(key) }))
-    .filter((x) => !!x.fact && !suppressFactTypes.includes(x.key));
-
-  const ICONS: Record<string, typeof Building2> = {
-    court_name: Building2, case_number: Hash, hearing_date: Calendar,
-    court_address: MapPin, judge_name: User2,
-  };
-
-  const { data: actionsData } = useQuery<{ actions: CaseActionItem[] }>({
-    queryKey: ["/api/cases", caseId, "actions"],
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
-      if (!res.ok) return { actions: [] };
-      return res.json();
-    },
-    staleTime: 20_000,
-  });
-
-  const { data: docsData } = useQuery<{ documents: DocumentRow[] }>({
-    queryKey: ["/api/cases", caseId, "documents"],
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
-      if (!res.ok) return { documents: [] };
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
-
-  const openActions   = (actionsData?.actions ?? []).filter((a) => a.status === "open");
-  const hasOverdue    = openActions.some((a) => a.urgency === "overdue");
-  const hasUrgent     = openActions.some((a) => a.urgency === "urgent");
-  const docCount      = docsData?.documents.length ?? null;
-
-  if (visible.length === 0 && openActions.length === 0) return null;
-
-  return (
-    <div className="rounded-lg border bg-card px-4 py-3" data-testid="case-snapshot-panel">
-      {visible.length > 0 && (
-        <>
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-            Case Overview
-          </p>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 mb-3">
-            {visible.map(({ key, fact }) => {
-              const Icon = ICONS[key] ?? Info;
-              const isConfirmed = fact!.source === "user_confirmed";
-              return (
-                <div key={key} className="flex items-center gap-1.5 min-w-0">
-                  <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="text-xs text-muted-foreground">{FACT_TYPE_LABELS[key] ?? key}:</span>
-                  <span className="text-xs font-semibold text-foreground truncate max-w-[200px]">
-                    {fact!.value}
-                  </span>
-                  {isConfirmed && (
-                    <CheckCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400 flex-shrink-0" aria-label="Confirmed" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="border-t pt-2.5" />
-        </>
-      )}
-
-      {/* Aggregate stat pills */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <button
-          onClick={() =>
-            document.getElementById("section-actions")?.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
-          className={cn(
-            "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border cursor-pointer",
-            hasOverdue
-              ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300"
-              : hasUrgent
-              ? "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300"
-              : "bg-muted/60 border-border text-muted-foreground",
-          )}
-          data-testid="stat-open-actions"
-        >
-          <ClipboardList className="w-3 h-3" />
-          {actionsData == null
-            ? "…"
-            : `${openActions.length} open action${openActions.length !== 1 ? "s" : ""}`}
-          {hasOverdue && <span className="font-bold">!</span>}
-        </button>
-
-        <span
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border bg-muted/60 border-border text-muted-foreground"
-          data-testid="stat-doc-count"
-        >
-          <FileText className="w-3 h-3" />
-          {docCount === null ? "…" : `${docCount} document${docCount !== 1 ? "s" : ""}`}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* ── Actions panel ────────────────────────────────────────────────────────── */
-
-function ActionsPanel({ caseId }: { caseId: string }) {
-  const queryClient = useQueryClient();
-  const queryKey = ["/api/cases", caseId, "actions"];
-  const [pendingId, setPendingId] = useState<number | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-
-  const { data, isLoading } = useQuery<{ actions: CaseActionItem[] }>({
-    queryKey,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
-      if (!res.ok) return { actions: [] };
-      return res.json();
-    },
-    staleTime: 20_000,
-  });
-
-  async function markStatus(id: number, status: "completed" | "dismissed") {
-    setPendingId(id);
-    try {
-      const res = await apiRequestRaw("PATCH", `/api/case-actions/${id}`, { status });
-      if (res.ok) queryClient.invalidateQueries({ queryKey });
-    } finally {
-      setPendingId(null);
-    }
-  }
-
-  const allActions    = data?.actions ?? [];
-  const openActions   = allActions.filter((a) => a.status === "open");
-  const doneActions   = allActions.filter((a) => a.status === "completed" || a.status === "dismissed");
-  const hasUrgent     = openActions.some((a) => a.urgency === "overdue" || a.urgency === "urgent");
-
-  return (
-    <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-actions-panel">
-      {/* Header */}
-      <div className={cn("px-4 py-2.5 flex items-center gap-2 border-b", hasUrgent && "bg-red-50/50 dark:bg-red-950/20")}>
-        <ClipboardList className={cn("w-4 h-4", hasUrgent ? "text-red-600 dark:text-red-400" : "text-primary/70")} />
-        <span className="text-sm font-semibold text-foreground">Action Items</span>
-        <Badge
-          variant="outline"
-          className={cn(
-            "ml-auto text-xs h-5 px-1.5",
-            hasUrgent && "border-red-300 dark:border-red-700 text-red-700 dark:text-red-300",
-          )}
-        >
-          {isLoading ? "…" : `${openActions.length} open`}
-        </Badge>
-      </div>
-
-      {isLoading && (
-        <div className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-        </div>
-      )}
-
-      {!isLoading && openActions.length === 0 && (
-        <p className="px-4 py-4 text-sm text-muted-foreground" data-testid="text-no-actions">
-          No open actions. Upload a court document to generate case-specific tasks.
-        </p>
-      )}
-
-      {/* Open actions */}
-      <div className="divide-y">
-        {openActions.map((action) => {
-          const style = URGENCY[action.urgency];
-          const label = style.label(action.daysUntilHearing);
-          return (
-            <div
-              key={action.id}
-              className={cn("px-4 py-3.5 flex items-start gap-3 hover:bg-muted/30 transition-all duration-150", style.border)}
-              data-testid={`dashboard-action-item-${action.id}`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start gap-2 flex-wrap">
-                  <p className="text-sm font-semibold text-foreground leading-snug flex-1 min-w-0">
-                    {action.title}
-                  </p>
-                  {label && (
-                    <span className={cn("text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0", style.badge)}>
-                      {label}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">
-                  {action.description}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-                <button
-                  onClick={() => markStatus(action.id, "completed")}
-                  disabled={pendingId === action.id}
-                  className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors disabled:opacity-50"
-                  data-testid={`button-complete-action-${action.id}`}
-                >
-                  {pendingId === action.id
-                    ? <Loader2 className="w-3 h-3 animate-spin" />
-                    : <CircleCheck className="w-3 h-3" />}
-                  Done
-                </button>
-                <button
-                  onClick={() => markStatus(action.id, "dismissed")}
-                  disabled={pendingId === action.id}
-                  className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
-                  aria-label="Dismiss"
-                  data-testid={`button-dismiss-action-${action.id}`}
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* History toggle */}
-      {!isLoading && doneActions.length > 0 && (
-        <>
-          <button
-            onClick={() => setShowHistory((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors border-t"
-            data-testid="button-toggle-action-history"
-          >
-            <span className="flex items-center gap-1.5">
-              <History className="w-3 h-3" />
-              History ({doneActions.length})
-            </span>
-            {showHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-
-          {showHistory && (
-            <div className="divide-y bg-muted/10">
-              {doneActions.map((action) => (
-                <div
-                  key={action.id}
-                  className="px-4 py-2.5 flex items-start gap-3 opacity-50 hover:opacity-70 transition-opacity"
-                  data-testid={`dashboard-action-done-${action.id}`}
-                >
-                  <CircleCheck className={cn(
-                    "w-3.5 h-3.5 flex-shrink-0 mt-0.5",
-                    action.status === "completed" ? "text-emerald-500" : "text-muted-foreground",
-                  )} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground line-through decoration-muted-foreground/40">
-                      {action.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground capitalize">
-                      {action.status} · {relativeTime(action.createdAt)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ── Conversations panel ──────────────────────────────────────────────────── */
-
-function ConversationsPanel({
-  caseId,
-  jurisdictionState,
-  jurisdictionCounty,
-}: {
-  caseId: string;
-  jurisdictionState: string | null;
-  jurisdictionCounty: string | null;
-}) {
-  const { data, isLoading } = useQuery<{ conversations: ConversationRecord[] }>({
-    queryKey: ["/api/cases", caseId, "conversations"],
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/conversations`);
-      if (!res.ok) return { conversations: [] };
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
-
-  const conversations = (data?.conversations ?? []).slice(0, 8);
-
-  const askParams = new URLSearchParams();
-  askParams.set("case", caseId);
-  if (jurisdictionState) askParams.set("state", jurisdictionState);
-  if (jurisdictionCounty) askParams.set("county", jurisdictionCounty);
-  const newChatHref = `/ask?${askParams.toString()}`;
-
-  return (
-    <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-conversations-panel">
-      <div className="px-3 py-2 flex items-center justify-end border-b border-border/60">
-        <Link href={newChatHref}>
-          <a data-testid="link-new-conversation">
-            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs gap-1">
-              <MessageSquare className="w-3 h-3" />
-              New chat
-            </Button>
-          </a>
-        </Link>
-      </div>
-
-      {isLoading && (
-        <div className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
-        </div>
-      )}
-
-      {!isLoading && conversations.length === 0 && (
-        <div className="px-4 py-4 flex flex-col gap-2" data-testid="text-no-conversations">
-          <p className="text-sm text-muted-foreground">No conversations yet.</p>
-          <Link href={newChatHref}>
-            <a
-              className="inline-flex items-center gap-1.5 text-sm text-primary font-medium hover:text-primary/80 transition-colors"
-              data-testid="link-start-first-chat"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Start a conversation
-            </a>
-          </Link>
-        </div>
-      )}
-
-      <div className="divide-y">
-        {conversations.map((conv) => {
-          // Use ?conversation= — conv.id is a Supabase conversations UUID, not a threads ID.
-          const resumeParams = new URLSearchParams();
-          resumeParams.set("case", caseId);
-          resumeParams.set("conversation", conv.id);
-          if (conv.jurisdictionState) resumeParams.set("state", conv.jurisdictionState);
-          if (jurisdictionCounty) resumeParams.set("county", jurisdictionCounty);
-          const href = `/ask?${resumeParams.toString()}`;
-
-          const typeLabel = THREAD_TYPE_LABELS[conv.threadType] ?? conv.threadType.replace(/_/g, " ");
-          const dateStr = conv.updatedAt
-            ? shortDate(conv.updatedAt)
-            : relativeTime(conv.createdAt);
-
-          return (
-            <Link key={conv.id} href={href}>
-              <a
-                className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-all duration-150 group"
-                data-testid={`link-conversation-${conv.id}`}
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate text-foreground group-hover:text-primary transition-colors leading-snug">
-                    {conv.title ?? "Untitled conversation"}
-                  </p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-muted-foreground/60 bg-muted/60 rounded px-1.5 py-px capitalize">
-                      {typeLabel}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{dateStr}</span>
-                  </div>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
-              </a>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ── Documents panel ──────────────────────────────────────────────────────── */
-
-function DocumentsPanel({
-  caseId,
-  uploadHref,
-  askHref,
-  caseTitle,
-}: {
-  caseId: string;
-  uploadHref: string;
-  askHref: string;
-  caseTitle: string;
-}) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
-
-  const { data, isLoading } = useQuery<{ documents: DocumentRow[] }>({
-    queryKey: ["/api/cases", caseId, "documents"],
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
-      if (!res.ok) return { documents: [] };
-      return res.json();
-    },
-    staleTime: 30_000,
-    enabled: !!caseId,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (docId: string) => {
-      // apiRequestRaw attaches the Authorization: Bearer token that requireAuth needs.
-      const res = await apiRequestRaw("DELETE", `/api/documents/${docId}`);
-      // 404 = already gone; still succeed so list stays clean.
-      if (!res.ok && res.status !== 404) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Could not delete document. Please try again.");
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/cases", caseId, "documents"] });
-      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
-      qc.invalidateQueries({ queryKey: ["/api/documents"] });
-      setPendingDelete(null);
-    },
-    onError: (err: Error) => {
-      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
-      setPendingDelete(null);
-    },
-  });
-
-  const documents = data?.documents ?? [];
-
-  return (
-    <div className="rounded-lg border bg-card overflow-hidden" data-testid="dashboard-documents-panel">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
-        {!isLoading && documents.length > 0 ? (
-          <span className="text-xs text-muted-foreground">{documents.length} document{documents.length !== 1 ? "s" : ""}</span>
-        ) : <span />}
-        <Link href={uploadHref}>
-          <a data-testid="link-upload-document-panel">
-            <Button variant="outline" size="sm" className="h-7 px-2.5 gap-1 text-xs">
-              <Upload className="w-3 h-3" />
-              Upload
-            </Button>
-          </a>
-        </Link>
-      </div>
-
-      {isLoading && (
-        <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Loading documents…
-        </div>
-      )}
-
-      {!isLoading && documents.length === 0 && (
-        <div className="px-4 py-6 flex flex-col items-center gap-2 text-center">
-          <File className="w-6 h-6 text-muted-foreground/30" />
-          <p className="text-xs text-muted-foreground">No documents linked to this case yet.</p>
-          <p className="text-[11px] text-muted-foreground/60">
-            Upload a custody order or court filing to extract key facts automatically.
-          </p>
-          <Link href={uploadHref}>
-            <a>
-              <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs mt-1">
-                <Upload className="w-3 h-3" />
-                Upload your first document
-              </Button>
-            </a>
-          </Link>
-        </div>
-      )}
-
-      {!isLoading && documents.length > 0 && (
-        <div className="divide-y">
-          {documents.map((doc) => {
-            const typeLabel = DOC_TYPE_LABELS[doc.docType] ?? "Document";
-            const askDocHref = `${askHref}&document=${encodeURIComponent(doc.id)}&q=${encodeURIComponent(
-              `Tell me about the ${typeLabel.toLowerCase()} I uploaded: ${doc.fileName}`,
-            )}`;
-            const analysis = doc.analysisJson ?? {};
-
-            return (
-              <div
-                key={doc.id}
-                className="px-4 py-3.5 hover:bg-muted/30 transition-all duration-150 group"
-                data-testid={`row-document-${doc.id}`}
-              >
-                {/* Row 1: filename + Ask button */}
-                <div className="flex items-start gap-2">
-                  <FileText className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold truncate text-foreground">{doc.fileName}</p>
-                      <div className="flex items-center gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
-                        <Link href={`/document/${doc.id}`}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                            data-testid={`btn-review-doc-${doc.id}`}
-                          >
-                            Review
-                          </Button>
-                        </Link>
-                        <Link href={askDocHref}>
-                          <a
-                            className="flex-shrink-0"
-                            data-testid={`link-ask-about-doc-${doc.id}`}
-                            title="Ask Atlas about this document"
-                          >
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1 text-primary/70 hover:text-primary">
-                              <Zap className="w-3 h-3" />
-                              Ask
-                            </Button>
-                          </a>
-                        </Link>
-                        {/* Delete — always surfaced so no document is permanently stuck */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-muted-foreground hover:text-destructive"
-                          onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
-                          disabled={deleteMutation.isPending && pendingDelete?.id === doc.id}
-                          data-testid={`btn-delete-doc-${doc.id}`}
-                          aria-label={`Delete ${doc.fileName}`}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Row 2: type · pages · date */}
-                    <p className="text-xs text-muted-foreground">
-                      {typeLabel}
-                      {" · "}
-                      {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
-                      {" · "}
-                      {shortDate(doc.createdAt)}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/80" data-testid={`text-doc-case-label-${doc.id}`}>
-                      Case: {caseTitle}
-                    </p>
-
-                    {/* Row 3: obligation badges — hearing/deadline/time-sensitive */}
-                    <DocObligationBadge analysisJson={analysis} />
-
-                    {/* Row 4: extracted fact chips (court, case#, hearing date) */}
-                    <DocFactChips analysisJson={analysis} />
-
-                    {/* Row 5: key dates preview */}
-                    <DocKeyDatesRow analysisJson={analysis} maxDates={2} />
-
-                    {/* Row 6: one deterministic action insight */}
-                    <DocActionInsight analysisJson={analysis} docType={doc.docType} />
-
-                    {/* Row 7: quick action buttons */}
-                    <DocQuickActions analysisJson={analysis} askBasePath={askHref} docId={doc.id} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Shared delete confirmation dialog ────────────────────────────── */}
-      <AlertDialog
-        open={!!pendingDelete}
-        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this document?</AlertDialogTitle>
-            <AlertDialogDescription>
-              <span className="font-medium">{pendingDelete?.fileName}</span>
-              {" "}and all extracted analysis data will be permanently removed.
-              This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="btn-case-delete-doc-cancel">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => pendingDelete && deleteMutation.mutate(pendingDelete.id)}
-              disabled={deleteMutation.isPending}
-              data-testid="btn-case-delete-doc-confirm"
-            >
-              {deleteMutation.isPending ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />Deleting…</>
-              ) : "Delete permanently"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
-/* ── Case Facts Section ───────────────────────────────────────────────────── */
-
-/**
- * Shows all known case facts in a readable table.
- * Starts collapsed; expand to see all. First 5 shown by default.
- */
-function CaseFactsSection({ facts, askHref, hideAskAtlas = false }: { facts: CaseFactItem[]; askHref: string; hideAskAtlas?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const PREVIEW_COUNT = 5;
-
-  if (facts.length === 0) return null;
-
-  // Deduplicate by type, prefer user_confirmed
-  const byType = new Map<string, CaseFactItem>();
-  for (const f of facts) {
-    const cur = byType.get(f.factType);
-    if (!cur || f.source === "user_confirmed") byType.set(f.factType, f);
-  }
-  const dedupedFacts = Array.from(byType.values());
-
-  const visible = expanded ? dedupedFacts : dedupedFacts.slice(0, PREVIEW_COUNT);
-  const hasMore = dedupedFacts.length > PREVIEW_COUNT;
-
-  return (
-    <div className="rounded-lg border bg-card overflow-hidden" data-testid="case-facts-section">
-      {/* Header */}
-      <div className="px-4 py-2.5 flex items-center justify-between border-b">
-        <div className="flex items-center gap-2">
-          <Scale className="w-4 h-4 text-primary/70" />
-          <span className="text-sm font-semibold">Case Facts</span>
-          <span className="text-xs text-muted-foreground">({dedupedFacts.length})</span>
-        </div>
-        {!hideAskAtlas && (
-          <Link href={`${askHref}&q=${encodeURIComponent("What else do you know about my case facts?")}`}>
-            <a className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-               data-testid="link-ask-about-facts">
-              <Zap className="w-3 h-3" />
-              Add / confirm facts
-            </a>
-          </Link>
-        )}
-      </div>
-
-      {/* Facts table */}
-      <div className="divide-y">
-        {visible.map((f) => {
-          const label = FACT_TYPE_LABELS[f.factType] ?? f.factType.replace(/_/g, " ");
-          const src   = FACT_SOURCE_LABELS[f.source] ?? { label: f.source, color: "text-muted-foreground" };
-          const isConfirmed = f.source === "user_confirmed";
-
-          return (
-            <div
-              key={f.id}
-              className="grid grid-cols-[1fr_auto] sm:grid-cols-[180px_1fr_auto] items-start gap-x-3 gap-y-0.5 px-4 py-3 hover:bg-muted/20 transition-colors"
-              data-testid={`fact-row-${f.id}`}
-            >
-              {/* Fact type label */}
-              <p className="text-xs text-muted-foreground font-medium capitalize hidden sm:block">
-                {label}
-              </p>
-
-              {/* Value + mobile label */}
-              <div className="min-w-0">
-                <p className="text-xs sm:hidden text-muted-foreground mb-0.5">{label}</p>
-                <p className="text-sm font-semibold text-foreground break-words">{f.value}</p>
-                <p className={cn("text-xs", src.color)}>
-                  {f.sourceName ? `${src.label} · ${f.sourceName}` : src.label}
-                </p>
-              </div>
-
-              {/* Confirmed badge */}
-              <div className="flex items-center mt-0.5">
-                {isConfirmed ? (
-                  <CheckCheck
-                    className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0"
-                    aria-label="Confirmed by you"
-                    data-testid={`icon-fact-confirmed-${f.id}`}
-                  />
-                ) : (
-                  <span className="w-3.5 h-3.5" />
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Expand / collapse */}
-      {hasMore && (
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors border-t"
-          data-testid="button-toggle-facts"
-        >
-          {expanded ? (
-            <><ChevronUp className="w-3.5 h-3.5" /> Show fewer</>
-          ) : (
-            <><ChevronDown className="w-3.5 h-3.5" /> Show all {dedupedFacts.length} facts</>
-          )}
-        </button>
-      )}
-    </div>
-  );
-}
-
-/* ── Case Alerts ─────────────────────────────────────────────────────────────
- * Deterministic proactive guidance derived from cached dashboard data.
- * No new API calls — all queries share keys with existing sub-components.
- *
- * Alert levels:
- *   urgent       → red accent  (hearing ≤ 3 days, overdue, missing courthouse)
- *   important    → amber accent (hearing ≤ 7 days, urgent actions, no docs)
- *   informational → blue accent (soft nudges)
- *
- * Max 3 alerts shown, highest priority first.
- * ─────────────────────────────────────────────────────────────────────────── */
-
-interface CaseAlert {
-  id: string;
-  level: "urgent" | "important" | "informational";
-  icon: "triangle" | "clock" | "info" | "document" | "courthouse";
-  title: string;
-  description: string;
-  cta: { label: string; href: string };
-}
-
-function diffDaysFromNow(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  d.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - today.getTime()) / 86_400_000);
-}
-
-function deriveAlerts({
-  facts,
-  timelineEvents,
-  actions,
-  documentCount,
-  askHref,
-  uploadHref,
-}: {
-  facts: CaseFactItem[];
-  timelineEvents: CaseTimelineEvent[];
-  actions: CaseActionItem[];
-  documentCount: number;
-  askHref: string;
-  uploadHref: string;
-}): CaseAlert[] {
-  const alerts: CaseAlert[] = [];
-
-  // ── Derived values ─────────────────────────────────────────────────────────
-  const courtAddressFact = facts.find(f => f.factType === "court_address");
-  const hasCourtAddress  = !!courtAddressFact?.value?.trim();
-
-  // First upcoming hearing event in the timeline
-  const nextHearingEv = timelineEvents.find(
-    e => e.type === "hearing" && e.isUpcoming && e.dateParsed !== null,
-  );
-  const daysUntilHearing = diffDaysFromNow(nextHearingEv?.dateParsed ?? null);
-
-  // Any overdue hearing (isPast + isOverdue)
-  const overdueHearing = timelineEvents.find(
-    e => e.type === "hearing" && e.isOverdue,
-  );
-
-  // Open actions by urgency level
-  const openActions    = actions.filter(a => a.status === "open");
-  const overdueActions = openActions.filter(a => a.urgency === "overdue");
-  const urgentActions  = openActions.filter(a => a.urgency === "urgent");
-
-  // Whether the case has any documents at all
-  const hasDocs = documentCount > 0;
-
-  // Ask Atlas href with a pre-filled question
-  function askWithQ(q: string): string {
-    const sep = askHref.includes("?") ? "&" : "?";
-    return `${askHref}${sep}q=${encodeURIComponent(q)}`;
-  }
-
-  // ── Rules (evaluated in priority order; stop at 3 alerts) ─────────────────
-
-  // 1. URGENT — overdue hearing (may have been missed)
-  if (overdueHearing) {
-    alerts.push({
-      id: "overdue-hearing",
-      level: "urgent",
-      icon: "triangle",
-      title: "A past hearing date was found in your documents",
-      description:
-        "Verify whether this hearing took place and what the outcome was. " +
-        "If an order was issued, upload it to keep your case current.",
-      cta: {
-        label: "Ask Atlas about the outcome",
-        href: askWithQ("What happened at my last hearing? What should I do next?"),
-      },
-    });
-  }
-
-  // 2. URGENT — hearing within 3 days + no courthouse address
-  if (
-    daysUntilHearing !== null &&
-    daysUntilHearing >= 0 &&
-    daysUntilHearing <= 3 &&
-    !hasCourtAddress
-  ) {
-    alerts.push({
-      id: "upcoming-hearing-no-address",
-      level: "urgent",
-      icon: "courthouse",
-      title: `Hearing in ${daysUntilHearing === 0 ? "today" : `${daysUntilHearing} day${daysUntilHearing === 1 ? "" : "s"}`} — courthouse address not on file`,
-      description:
-        "We have no courthouse address recorded for this case. " +
-        "Confirm the location before your hearing.",
-      cta: {
-        label: "Check case facts",
-        href: "#section-facts",
-      },
-    });
-  }
-
-  // 3. URGENT — hearing within 3 days (with or without address)
-  if (
-    daysUntilHearing !== null &&
-    daysUntilHearing >= 0 &&
-    daysUntilHearing <= 3 &&
-    !alerts.find(a => a.id === "upcoming-hearing-no-address")
-  ) {
-    alerts.push({
-      id: "hearing-imminent",
-      level: "urgent",
-      icon: "clock",
-      title: `Hearing ${daysUntilHearing === 0 ? "today" : `in ${daysUntilHearing} day${daysUntilHearing === 1 ? "" : "s"}`} — are you prepared?`,
-      description:
-        "Atlas can review your case facts and actions to help you walk in prepared.",
-      cta: {
-        label: "Prepare with Atlas",
-        href: askWithQ("My custody hearing is coming up soon. What should I know and prepare?"),
-      },
-    });
-  }
-
-  if (alerts.length >= 2) return alerts.slice(0, 2);
-
-  // 4. IMPORTANT — open overdue actions
-  if (overdueActions.length > 0) {
-    alerts.push({
-      id: "overdue-actions",
-      level: "important",
-      icon: "triangle",
-      title: `${overdueActions.length} overdue action${overdueActions.length > 1 ? "s" : ""} need${overdueActions.length === 1 ? "s" : ""} your attention`,
-      description:
-        "These actions have passed their expected resolution window. " +
-        "Review them now to avoid missing deadlines.",
-      cta: {
-        label: "View actions",
-        href: "#section-actions",
-      },
-    });
-  }
-
-  if (alerts.length >= 2) return alerts.slice(0, 2);
-
-  // 5. IMPORTANT — hearing within 7 days + no documents
-  if (
-    daysUntilHearing !== null &&
-    daysUntilHearing >= 0 &&
-    daysUntilHearing <= 7 &&
-    !hasDocs
-  ) {
-    alerts.push({
-      id: "hearing-no-docs",
-      level: "important",
-      icon: "document",
-      title: "No documents uploaded before your upcoming hearing",
-      description:
-        "Upload any court notices, orders, or filings so Atlas can give you hearing-specific guidance.",
-      cta: { label: "Upload a document", href: uploadHref },
-    });
-  }
-
-  if (alerts.length >= 2) return alerts.slice(0, 2);
-
-  // 6. IMPORTANT — hearing within 7 days (general nudge, no docs alert)
-  if (
-    daysUntilHearing !== null &&
-    daysUntilHearing >= 0 &&
-    daysUntilHearing <= 7 &&
-    !alerts.find(a => a.id === "hearing-imminent") &&
-    !alerts.find(a => a.id === "upcoming-hearing-no-address")
-  ) {
-    alerts.push({
-      id: "hearing-soon",
-      level: "important",
-      icon: "clock",
-      title: `Hearing in ${daysUntilHearing} days — review your case`,
-      description:
-        "Make sure your case facts, documents, and pending actions are in order.",
-      cta: {
-        label: "Review actions",
-        href: "#section-actions",
-      },
-    });
-  }
-
-  if (alerts.length >= 2) return alerts.slice(0, 2);
-
-  // 7. IMPORTANT — urgent open actions
-  if (urgentActions.length > 0 && !alerts.find(a => a.id === "hearing-soon")) {
-    alerts.push({
-      id: "urgent-actions",
-      level: "important",
-      icon: "triangle",
-      title: `${urgentActions.length} urgent action${urgentActions.length > 1 ? "s" : ""} related to your upcoming hearing`,
-      description: "Complete these before your hearing date to avoid gaps in your case.",
-      cta: {
-        label: "View urgent actions",
-        href: "#section-actions",
-      },
-    });
-  }
-
-  if (alerts.length >= 2) return alerts.slice(0, 2);
-
-  // 8. INFORMATIONAL — documents exist but no hearing date recorded
-  if (hasDocs && !nextHearingEv && !overdueHearing) {
-    const hearingDateFact = facts.find(f => f.factType === "hearing_date");
-    if (!hearingDateFact?.value) {
-      alerts.push({
-        id: "no-hearing-date",
-        level: "informational",
-        icon: "info",
-        title: "No upcoming hearing date on file",
-        description:
-          "Review your uploaded documents to confirm whether a court date has been scheduled.",
-        cta: {
-          label: "Review documents",
-          href: "#section-documents",
-        },
-      });
-    }
-  }
-
-  return alerts.slice(0, 2);
-}
-
-const ALERT_STYLES = {
-  urgent: {
-    wrapper: "border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30",
-    iconBg:  "bg-red-100 dark:bg-red-900/40",
-    iconColor: "text-red-600 dark:text-red-400",
-    badge: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
-    badgeText: "Urgent",
-    cta: "text-red-700 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300",
-  },
-  important: {
-    wrapper: "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30",
-    iconBg:  "bg-amber-100 dark:bg-amber-900/40",
-    iconColor: "text-amber-600 dark:text-amber-400",
-    badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
-    badgeText: "Important",
-    cta: "text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300",
-  },
-  informational: {
-    wrapper: "border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/30",
-    iconBg:  "bg-blue-100 dark:bg-blue-900/40",
-    iconColor: "text-blue-600 dark:text-blue-400",
-    badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
-    badgeText: "Heads up",
-    cta: "text-blue-700 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300",
-  },
-} as const;
-
-function AlertIcon({ icon, className }: { icon: CaseAlert["icon"]; className?: string }) {
-  const cls = className ?? "w-4 h-4";
-  switch (icon) {
-    case "triangle":   return <AlertTriangle className={cls} />;
-    case "clock":      return <History className={cls} />;
-    case "document":   return <FileText className={cls} />;
-    case "courthouse": return <Building2 className={cls} />;
-    default:           return <Info className={cls} />;
-  }
-}
-
-function CaseAlerts({
-  caseId,
-  facts,
-  askHref,
-  uploadHref,
-  suppressIds = [],
-  maxAlerts = 2,
-}: {
-  caseId: string;
-  facts: CaseFactItem[];
-  askHref: string;
-  uploadHref: string;
-  /**
-   * Alert IDs to omit — used in urgent_case to prevent duplication with WhatMattersNow.
-   * e.g. ["hearing-soon", "hearing-imminent"] when WhatMattersNow already owns the hearing signal.
-   */
-  suppressIds?: string[];
-  /** Maximum number of alerts to show (default 2; pass 1 in urgent_case to keep top area calm). */
-  maxAlerts?: number;
-}) {
-  const { data: timelineData } = useQuery<{ events: CaseTimelineEvent[] }>({
-    queryKey: ["/api/cases", caseId, "timeline"],
-    queryFn: async () => {
-      const res = await fetch(`/api/cases/${caseId}/timeline`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load timeline");
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-
-  const { data: actionsData } = useQuery<{ actions: CaseActionItem[] }>({
-    queryKey: ["/api/cases", caseId, "actions"],
-    staleTime: 30_000,
-  });
-
-  const { data: docsData } = useQuery<{ documents: { id: string }[] }>({
-    queryKey: ["/api/cases", caseId, "documents"],
-    staleTime: 60_000,
-  });
-
-  const timelineEvents = timelineData?.events ?? [];
-  const actions        = actionsData?.actions ?? [];
-  const documentCount  = docsData?.documents?.length ?? 0;
-
-  const allAlerts = deriveAlerts({
-    facts,
-    timelineEvents,
-    actions,
-    documentCount,
-    askHref,
-    uploadHref,
-  });
-  // Suppress alerts that WhatMattersNow already covers, then cap at maxAlerts.
-  const alerts = allAlerts.filter(a => !suppressIds.includes(a.id)).slice(0, maxAlerts);
-
-  if (alerts.length === 0) return null;
-
-  return (
-    <div className="flex flex-col gap-2" data-testid="case-alerts">
-      {alerts.map((alert) => {
-        const s = ALERT_STYLES[alert.level];
-        return (
-          <div
-            key={alert.id}
-            data-testid={`case-alert-${alert.id}`}
-            className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${s.wrapper}`}
-          >
-            {/* Icon */}
-            <div className={`mt-0.5 flex-shrink-0 rounded-md p-1.5 ${s.iconBg}`}>
-              <AlertIcon icon={alert.icon} className={`w-3.5 h-3.5 ${s.iconColor}`} />
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                <span className={`text-[10px] font-semibold rounded px-1.5 py-0.5 ${s.badge}`}>
-                  {s.badgeText}
-                </span>
-                <span
-                  className="text-sm font-semibold leading-snug"
-                  data-testid={`alert-title-${alert.id}`}
-                >
-                  {alert.title}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-snug">
-                {alert.description}
-              </p>
-            </div>
-
-            {/* CTA — anchor links scroll in-page; SPA paths use wouter Link */}
-            {alert.cta.href.startsWith("#") ? (
-              <button
-                data-testid={`alert-cta-${alert.id}`}
-                onClick={() => {
-                  const el = document.getElementById(alert.cta.href.slice(1));
-                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-                className={`flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold whitespace-nowrap cursor-pointer ${s.cta}`}
-              >
-                {alert.cta.label}
-                <ChevronRight className="w-3 h-3" />
-              </button>
-            ) : (
-              <Link href={alert.cta.href}>
-                <a
-                  data-testid={`alert-cta-${alert.id}`}
-                  className={`flex-shrink-0 inline-flex items-center gap-1 text-xs font-semibold whitespace-nowrap ${s.cta}`}
-                >
-                  {alert.cta.label}
-                  <ChevronRight className="w-3 h-3" />
-                </a>
-              </Link>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── What Matters Now ─────────────────────────────────────────────────────── */
-
-/* ── Case Timeline ─────────────────────────────────────────────────────────
- * Derived from: document extracted_facts + key_dates[] + case_facts table.
- * No new DB table — pure aggregation via GET /api/cases/:caseId/timeline.
- * ────────────────────────────────────────────────────────────────────────── */
-
-type TimelineEventType = "hearing" | "filing" | "effective" | "key_date" | "fact";
-
-interface CaseTimelineEvent {
+interface TimelineEvent {
   id: string;
   dateRaw: string;
-  dateParsed: string | null;
   label: string;
   source: string;
-  type: TimelineEventType;
   isPast: boolean;
   isUpcoming: boolean;
   isNext: boolean;
   isOverdue: boolean;
 }
 
-function timelineIcon(type: TimelineEventType) {
-  switch (type) {
-    case "hearing":  return <Scale className="w-3.5 h-3.5" />;
-    case "filing":   return <FileText className="w-3.5 h-3.5" />;
-    case "effective": return <CircleCheck className="w-3.5 h-3.5" />;
-    case "fact":     return <Hash className="w-3.5 h-3.5" />;
-    default:         return <Calendar className="w-3.5 h-3.5" />;
-  }
+interface CaseDocument {
+  id: string;
+  fileName: string;
+  docType: string;
+  createdAt: string;
+  analysisJson: Record<string, unknown>;
 }
 
-function timelineTypeLabel(type: TimelineEventType): string {
-  switch (type) {
-    case "hearing":   return "Hearing";
-    case "filing":    return "Filing";
-    case "effective": return "Effective";
-    case "fact":      return "Case Fact";
-    default:          return "Date";
-  }
+const STATUS_LABELS: Record<string, string> = {
+  active: "Active",
+  pending: "Pending",
+  closed: "Closed",
+  on_hold: "On hold",
+};
+
+function formatDate(date: string): string {
+  return new Date(date).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-function CaseTimeline({ caseId }: { caseId: string }) {
-  const { data, isLoading, isError } = useQuery<{ events: CaseTimelineEvent[] }>({
-    queryKey: ["/api/cases", caseId, "timeline"],
+function getRiskSignals({
+  actions,
+  timeline,
+  documents,
+}: {
+  actions: CaseActionItem[];
+  timeline: TimelineEvent[];
+  documents: CaseDocument[];
+}): string[] {
+  const risks: string[] = [];
+
+  const urgentOpen = actions.find((action) => action.status === "open" && (action.urgency === "overdue" || action.urgency === "urgent"));
+  if (urgentOpen) {
+    risks.push(`Urgent task pending: ${urgentOpen.title}`);
+  }
+
+  const deadlineRisk = timeline.find((event) => event.isOverdue || event.isNext);
+  if (deadlineRisk) {
+    const timing = deadlineRisk.isOverdue ? "missed" : "approaching";
+    risks.push(`${timing === "missed" ? "Missed" : "Upcoming"} deadline: ${deadlineRisk.label} (${deadlineRisk.dateRaw})`);
+  }
+
+  const implicationRisk = documents
+    .flatMap((doc) => (Array.isArray(doc.analysisJson?.possible_implications)
+      ? (doc.analysisJson.possible_implications as string[])
+      : []))
+    .find((item) => /risk|violation|penalt|non-?compli|default|contempt/i.test(item));
+
+  if (implicationRisk) {
+    risks.push(implicationRisk);
+  }
+
+  return risks.slice(0, 2);
+}
+
+export default function CaseDashboardPage() {
+  const { caseId } = useParams<{ caseId: string }>();
+  const [, navigate] = useLocation();
+
+  const { data: caseData, isLoading: caseLoading } = useQuery<{ case: CaseRecord }>({
+    queryKey: ["/api/cases", caseId],
+    enabled: Boolean(caseId),
     queryFn: async () => {
-      const res = await fetch(`/api/cases/${caseId}/timeline`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load timeline");
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}`);
+      if (!res.ok) throw new Error("Failed to load case");
       return res.json();
     },
-    staleTime: 60_000,
   });
 
-  const events = data?.events ?? [];
-  const hasEvents = events.length > 0;
-  const hasDatedEvents = events.some(e => e.dateParsed !== null);
-
-  if (isLoading) {
-    return (
-      <div className="rounded-lg border bg-card px-4 py-3 h-16 animate-pulse" />
-    );
-  }
-
-  if (isError || !hasEvents) return null;
-
-  // Only render the panel when at least one event has a parseable date
-  if (!hasDatedEvents) return null;
-
-  function formatDate(raw: string | null): string {
-    if (!raw) return "—";
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return raw;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
-  // Limit to 12 most informative events for visual clarity
-  // Priority: next event first, then upcoming, then past (most recent first)
-  const nextEvents = events.filter(e => e.isNext);
-  const otherUpcoming = events.filter(e => e.isUpcoming && !e.isNext);
-  const pastEvents = [...events.filter(e => e.isPast)].reverse();
-  const undated = events.filter(e => e.dateParsed === null);
-  const sorted = [...nextEvents, ...otherUpcoming, ...pastEvents, ...undated].slice(0, 12);
-
-  return (
-    <div className="rounded-lg border bg-card" data-testid="case-timeline">
-      <div className="flex items-center justify-between px-4 py-3 border-b">
-        <div className="flex items-center gap-2">
-          <History className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Case Timeline</span>
-        </div>
-        <span className="text-xs text-muted-foreground">
-          {events.filter(e => e.isUpcoming).length} upcoming
-        </span>
-      </div>
-
-      <div className="px-4 py-3">
-        <ol className="relative border-l border-border ml-2 space-y-0">
-          {sorted.map((ev, idx) => {
-            const isNextEv = ev.isNext;
-            const isOverdue = ev.isOverdue;
-            const isPast = ev.isPast;
-            const isLast = idx === sorted.length - 1;
-
-            const dotCls = isNextEv
-              ? "bg-blue-500 ring-2 ring-blue-200 dark:ring-blue-900"
-              : isOverdue
-                ? "bg-red-400"
-                : isPast
-                  ? "bg-muted-foreground/40"
-                  : "bg-primary/60";
-
-            const rowCls = isPast && !isNextEv
-              ? "opacity-60"
-              : "";
-
-            return (
-              <li
-                key={ev.id}
-                data-testid={`timeline-event-${ev.id}`}
-                className={`relative pl-6 ${isLast ? "pb-0" : "pb-4"} ${rowCls}`}
-              >
-                {/* Dot on the vertical line */}
-                <span
-                  className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full border border-background ${dotCls}`}
-                  aria-hidden
-                />
-
-                <div className="flex flex-col gap-0.5">
-                  {/* Date row */}
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs font-medium tabular-nums ${
-                        isNextEv
-                          ? "text-blue-600 dark:text-blue-400"
-                          : isOverdue
-                            ? "text-red-500 dark:text-red-400"
-                            : "text-muted-foreground"
-                      }`}
-                      data-testid={`timeline-date-${ev.id}`}
-                    >
-                      {formatDate(ev.dateParsed)}
-                    </span>
-
-                    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                      isNextEv
-                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                        : isOverdue
-                          ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                          : "bg-muted text-muted-foreground"
-                    }`}>
-                      {timelineIcon(ev.type)}
-                      {timelineTypeLabel(ev.type)}
-                    </span>
-
-                    {isNextEv && (
-                      <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500 text-white">
-                        Next
-                      </span>
-                    )}
-                    {isOverdue && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                        <AlertTriangle className="w-2.5 h-2.5" />
-                        Past due
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Label */}
-                  <p className="text-sm font-medium leading-snug" data-testid={`timeline-label-${ev.id}`}>
-                    {ev.label}
-                  </p>
-
-                  {/* Source */}
-                  <p className="text-xs text-muted-foreground leading-snug truncate max-w-xs">
-                    {ev.source}
-                  </p>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-
-        {events.length > 12 && (
-          <p className="mt-3 text-xs text-muted-foreground text-center">
-            {events.length - 12} more events in documents
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Deterministic CTA priority:
- *   1. Overdue action       → "Act on overdue action"   → askHref
- *   2. Hearing ≤ 7 days     → "Prepare for hearing"     → askHref
- *   3. No documents         → "Upload a document"       → uploadHref
- *   4. Hearing + no address → "Confirm courthouse"      → askHref w/ question
- *   5. Urgent action        → "Review open actions"     → askHref
- *   6. Default              → "Ask Atlas"               → askHref
- *
- * Field names confirmed:
- *   - CaseFactItem.value  (not .factValue — that was a bug)
- *   - CaseActionItem.title (not .actionTitle — that was a bug)
- */
-function WhatMattersNow({
-  facts,
-  caseId,
-  askHref,
-  uploadHref,
-}: {
-  facts: CaseFactItem[];
-  caseId: string;
-  askHref: string;
-  uploadHref: string;
-}) {
-  const hearingDateFact  = facts.find((f) => f.factType === "hearing_date");
-  const courtNameFact    = facts.find((f) => f.factType === "court_name");
-  const courtAddressFact = facts.find((f) => f.factType === "court_address");
+  const { data: casesData } = useQuery<{ cases: Array<{ id: string; title: string }> }>({
+    queryKey: ["/api/cases"],
+    staleTime: 30_000,
+  });
 
   const { data: actionsData } = useQuery<{ actions: CaseActionItem[] }>({
     queryKey: ["/api/cases", caseId, "actions"],
+    enabled: Boolean(caseId),
     queryFn: async () => {
       const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
       if (!res.ok) return { actions: [] };
       return res.json();
     },
-    staleTime: 20_000,
-    enabled: !!caseId,
   });
 
-  const { data: docsData } = useQuery<{ documents: { id: string }[] }>({
-    queryKey: ["/api/cases", caseId, "documents"],
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
-      if (!res.ok) return { documents: [] };
-      return res.json();
-    },
-    staleTime: 30_000,
-    enabled: !!caseId,
-  });
-
-  const openActions = (actionsData?.actions ?? []).filter((a) => a.status === "open");
-  const topAction   =
-    openActions.find((a) => a.urgency === "overdue") ??
-    openActions.find((a) => a.urgency === "urgent")  ??
-    openActions.find((a) => a.urgency === "soon")    ??
-    openActions[0];
-
-  // Use .value — the correct field name on CaseFactItem
-  const hasHearing   = !!hearingDateFact?.value;
-  const hasTopAction = !!topAction;
-  if (!hasHearing && !hasTopAction) return null;
-
-  const daysUntil      = topAction?.daysUntilHearing ?? null;
-  const hasOverdue     = openActions.some((a) => a.urgency === "overdue");
-  const hasUrgent      = openActions.some((a) => a.urgency === "urgent");
-  const hasHearingSoon = hasHearing && daysUntil !== null && daysUntil >= 0 && daysUntil <= 7;
-  const docsMissing    = docsData !== undefined && docsData.documents.length === 0;
-  const courtAddressMissing = !courtAddressFact?.value;
-
-  const urgencyKey: string =
-    hasOverdue     ? "overdue" :
-    hasUrgent      ? "urgent"  :
-    hasHearingSoon ? "soon"    : "normal";
-
-  const URGENCY_COLORS: Record<string, string> = {
-    overdue: "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800/50",
-    urgent:  "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50",
-    soon:    "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-800/50",
-    normal:  "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800/50",
-  };
-  const URGENCY_ICON_COLORS: Record<string, string> = {
-    overdue: "text-red-500",
-    urgent:  "text-amber-500",
-    soon:    "text-yellow-500",
-    normal:  "text-blue-500",
-  };
-
-  type CTADef = { label: string; href: string; Icon: typeof Zap };
-  const cta: CTADef =
-    hasOverdue
-      ? { label: "Act on overdue action",   href: askHref,    Icon: Zap         }
-    : hasHearingSoon
-      ? { label: "Prepare for hearing",     href: askHref,    Icon: Calendar    }
-    : docsMissing
-      ? { label: "Upload a document",       href: uploadHref, Icon: Upload      }
-    : hasHearing && courtAddressMissing && courtNameFact?.value
-      ? {
-          label: "Confirm courthouse",
-          href:  `${askHref}&q=${encodeURIComponent(`What is the address for ${courtNameFact.value}?`)}`,
-          Icon:  MapPin,
-        }
-    : hasUrgent
-      ? { label: "Review open actions",     href: askHref,    Icon: ClipboardList }
-    : { label: "Ask Atlas",                  href: askHref,    Icon: Zap         };
-
-  return (
-    <div
-      className={cn("rounded-lg border px-4 py-3 flex items-start gap-3 shadow-sm", URGENCY_COLORS[urgencyKey])}
-      data-testid="banner-what-matters-now"
-    >
-      <AlertTriangle className={cn("w-4 h-4 flex-shrink-0 mt-0.5", URGENCY_ICON_COLORS[urgencyKey])} />
-
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-foreground mb-0.5">What matters now</p>
-        <div className="flex flex-col gap-0.5">
-          {hasHearing && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-              <Calendar className="w-3 h-3 flex-shrink-0" />
-              <span>Next hearing:</span>
-              <span className="font-medium text-foreground">{hearingDateFact!.value}</span>
-              {courtNameFact?.value && (
-                <span className="text-muted-foreground"> · {courtNameFact.value}</span>
-              )}
-              {daysUntil !== null && (
-                <span className="text-muted-foreground">
-                  {" "}·{" "}
-                  {daysUntil < 0
-                    ? `${Math.abs(daysUntil)}d overdue`
-                    : daysUntil === 0
-                    ? "Today"
-                    : `${daysUntil}d away`}
-                </span>
-              )}
-            </p>
-          )}
-          {hasTopAction && (
-            <p className="text-xs text-muted-foreground flex items-start gap-1">
-              <ClipboardList className="w-3 h-3 flex-shrink-0 mt-0.5" />
-              <span>{topAction!.title}</span>
-            </p>
-          )}
-        </div>
-      </div>
-
-      <Link href={cta.href}>
-        <a data-testid="link-what-matters-cta">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs gap-1 flex-shrink-0 whitespace-nowrap hover:bg-muted/40 dark:hover:bg-white/10"
-          >
-            <cta.Icon className="w-3 h-3" />
-            {cta.label}
-          </Button>
-        </a>
-      </Link>
-    </div>
-  );
-}
-
-/* ── Page ─────────────────────────────────────────────────────────────────── */
-
-export default function CaseDashboardPage() {
-  const params = useParams<{ caseId: string }>();
-  const caseId = params.caseId;
-
-  const { data: caseData, isLoading: caseLoading } = useQuery<{ case: CaseRecord }>({
-    queryKey: ["/api/cases", caseId],
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}`);
-      if (!res.ok) throw new Error("Case not found");
-      return res.json();
-    },
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const { data: factsData, isLoading: factsLoading } = useQuery<{ facts: CaseFactItem[] }>({
+  const { data: factsData } = useQuery<{ facts: CaseFactItem[] }>({
     queryKey: ["/api/cases", caseId, "facts"],
+    enabled: Boolean(caseId),
     queryFn: async () => {
       const res = await apiRequestRaw("GET", `/api/cases/${caseId}/facts`);
       if (!res.ok) return { facts: [] };
       return res.json();
     },
-    staleTime: 30_000,
-    enabled: !!caseId,
   });
 
-  const caseRecord = caseData?.case ?? null;
-  const facts      = factsData?.facts ?? [];
-  const caseNumber = facts.find((f) => f.factType === "case_number")?.value ?? null;
-
-  // Page-level conversations query — shared cache key with ConversationsPanel.
-  // Used to derive hasConversations (hide redundant CTAs once user has chatted).
-  const { data: pageConvsData } = useQuery<{ conversations: ConversationRecord[] }>({
-    queryKey: ["/api/cases", caseId, "conversations"],
+  const { data: timelineData } = useQuery<{ timeline: TimelineEvent[] }>({
+    queryKey: ["/api/cases", caseId, "timeline"],
+    enabled: Boolean(caseId),
     queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/conversations`);
-      if (!res.ok) return { conversations: [] };
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/timeline`);
+      if (!res.ok) return { timeline: [] };
       return res.json();
     },
-    staleTime: 30_000,
-    enabled: !!caseId,
   });
-  const hasConversations = (pageConvsData?.conversations ?? []).length > 0;
 
-  // Page-level actions query — shared cache key with ActionsPanel + CaseSnapshotPanel.
-  // Zero extra network requests; used to derive dashboardState accurately.
-  const { data: pageActionsData } = useQuery<{ actions: CaseActionItem[] }>({
-    queryKey: ["/api/cases", caseId, "actions"],
+  const { data: documentsData } = useQuery<{ documents: CaseDocument[] }>({
+    queryKey: ["/api/cases", caseId, "documents"],
+    enabled: Boolean(caseId),
     queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
-      if (!res.ok) return { actions: [] };
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
+      if (!res.ok) return { documents: [] };
       return res.json();
     },
-    staleTime: 20_000,
-    enabled: !!caseId,
   });
-  const pageActions = pageActionsData?.actions ?? [];
 
-  // Dashboard state — 3-way: quiet_case / active_case / urgent_case.
-  // Derived from facts + actions; falls back to "active_case" while loading.
-  const dashboardState: DashboardState = factsLoading
-    ? "active_case"
-    : resolveDashboardState(facts, pageActions);
+  const caseRecord = caseData?.case;
+  const actions = actionsData?.actions ?? [];
+  const facts = factsData?.facts ?? [];
+  const timeline = timelineData?.timeline ?? [];
+  const documents = documentsData?.documents ?? [];
 
-  const askParams = new URLSearchParams();
-  askParams.set("case", caseId);
-  if (caseRecord?.jurisdictionState) askParams.set("state", caseRecord.jurisdictionState);
-  if (caseRecord?.jurisdictionCounty) askParams.set("county", caseRecord.jurisdictionCounty);
-  const askHref = `/ask?${askParams.toString()}`;
+  const upcomingDeadlines = useMemo(
+    () => timeline.filter((event) => event.isUpcoming).slice(0, 2),
+    [timeline],
+  );
+  const openActions = useMemo(() => actions.filter((action) => action.status === "open"), [actions]);
+  const topRiskItems = useMemo(() => getRiskSignals({ actions, timeline, documents }), [actions, timeline, documents]);
 
-  const uploadHref = caseRecord?.jurisdictionState
-    ? `/upload-document?case=${caseId}&state=${caseRecord.jurisdictionState}`
-    : `/upload-document?case=${caseId}`;
+  const recommendedAction =
+    openActions.find((action) => action.urgency === "overdue" || action.urgency === "urgent")?.title
+    ?? upcomingDeadlines[0]?.label
+    ?? "Ask Atlas what to prepare next for this case";
 
-  if (caseLoading) {
+  const hearingFact = facts.find((fact) => fact.factType === "hearing_date")?.value;
+  const snapshot = `${documents.length} document${documents.length === 1 ? "" : "s"} linked, ${openActions.length} open action${openActions.length === 1 ? "" : "s"}.`
+    + `${hearingFact ? ` Next hearing recorded for ${hearingFact}.` : " No hearing date has been confirmed yet."}`;
+
+  const askHref = `/ask?case=${encodeURIComponent(caseId ?? "")}`;
+
+  if (caseLoading || !caseRecord) {
     return (
-      <div className="flex items-center justify-center gap-3 py-24 text-muted-foreground">
-        <Loader2 className="w-6 h-6 animate-spin" />
-        <span className="text-sm">Loading case…</span>
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <p className="text-sm text-muted-foreground">Loading case dashboard…</p>
       </div>
     );
   }
-
-  if (!caseRecord) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 text-center">
-        <FolderOpen className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
-        <h2 className="text-lg font-semibold mb-1">Case not found</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          This case doesn't exist or you don't have access to it.
-        </p>
-        <Link href="/workspace">
-          <Button variant="outline" size="sm" className="gap-2">
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Workspace
-          </Button>
-        </Link>
-      </div>
-    );
-  }
-
-  const isActive = caseRecord.status === "active";
 
   return (
-    <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4 animate-fade-in" data-testid="case-dashboard-page">
-
-      {/* ── Page header ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6" data-testid="page-case-dashboard">
+      <nav className="flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
         <Link href="/workspace">
-          <a
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-            data-testid="link-back-to-workspace"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            My Cases
-          </a>
+          <span className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer">Workspace</span>
         </Link>
+        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+        <span className="text-foreground font-medium truncate">{caseRecord.title}</span>
+      </nav>
 
-        <div className="flex-1 min-w-0 flex items-center gap-2 sm:ml-2">
-          <div className="min-w-0 flex-1">
-            <CaseScopeBadge caseTitle={caseRecord.title} />
-            <h1 className="font-serif text-xl font-semibold truncate leading-tight" data-testid="heading-case-title">
-              {caseRecord.title}
-            </h1>
-            <div className="flex items-center gap-2 flex-wrap">
-              {caseNumber && (
-                <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground" data-testid="text-case-number">
-                  <Hash className="w-2.5 h-2.5" />
-                  {caseNumber}
-                </span>
-              )}
-              {caseRecord.jurisdictionState && (
-                <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
-                  <MapPin className="w-2.5 h-2.5" />
-                  {caseRecord.jurisdictionState}
-                  {caseRecord.jurisdictionCounty ? `, ${caseRecord.jurisdictionCounty}` : ""}
-                </span>
-              )}
-              <Badge
-                variant={isActive ? "default" : "secondary"}
-                className={cn(
-                  "text-[10px] px-1.5 py-0 h-4",
-                  isActive && "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50",
-                )}
-                data-testid="badge-case-status"
-              >
-                {caseRecord.status}
-              </Badge>
-              {caseRecord.description && (
-                <span className="text-[11px] text-muted-foreground/70 truncate max-w-[240px]">
-                  {caseRecord.description}
-                </span>
-              )}
+      <header className="rounded-xl border bg-card px-4 py-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold" data-testid="heading-case-name">{caseRecord.title}</h1>
+            <div className="mt-1 flex items-center gap-2">
+              <Badge variant="outline">{STATUS_LABELS[caseRecord.status] ?? caseRecord.status}</Badge>
+              <span className="text-xs text-muted-foreground">Case dashboard</span>
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            <Select
+              value={caseRecord.id}
+              onValueChange={(nextCaseId) => navigate(`/case/${nextCaseId}`)}
+            >
+              <SelectTrigger className="w-[220px] h-8" data-testid="select-case-dashboard-nav">
+                <SelectValue placeholder="Switch case" />
+              </SelectTrigger>
+              <SelectContent>
+                {(casesData?.cases ?? []).map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>{entry.title || "Untitled Case"}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Link href="/workspace">
+              <Button variant="outline" size="sm" className="h-8 gap-1.5">
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Workspace
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <article className="rounded-xl border bg-card p-4 space-y-3" data-testid="section-what-matters-now">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">What Matters Now</h2>
+          <ul className="space-y-2 text-sm">
+            <li><span className="font-medium">Current status:</span> {STATUS_LABELS[caseRecord.status] ?? caseRecord.status}</li>
+            <li>
+              <span className="font-medium">Next deadlines:</span>{" "}
+              {upcomingDeadlines.length > 0
+                ? upcomingDeadlines.map((event) => `${event.dateRaw} — ${event.label}`).join(" • ")
+                : "No upcoming deadlines extracted yet."}
+            </li>
+            <li><span className="font-medium">Top risk:</span> {topRiskItems[0] ?? "No urgent risk signal detected."}</li>
+            <li><span className="font-medium">Recommended next action:</span> {recommendedAction}</li>
+          </ul>
+        </article>
+
+        <article className="rounded-xl border bg-card p-4 space-y-3" data-testid="section-case-snapshot">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Case Snapshot</h2>
+          <p className="text-sm leading-6 text-muted-foreground">{snapshot}</p>
+        </article>
+      </section>
+
+      <section className="rounded-xl border bg-card p-4 space-y-4" data-testid="section-timeline">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 text-primary/80" />
+          <h2 className="font-semibold">Timeline</h2>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Link href={uploadHref}>
-            <a data-testid="link-upload-document">
-              <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs">
-                <Upload className="w-3.5 h-3.5" />
-                Upload Doc
-              </Button>
-            </a>
-          </Link>
+        <div className="space-y-3">
+          {timeline.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No timeline events yet.</p>
+          ) : timeline.map((event) => (
+            <div key={event.id} className={cn(
+              "rounded-lg border px-3 py-2",
+              event.isPast ? "bg-muted/30 border-border" : "bg-primary/5 border-primary/20",
+            )}>
+              <div className="flex items-start gap-2">
+                <Clock3 className={cn("w-4 h-4 mt-0.5", event.isPast ? "text-muted-foreground" : "text-primary")} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{event.label}</p>
+                  <p className="text-xs text-muted-foreground">{event.dateRaw} · {event.source}</p>
+                </div>
+                <Badge variant={event.isPast ? "secondary" : "default"} className="ml-auto">
+                  {event.isPast ? "Completed" : "Upcoming"}
+                </Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <article className="rounded-xl border bg-card p-4 space-y-3" data-testid="section-risks">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-600" />
+            <h2 className="font-semibold">Risks / Watch Items</h2>
+          </div>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            {(topRiskItems.length > 0 ? topRiskItems : ["No active watch items right now."]).map((risk) => (
+              <li key={risk} className="flex items-start gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-amber-600" />
+                <span>{risk}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article className="rounded-xl border bg-card p-4 space-y-3" data-testid="section-ask-atlas-case-aware">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary/80" />
+            <h2 className="font-semibold">Ask Atlas</h2>
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Case-aware</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Atlas answers on this page are scoped to <span className="font-medium text-foreground">{caseRecord.title}</span> and the documents linked to this case.
+          </p>
           <Link href={askHref}>
-            <a data-testid="link-ask-atlas">
-              <Button size="sm" className="gap-1.5 h-8 text-xs">
-                <Zap className="w-3.5 h-3.5" />
-                Ask about this case
-              </Button>
-            </a>
+            <Button size="sm" className="gap-1.5" data-testid="button-ask-atlas-case-context">
+              <MessageSquare className="w-3.5 h-3.5" />
+              Ask about this case
+            </Button>
           </Link>
+        </article>
+      </section>
+
+      <section className="rounded-xl border bg-card p-4 space-y-3" data-testid="section-case-documents">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-primary/80" />
+          <h2 className="font-semibold">Documents</h2>
+          <Badge variant="outline">{documents.length}</Badge>
         </div>
-      </div>
 
-      {/* ══════════════════════════════════════════════════════════════════
-           Top area — state-driven rendering.
-           One primary signal occupies the top; secondary guidance follows.
-           State matrix:
-             quiet_case   Snapshot → Alerts (≤2) → WhatMattersNow hidden
-             active_case  Snapshot → Alerts (≤2) → WhatMattersNow
-             urgent_case  Snapshot (no hearing chip) → WhatMattersNow (PRIMARY)
-                          → Alerts (≤1, hearing alerts suppressed)
-          ══════════════════════════════════════════════════════════════════ */}
-
-      {/* ── Case Snapshot: court facts + stat pills ───────────────────────
-           In urgent_case, hearing_date is omitted from the chip row —
-           WhatMattersNow already surfaces it prominently below.          */}
-      {factsLoading && (
-        <div className="rounded-lg border bg-card px-4 py-3 h-16 animate-pulse" />
-      )}
-      {!factsLoading && (
-        <CaseSnapshotPanel
-          facts={facts}
-          caseId={caseId}
-          askHref={askHref}
-          suppressFactTypes={dashboardState === "urgent_case" ? ["hearing_date"] : []}
-        />
-      )}
-
-      {/* ── urgent_case: WhatMattersNow is the primary signal (shown first) */}
-      {!factsLoading && dashboardState === "urgent_case" && facts.length > 0 && (
-        <WhatMattersNow
-          facts={facts}
-          caseId={caseId}
-          askHref={askHref}
-          uploadHref={uploadHref}
-        />
-      )}
-
-      {/* ── Case Alerts ───────────────────────────────────────────────────
-           urgent_case: max 1 alert; suppress alerts WhatMattersNow owns.
-           All other states: max 2 alerts, no suppression.                */}
-      {!factsLoading && (
-        <CaseAlerts
-          caseId={caseId}
-          facts={facts}
-          askHref={askHref}
-          uploadHref={uploadHref}
-          suppressIds={
-            dashboardState === "urgent_case"
-              ? ["hearing-soon", "hearing-imminent"]
-              : []
-          }
-          maxAlerts={dashboardState === "urgent_case" ? 1 : 2}
-        />
-      )}
-
-      {/* ── active_case: WhatMattersNow shown after alerts as focus CTA ───
-           quiet_case: WhatMattersNow hidden (nothing urgent to surface).  */}
-      {!factsLoading && dashboardState === "active_case" && facts.length > 0 && (
-        <WhatMattersNow
-          facts={facts}
-          caseId={caseId}
-          askHref={askHref}
-          uploadHref={uploadHref}
-        />
-      )}
-
-      {/* ── Case Timeline — collapsed by default ─────────────────────────── */}
-      <div id="section-timeline" className="scroll-mt-4">
-        <CollapsibleSection
-          title="Case Timeline"
-          icon={History}
-          defaultOpen={false}
-          testId="collapsible-timeline"
-        >
-          <CaseTimeline caseId={caseId} />
-        </CollapsibleSection>
-      </div>
-
-      {/* ── Two-column grid: actions always visible; conversations collapsed ─ */}
-      <div id="section-actions" className="grid grid-cols-1 md:grid-cols-5 gap-4 scroll-mt-4">
-        <div className="md:col-span-3">
-          <ActionsPanel caseId={caseId} />
-        </div>
-        <div className="md:col-span-2">
-          <CollapsibleSection
-            title="Conversations"
-            icon={MessageSquare}
-            defaultOpen={dashboardState === "urgent_case"}
-            testId="collapsible-conversations"
-          >
-            <ConversationsPanel
-              caseId={caseId}
-              jurisdictionState={caseRecord.jurisdictionState}
-              jurisdictionCounty={caseRecord.jurisdictionCounty}
-            />
-          </CollapsibleSection>
-        </div>
-      </div>
-
-      {/* ── All case facts — collapsible full table ───────────────────────── */}
-      <div id="section-facts" className="scroll-mt-4">
-        {!factsLoading && facts.length > 0 && (
-          <CaseFactsSection
-            facts={facts}
-            askHref={askHref}
-            hideAskAtlas={hasConversations}
-          />
+        {documents.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No documents linked to this case yet.</p>
+        ) : (
+          <ul className="divide-y">
+            {documents.map((document) => (
+              <li key={document.id} className="py-2.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{document.fileName}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(document.createdAt)} · {document.docType}</p>
+                </div>
+                <Link href={`/document/${document.id}`}>
+                  <Button size="sm" variant="outline">Open</Button>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
-
-      {/* ── Documents — collapsed by default ─────────────────────────────── */}
-      <div id="section-documents" className="scroll-mt-4">
-        <CollapsibleSection
-          title="Documents"
-          icon={FileText}
-          defaultOpen={false}
-          testId="collapsible-documents"
-        >
-          <DocumentsPanel
-            caseId={caseId}
-            uploadHref={uploadHref}
-            askHref={askHref}
-            caseTitle={caseRecord.title}
-          />
-        </CollapsibleSection>
-      </div>
-
-      {/* ── Footer meta ──────────────────────────────────────────────────── */}
-      <p className="text-[11px] text-muted-foreground/50 text-center pb-2">
-        Case created {relativeTime(caseRecord.createdAt)}
-        {" · "}
-        <Link href="/workspace"><a className="hover:underline">All cases</a></Link>
-      </p>
+      </section>
     </div>
   );
 }
