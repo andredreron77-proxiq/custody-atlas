@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveUSStateCode } from "@shared/usStates";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { mkdirSync, unlinkSync, readFileSync, writeFileSync } from "fs";
@@ -1626,7 +1627,15 @@ CRITICAL RULES:
             (typeof extractedFacts.case_number === "string" && extractedFacts.case_number.trim())
             || (typeof validated.data.document_type === "string" && validated.data.document_type.trim())
             || "My First Case";
-          const created = await createCase(docUserId, { title: newTitle.slice(0, 120) });
+          const stateCodeForAutoCase =
+            resolveUSStateCode(typeof req.body?.stateCode === "string" ? req.body.stateCode : null)
+            ?? resolveUSStateCode(typeof req.body?.jurisdictionState === "string" ? req.body.jurisdictionState : null)
+            ?? "US";
+          const created = await createCase(docUserId, {
+            title: newTitle.slice(0, 120),
+            caseType: "custody",
+            stateCode: stateCodeForAutoCase,
+          });
           if (created) {
             docCaseId = created.id;
             assignmentDecision = {
@@ -3084,18 +3093,26 @@ Do not add facts not present in the provided evidence.`,
     const user = (req as any).user;
     const schema = z.object({
       title: z.string().min(1).max(200),
+      caseType: z.enum(["custody", "child_support", "custody_and_support"]).optional(),
+      stateCode: z.string().trim().min(2).max(64).optional(),
+      jurisdictionState: z.string().trim().min(2).max(64).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid case payload.", details: parsed.error.flatten() });
     }
     try {
+      const resolvedStateCode =
+        resolveUSStateCode(parsed.data.stateCode)
+        ?? resolveUSStateCode(parsed.data.jurisdictionState)
+        ?? "US";
       const existingCases = await listCases(user.id, 2);
       const isFirstCase = existingCases.length === 0;
       const createCaseResult = await createCaseWithDiagnostics(user.id, {
         title: parsed.data.title,
-        caseType: "general",
+        caseType: parsed.data.caseType ?? "custody",
         status: "active",
+        stateCode: resolvedStateCode,
         authToken: req.headers.authorization?.replace("Bearer ", "").trim() ?? null,
       });
       const newCase = createCaseResult.createdCase;
@@ -3106,6 +3123,8 @@ Do not add facts not present in the provided evidence.`,
           userId: user.id,
           requestPayload: {
             title: parsed.data.title,
+            caseType: parsed.data.caseType ?? "custody",
+            stateCode: resolvedStateCode,
           },
           failure: createCaseResult.failure,
         });

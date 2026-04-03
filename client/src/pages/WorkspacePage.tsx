@@ -48,6 +48,7 @@ import {
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
 import { DocumentsPanel } from "@/components/workspace/DocumentsPanel";
 import { classifyDateStatus } from "@shared/dateStatus";
+import { resolveUSStateCode } from "@shared/usStates";
 
 /* ── API types ────────────────────────────────────────────────────────────── */
 
@@ -1453,8 +1454,11 @@ export default function WorkspacePage() {
 
   const createCaseMutation = useMutation({
     mutationFn: async () => {
+      const resolvedStateCode = resolveUSStateCode(jurisdiction?.state) ?? "US";
       const payload = {
         title: newCaseName.trim(),
+        caseType: "custody",
+        stateCode: resolvedStateCode,
       };
       const res = await apiRequestRaw("POST", "/api/cases", payload);
       if (!res.ok) {

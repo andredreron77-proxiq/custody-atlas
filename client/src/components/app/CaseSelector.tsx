@@ -68,7 +68,11 @@ function NewCaseForm({ onCreated, onCancel }: { onCreated: () => void; onCancel:
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/cases", { title: title.trim() }),
+    mutationFn: () => apiRequest("POST", "/api/cases", {
+      title: title.trim(),
+      caseType: "custody",
+      stateCode: "US",
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/cases"] });
       onCreated();
