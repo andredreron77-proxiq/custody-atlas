@@ -40,7 +40,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, type DocumentType, type SavedDocument } from "./services/documents";
 import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
@@ -112,6 +112,93 @@ function getOpenAIDirectClient(): OpenAI {
 
 /** Shared address-component type used by both geocoding helpers. */
 type GComponent = { long_name: string; short_name: string; types: string[] };
+
+interface RetroactiveDocReviewItem {
+  documentId: string;
+  fileName: string;
+  status: "suggested" | "unassigned";
+  suggestedCaseId: string | null;
+  confidenceScore: number | null;
+  reason: string;
+  signals: {
+    caseNumberMatch: boolean;
+    courtMatch: boolean;
+    partyMatch: boolean;
+    jurisdictionMatch: boolean;
+    relatedDateMatch: boolean;
+  };
+}
+
+function normalizeText(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase() : "";
+}
+
+function hasOverlap(a: unknown, b: unknown): boolean {
+  const left = normalizeText(a);
+  const right = normalizeText(b);
+  if (!left || !right) return false;
+  return left.includes(right) || right.includes(left);
+}
+
+function buildRetroactiveDocReviewItem(
+  doc: SavedDocument,
+  createdCase: { id: string; title: string; description: string | null; jurisdictionState: string | null },
+  caseNumberHint: string | null,
+  docs: SavedDocument[],
+): RetroactiveDocReviewItem {
+  const extractedFacts = (doc.analysisJson?.extracted_facts ?? {}) as Record<string, unknown>;
+  const candidateDate = normalizeText(extractedFacts.hearing_date)
+    || normalizeText(extractedFacts.filing_date)
+    || normalizeText(extractedFacts.effective_date);
+  const hasRelatedDateMatch = Boolean(candidateDate) && docs.some((other) => {
+    if (other.id === doc.id) return false;
+    const otherFacts = (other.analysisJson?.extracted_facts ?? {}) as Record<string, unknown>;
+    const otherDate = normalizeText(otherFacts.hearing_date)
+      || normalizeText(otherFacts.filing_date)
+      || normalizeText(otherFacts.effective_date);
+    return Boolean(otherDate) && otherDate === candidateDate;
+  });
+
+  const signals = {
+    caseNumberMatch: hasOverlap(extractedFacts.case_number, caseNumberHint),
+    courtMatch: hasOverlap(extractedFacts.court_name, createdCase.title) || hasOverlap(extractedFacts.court_name, createdCase.description),
+    partyMatch:
+      hasOverlap(extractedFacts.filing_party, createdCase.title)
+      || hasOverlap(extractedFacts.opposing_party, createdCase.title),
+    jurisdictionMatch: hasOverlap(extractedFacts.jurisdiction_state, createdCase.jurisdictionState),
+    relatedDateMatch: hasRelatedDateMatch,
+  };
+
+  let score = 0;
+  if (signals.caseNumberMatch) score += 55;
+  if (signals.courtMatch) score += 15;
+  if (signals.partyMatch) score += 15;
+  if (signals.jurisdictionMatch) score += 10;
+  if (signals.relatedDateMatch) score += 10;
+  score = Math.min(100, score);
+
+  if (score >= 30) {
+    return {
+      documentId: doc.id,
+      fileName: doc.fileName,
+      status: "suggested",
+      suggestedCaseId: createdCase.id,
+      confidenceScore: score,
+      reason: "retroactive_signal_match",
+      signals,
+    };
+  }
+
+  return {
+    documentId: doc.id,
+    fileName: doc.fileName,
+    status: "unassigned",
+    suggestedCaseId: null,
+    confidenceScore: score || null,
+    reason: "retroactive_no_confident_match",
+    signals,
+  };
+}
 
 /** Extract jurisdiction fields from a Google geocoding address_components array. */
 function extractJurisdictionFields(components: GComponent[]): {
@@ -3008,6 +3095,8 @@ Do not add facts not present in the provided evidence.`,
       return res.status(400).json({ error: "Invalid case payload.", details: parsed.error.flatten() });
     }
     try {
+      const existingCases = await listCases(user.id, 2);
+      const isFirstCase = existingCases.length === 0;
       const nextTitle = parsed.data.name ?? parsed.data.title;
       if (!nextTitle) {
         return res.status(400).json({ error: "Case name is required." });
@@ -3022,7 +3111,47 @@ Do not add facts not present in the provided evidence.`,
         jurisdictionCounty: parsed.data.jurisdictionCounty,
       });
       if (!newCase) return res.status(503).json({ error: "Case storage unavailable." });
-      return res.status(201).json({ case: newCase });
+
+      if (!isFirstCase) {
+        return res.status(201).json({ case: newCase });
+      }
+
+      const allDocs = await getDocuments(user.id);
+      const historicalUnassignedDocs = allDocs.filter((doc) => {
+        if (doc.caseId) return false;
+        const assignment = getDocumentCaseAssignmentView(doc);
+        return assignment.status !== "assigned";
+      });
+
+      const reviewItems = historicalUnassignedDocs.map((doc) =>
+        buildRetroactiveDocReviewItem(
+          doc,
+          newCase,
+          parsed.data.caseNumber ?? null,
+          historicalUnassignedDocs,
+        ));
+
+      await Promise.all(reviewItems.map((item) =>
+        setDocumentCaseSuggestion(
+          item.documentId,
+          user.id,
+          item.status === "suggested" ? item.suggestedCaseId : null,
+          item.confidenceScore,
+          item.reason,
+        ),
+      ));
+
+      const suggestedCount = reviewItems.filter((item) => item.status === "suggested").length;
+      return res.status(201).json({
+        case: newCase,
+        retroactiveDocumentReview: {
+          requiresReview: reviewItems.length > 0,
+          totalPreExistingDocuments: reviewItems.length,
+          suggestedCount,
+          unassignedCount: reviewItems.length - suggestedCount,
+          items: reviewItems,
+        },
+      });
     } catch (err) {
       console.error("[cases] POST /api/cases error:", err);
       return res.status(500).json({ error: "Failed to create case." });
