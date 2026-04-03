@@ -1123,7 +1123,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
           intentUserDocs = [scopedDocument];
         } else {
           const allDocs = effectiveCaseId
-            ? await getDocumentsByCase(userId, effectiveCaseId)
+            ? await getDocumentsByCase(effectiveCaseId, userId)
             : await getDocuments(userId);
           // If selectedDocumentIds is provided, filter to only those docs.
           // Empty array = no docs selected = skip doc context.
@@ -1186,7 +1186,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
       if (intent !== "FACT" && !scopedDocument && !noDocsSelected && userId) {
         const allRecentDocs = await (
           effectiveCaseId
-            ? getDocumentsByCase(userId, effectiveCaseId)
+            ? getDocumentsByCase(effectiveCaseId, userId)
             : getDocuments(userId)
         ).catch(() => []);
         // Filter to selected docs if provided; otherwise use all

@@ -64,7 +64,9 @@ export interface Case {
   userId: string;
   title: string;
   description: string | null;
+  caseType: string | null;
   jurisdictionState: string | null;
+  stateCode: string | null;
   jurisdictionCounty: string | null;
   status: string;
   createdAt: string;
@@ -149,7 +151,9 @@ export function mapCaseRow(r: any): Case {
     userId: r.user_id,
     title: r.title ?? "Untitled case",
     description: r.description ?? null,
+    caseType: r.case_type ?? null,
     jurisdictionState: r.jurisdiction_state ?? null,
+    stateCode: r.state_code ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     status: r.status ?? "active",
     createdAt,
