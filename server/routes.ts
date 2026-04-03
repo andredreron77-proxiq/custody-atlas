@@ -87,6 +87,7 @@ import {
   countyProcedureSchema,
   type Jurisdiction,
 } from "@shared/schema";
+import { classifyDateStatus, type DateStatus } from "@shared/dateStatus";
 
 /** Chat/text model client — routes through the AI Integration proxy when available. */
 function getOpenAIClient(): OpenAI {
@@ -2444,7 +2445,7 @@ CRITICAL RULES:
     label: string;
     value: string;
     sourceDocument: string;
-    urgency: "upcoming" | "future" | "unknown";
+    urgency: DateStatus;
   };
 
   type BriefDocumentSignal = {
@@ -2503,16 +2504,8 @@ CRITICAL RULES:
     };
   }
 
-  function computeDateUrgency(value: string): "upcoming" | "future" | "unknown" {
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "unknown";
-
-    const today = new Date();
-    const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-    const dateUtc = Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
-    const diffDays = Math.floor((dateUtc - todayUtc) / (1000 * 60 * 60 * 24));
-    if (diffDays <= 14) return "upcoming";
-    return "future";
+  function computeDateUrgency(value: string): DateStatus {
+    return classifyDateStatus(value);
   }
 
   function buildPriorities(
@@ -2525,7 +2518,10 @@ CRITICAL RULES:
 
     const upcomingDateCount = docs.flatMap((d) => [...d.keyDates, d.extractedFacts.hearing_date ?? ""])
       .filter(Boolean)
-      .filter((dateValue) => computeDateUrgency(dateValue) === "upcoming")
+      .filter((dateValue) => {
+        const status = computeDateUrgency(dateValue);
+        return status === "upcoming" || status === "today";
+      })
       .length;
 
     if (upcomingDateCount > 0) {
@@ -2701,7 +2697,7 @@ Do not add facts not present in the provided evidence.`,
               requiredOutputShape: {
                 currentSituation: "string",
                 whatMattersMost: [{ priority: "string", reason: "string", level: "high|medium" }],
-                keyDatesAndDeadlines: [{ date: "string", label: "string", source: "string", urgency: "upcoming|future|unknown" }],
+                keyDatesAndDeadlines: [{ date: "string", label: "string", source: "string", urgency: "upcoming|today|past|unknown" }],
                 risksWatchItems: ["string"],
                 documentInsights: [{ documentId: "string", fileName: "string", insight: "string", whyItMatters: "string" }],
                 missingInformationGaps: ["string"],

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { classifyDateStatus } from "@shared/dateStatus";
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -167,14 +168,14 @@ export function DocKeyDatesRow({
 
 /* ── DocObligationBadge ───────────────────────────────────────────────────── */
 
-type ObligationVariant = "hearing" | "deadline" | "timelimit";
+type ObligationVariant = "hearing" | "deadline" | "timelimit" | "historical";
 
 type ObligationItem = {
   label: string;
   variant: ObligationVariant;
 };
 
-function deriveObligations(analysis: DocAnalysis): ObligationItem[] {
+export function deriveObligations(analysis: DocAnalysis): ObligationItem[] {
   const obligations: ObligationItem[] = [];
   const ef = analysis.extracted_facts ?? {};
   const keyDates = (analysis.key_dates ?? []).map(d => d.toLowerCase());
@@ -182,9 +183,18 @@ function deriveObligations(analysis: DocAnalysis): ObligationItem[] {
 
   // Explicit hearing date in structured extraction → highest priority signal
   if (ef.hearing_date) {
-    obligations.push({ label: "Upcoming hearing", variant: "hearing" });
+    const hearingStatus = classifyDateStatus(ef.hearing_date);
+    if (hearingStatus === "upcoming" || hearingStatus === "today") {
+      obligations.push({ label: hearingStatus === "today" ? "Hearing today" : "Upcoming hearing", variant: "hearing" });
+    } else if (hearingStatus === "past") {
+      obligations.push({ label: "Past hearing", variant: "historical" });
+    }
   } else if (keyDates.some(d => d.includes("hearing"))) {
     obligations.push({ label: "Upcoming hearing", variant: "hearing" });
+  }
+
+  if (obligations.length < 2 && ef.filing_date && classifyDateStatus(ef.filing_date) === "past") {
+    obligations.push({ label: "Historical filing date", variant: "historical" });
   }
 
   // Response / answer deadline in key dates
@@ -240,7 +250,9 @@ export function DocObligationBadge({
             "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium leading-4",
             variant === "hearing"
               ? "bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400"
-              : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400",
+              : variant === "historical"
+                ? "bg-slate-100 text-slate-700 dark:bg-slate-900/60 dark:text-slate-300"
+                : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400",
           )}
           data-testid={`badge-obligation-${variant}`}
         >
@@ -295,7 +307,7 @@ export function DocImplicationsSection({
 
 /* ── DocActionInsight ─────────────────────────────────────────────────────── */
 
-function deriveActionInsight(analysis: DocAnalysis, docType?: string): string | null {
+export function deriveActionInsight(analysis: DocAnalysis, docType?: string): string | null {
   const ef = analysis.extracted_facts ?? {};
   const keyDates = (analysis.key_dates ?? []).map(d => d.toLowerCase());
 
@@ -311,7 +323,15 @@ function deriveActionInsight(analysis: DocAnalysis, docType?: string): string | 
 
   // Most specific first: hearing with a known date
   if (hasHearing && ef.hearing_date) {
-    return `You may need to prepare for a hearing on ${ef.hearing_date}`;
+    const hearingStatus = classifyDateStatus(ef.hearing_date);
+    if (hearingStatus === "upcoming" || hearingStatus === "today") {
+      return hearingStatus === "today"
+        ? `Hearing is scheduled for today (${ef.hearing_date}) — prepare now and confirm logistics`
+        : `You may need to prepare for a hearing on ${ef.hearing_date}`;
+    }
+    if (hearingStatus === "past") {
+      return `Past hearing date detected (${ef.hearing_date}). This hearing appears to have already occurred — review related orders, outcomes, or follow-up deadlines`;
+    }
   }
   if (hasHearing) {
     return "You may need to prepare for an upcoming court hearing";
