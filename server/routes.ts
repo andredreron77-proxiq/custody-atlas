@@ -2523,7 +2523,7 @@ CRITICAL RULES:
     }
   });
 
-  app.patch("/api/documents/:documentId/case-assignment", requireAuth, async (req, res) => {
+  async function patchDocumentCaseAssignment(req: any, res: any) {
     const user = (req as any).user;
     const { documentId } = req.params;
     const schema = z.object({
@@ -2547,7 +2547,10 @@ CRITICAL RULES:
       console.error("[documents] PATCH case-assignment error:", err);
       return res.status(500).json({ error: "Failed to update document case assignment." });
     }
-  });
+  }
+
+  app.patch("/api/documents/:documentId/case-assignment", requireAuth, patchDocumentCaseAssignment);
+  app.patch("/api/documents/:documentId", requireAuth, patchDocumentCaseAssignment);
 
   /**
    * DELETE /api/documents/:documentId
@@ -2992,7 +2995,10 @@ Do not add facts not present in the provided evidence.`,
   app.post("/api/cases", requireAuth, async (req, res) => {
     const user = (req as any).user;
     const schema = z.object({
-      title: z.string().min(1).max(200),
+      title: z.string().min(1).max(200).optional(),
+      name: z.string().min(1).max(200).optional(),
+      caseNumber: z.string().max(200).optional(),
+      jurisdiction: z.string().max(200).optional(),
       description: z.string().max(1000).optional(),
       jurisdictionState: z.string().optional(),
       jurisdictionCounty: z.string().optional(),
@@ -3002,7 +3008,19 @@ Do not add facts not present in the provided evidence.`,
       return res.status(400).json({ error: "Invalid case payload.", details: parsed.error.flatten() });
     }
     try {
-      const newCase = await createCase(user.id, parsed.data);
+      const nextTitle = parsed.data.name ?? parsed.data.title;
+      if (!nextTitle) {
+        return res.status(400).json({ error: "Case name is required." });
+      }
+      const jurisdictionState = parsed.data.jurisdictionState
+        ?? parsed.data.jurisdiction
+        ?? undefined;
+      const newCase = await createCase(user.id, {
+        title: nextTitle,
+        description: parsed.data.description ?? parsed.data.caseNumber,
+        jurisdictionState,
+        jurisdictionCounty: parsed.data.jurisdictionCounty,
+      });
       if (!newCase) return res.status(503).json({ error: "Case storage unavailable." });
       return res.status(201).json({ case: newCase });
     } catch (err) {
