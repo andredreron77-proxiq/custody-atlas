@@ -41,30 +41,13 @@ import {
   hasAnalysis,
 } from "@/components/app/DocIntelPanel";
 import { apiRequestRaw } from "@/lib/queryClient";
+import {
+  fetchDocumentDetail,
+  type DocumentDetail,
+  type DocumentMissingAnalysisError,
+} from "@/lib/documentDetailApi";
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
-
-interface DocumentDetail {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  pageCount: number;
-  docType: string;
-  analysisJson: Record<string, unknown>;
-  caseId: string | null;
-  createdAt: string;
-  /** Reflects whether a storage_path exists in the backend — not used in UI rendering. */
-  hasStoragePath: boolean;
-  isAnalysisAvailable?: boolean;
-  analysisStatus?: "uploaded" | "analyzing" | "analyzed" | "failed";
-  integrityIssue?: "missing_analysis" | null;
-}
-
-interface DocumentMissingAnalysisError {
-  code: "DOCUMENT_ANALYSIS_MISSING";
-  error: string;
-  document: Omit<DocumentDetail, "analysisJson">;
-}
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   custody_order:  "Custody Order",
@@ -557,24 +540,17 @@ export default function DocumentDetailPage() {
     queryKey: ["/api/documents", documentId],
     queryFn: async () => {
       console.info("[trace][detail] route documentId=", documentId);
-      const res = await fetch(`/api/documents/${documentId}`, {
-        credentials: "include",
-      });
-      const json = await res.json();
+      const result = await fetchDocumentDetail(documentId ?? "");
       console.info("[trace][detail] api response", {
         routeDocumentId: documentId,
-        status: res.status,
-        responseDocumentId: json?.document?.id,
-        code: json?.code,
+        responseDocumentId: result.document?.id,
+        code: result.missingAnalysis?.code,
       });
-      if (!res.ok) {
-        if (res.status === 409 && json?.code === "DOCUMENT_ANALYSIS_MISSING") {
-          setMissingAnalysis(json as DocumentMissingAnalysisError);
-          throw new Error("Document analysis unavailable");
-        }
-        throw new Error("Document not found");
+      if (result.missingAnalysis) {
+        setMissingAnalysis(result.missingAnalysis);
+        throw new Error("Document analysis unavailable");
       }
-      return json.document as DocumentDetail;
+      return result.document;
     },
     enabled: !!documentId,
     retry: 1,
