@@ -53,6 +53,7 @@
  *     created_at   timestamptz DEFAULT now()
  */
 
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
 
 /* ── Public types ─────────────────────────────────────────────────────────── */
@@ -246,6 +247,7 @@ export async function createCaseWithDiagnostics(
     title: string;
     caseType?: string;
     status?: string;
+    authToken?: string | null;
   },
 ): Promise<CreateCaseResult> {
   const normalizedTitle = opts.title.slice(0, 200);
@@ -262,7 +264,39 @@ export async function createCaseWithDiagnostics(
     status: opts.status ?? "active",
   };
 
-  if (!supabaseAdmin) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  const authToken = (opts.authToken ?? "").trim();
+  const authedClient: SupabaseClient | null =
+    supabaseUrl && anonKey && authToken
+      ? createClient(supabaseUrl, anonKey, {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+          global: {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          },
+        })
+      : null;
+
+  const insertWithClient = async (client: SupabaseClient) => {
+    console.info("[cases] createCase insert attempt", {
+      userId,
+      insertPayload,
+      hasAuthToken: authToken.length > 0,
+      clientMode: client === authedClient ? "authenticated_jwt" : "admin_service_role",
+    });
+    return client
+      .from("cases")
+      .insert(insertPayload)
+      .select()
+      .single();
+  };
+
+  if (!supabaseAdmin && !authedClient) {
     return {
       createdCase: null,
       failure: {
@@ -279,11 +313,37 @@ export async function createCaseWithDiagnostics(
     };
   }
   try {
-    const { data, error } = await supabaseAdmin
-      .from("cases")
-      .insert(insertPayload)
-      .select()
-      .single();
+    // Prefer authenticated user context first so RLS insert policies are always satisfied.
+    const primaryClient = authedClient ?? supabaseAdmin;
+    if (!primaryClient) {
+      throw new Error("No Supabase client available for case insert.");
+    }
+
+    let { data, error } = await insertWithClient(primaryClient);
+    const shouldFallbackToAdmin =
+      !!error &&
+      primaryClient === authedClient &&
+      supabaseAdmin &&
+      (error.code === "42501" ||
+        /row-level security/i.test(error.message ?? "") ||
+        /permission denied/i.test(error.message ?? ""));
+    if (shouldFallbackToAdmin) {
+      const adminClient = supabaseAdmin;
+      if (!adminClient) {
+        throw new Error("Admin Supabase client unavailable during createCase fallback.");
+      }
+      console.warn("[cases] createCase retrying insert with admin client after RLS/auth failure", {
+        userId,
+        insertPayload,
+        initialError: {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint,
+        },
+      });
+      ({ data, error } = await insertWithClient(adminClient));
+    }
 
     if (!error && data) {
       return { createdCase: mapCaseRow(data), failure: null };
