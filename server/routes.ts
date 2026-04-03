@@ -1626,11 +1626,11 @@ CRITICAL RULES:
             || (typeof validated.data.document_type === "string" && validated.data.document_type.trim())
             || "My First Case";
           const created = await createCase(docUserId, { title: newTitle.slice(0, 120) });
-          if (created.caseRecord) {
-            docCaseId = created.caseRecord.id;
+          if (created) {
+            docCaseId = created.id;
             assignmentDecision = {
               status: "assigned",
-              assignedCaseId: created.caseRecord.id,
+              assignedCaseId: created.id,
               suggestedCaseId: null,
               confidenceScore: 100,
               reason: "auto_created_first_case",
@@ -3104,25 +3104,20 @@ Do not add facts not present in the provided evidence.`,
       const jurisdictionState = parsed.data.jurisdictionState
         ?? parsed.data.jurisdiction
         ?? undefined;
-      const errorId = `case_create_${Date.now().toString(36)}`;
-      const newCaseResult = await createCase(user.id, {
+      const newCase = await createCase(user.id, {
         title: nextTitle,
         description: parsed.data.description ?? parsed.data.caseNumber,
         jurisdictionState,
         jurisdictionCounty: parsed.data.jurisdictionCounty,
-      }, { errorId });
-      if (!newCaseResult.caseRecord) {
-        console.error("[cases] create-case storage failure", {
-          errorId,
-          userId: user.id,
-          failure: newCaseResult.failure,
-        });
+      });
+      if (!newCase) {
+        const errorId = `case_create_${Date.now().toString(36)}`;
+        console.error(`[cases] create-case storage failure (errorId=${errorId}, userId=${user.id})`);
         return res.status(503).json({
           error: "Case storage unavailable.",
           errorId,
         });
       }
-      const newCase = newCaseResult.caseRecord;
 
       if (!isFirstCase) {
         return res.status(201).json({ case: newCase });
