@@ -32,6 +32,7 @@ import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequestRaw, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { firstNameFromDisplayName, useUserProfile } from "@/hooks/use-user-profile";
 import {
   deriveCaseActivityState,
   type CaseActivityState,
@@ -307,6 +308,7 @@ function WhatMattersNowPanel({
   conversationCount,
   analyzedCount,
   activeCaseName,
+  preferredName,
   caseIdParam,
   onOpenDocumentSafely,
 }: {
@@ -320,6 +322,7 @@ function WhatMattersNowPanel({
   conversationCount: number;
   analyzedCount: number;
   activeCaseName: string | null;
+  preferredName?: string | null;
   caseIdParam?: string;
   onOpenDocumentSafely: (documentId: string) => Promise<void>;
 }) {
@@ -366,7 +369,9 @@ function WhatMattersNowPanel({
     return (
       <HeroPanel testId="panel-what-matters-now">
         <HeroPanelHeader>
-          <h2 className="text-base font-semibold text-foreground leading-tight">What Matters Now</h2>
+          <h2 className="text-base font-semibold text-foreground leading-tight">
+            {preferredName ? `What Matters Now, ${preferredName}` : "What Matters Now"}
+          </h2>
         </HeroPanelHeader>
         <HeroPanelContent className="pb-5">
           <NextBestStepPanel scenario={scenario} ctaHref={ctaHref} />
@@ -828,7 +833,7 @@ function CaseBriefSection({ caseIdParam }: { caseIdParam?: string }) {
 /* ── Documents — compact dashboard preview ────────────────────────────────── */
 
 function DocumentsSection({
-  documents, isLoading, askAIPath, caseNameById, onOpenDocumentSafely, cases,
+  documents, isLoading, askAIPath, caseNameById, onOpenDocumentSafely, cases, uploadEmptyMessage,
 }: {
   documents: WorkspaceDocument[];
   isLoading: boolean;
@@ -836,6 +841,7 @@ function DocumentsSection({
   caseNameById: Record<string, string>;
   onOpenDocumentSafely: (documentId: string) => Promise<void>;
   cases: CaseRecord[];
+  uploadEmptyMessage?: string;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -892,7 +898,7 @@ function DocumentsSection({
     return (
       <EmptyState
         icon={FileSearch}
-        message="Upload your first custody document"
+        message={uploadEmptyMessage ?? "Upload your first custody document"}
         ctaLabel="Analyze a document"
         ctaHref="/upload-document"
         testId="empty-recent-documents"
@@ -1357,6 +1363,7 @@ export default function WorkspacePage() {
   const [, navigate] = useLocation();
   const { jurisdiction } = useJurisdiction();
   const { user } = useCurrentUser();
+  const { data: profile } = useUserProfile();
   const { toast } = useToast();
   const caseIdParam = new URLSearchParams(
     location.split("?")[1] || window.location.search.slice(1),
@@ -1557,6 +1564,10 @@ export default function WorkspacePage() {
     if (lastThread.jurisdictionCounty) p.set("county", lastThread.jurisdictionCounty);
     return `/ask?${p.toString()}`;
   })();
+  const preferredName = firstNameFromDisplayName(profile?.displayName ?? user?.displayName ?? null) || null;
+  const uploadEmptyMessage = preferredName
+    ? `${preferredName}, upload your first custody document`
+    : "Upload your first custody document";
 
   return (
     <PageContainer size="wide" className="max-w-[1320px] py-4 space-y-4" testId="page-workspace">
@@ -1575,6 +1586,7 @@ export default function WorkspacePage() {
         caseCount={cases.length}
         timelineEventCount={timelineEvents.length}
         activeCaseId={caseIdParam}
+        preferredName={preferredName}
       />
 
       <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
@@ -1590,6 +1602,7 @@ export default function WorkspacePage() {
             conversationCount={conversationCount}
             analyzedCount={analyzedCount}
             activeCaseName={activeCaseName}
+            preferredName={preferredName}
             caseIdParam={caseIdParam}
             onOpenDocumentSafely={openDocumentSafely}
           />
@@ -1617,6 +1630,7 @@ export default function WorkspacePage() {
               caseNameById={caseNameById}
               onOpenDocumentSafely={openDocumentSafely}
               cases={cases}
+              uploadEmptyMessage={uploadEmptyMessage}
             />
           </DocumentsPanel>
         </div>

@@ -77,6 +77,7 @@ import {
   getRelatedQuestions,
   TOPIC_LABELS,
 } from "./services/publicQuestions";
+import { getUserProfile, setDisplayName } from "./services/userProfile";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -720,6 +721,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       console.error("[geocode/zip] error:", err);
       return res.status(500).json({ error: "We couldn't determine your location from that ZIP code. Please try again." });
+    }
+  });
+
+  app.get("/api/user-profile", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id as string;
+      const profile = await getUserProfile(userId);
+      return res.json(profile);
+    } catch (err) {
+      console.error("[user-profile] GET error:", err);
+      return res.status(500).json({ error: "Failed to load user profile." });
+    }
+  });
+
+  app.patch("/api/user-profile/display-name", requireAuth, async (req, res) => {
+    try {
+      const parsed = z.object({ displayName: z.string().min(1).max(80) }).safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "displayName is required." });
+      }
+      const userId = (req as any).user?.id as string;
+      const ok = await setDisplayName(userId, parsed.data.displayName);
+      if (!ok) {
+        return res.status(500).json({ error: "Failed to save display name." });
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[user-profile] PATCH display-name error:", err);
+      return res.status(500).json({ error: "Failed to save display name." });
     }
   });
 
