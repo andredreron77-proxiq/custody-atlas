@@ -1397,8 +1397,6 @@ export default function WorkspacePage() {
   const { toast } = useToast();
   const [isCreateCaseOpen, setIsCreateCaseOpen] = useState(false);
   const [newCaseName, setNewCaseName] = useState("");
-  const [newCaseNumber, setNewCaseNumber] = useState("");
-  const [newCaseJurisdiction, setNewCaseJurisdiction] = useState("");
   const [retroactivePrompt, setRetroactivePrompt] = useState<{
     caseId: string;
     suggestedCount: number;
@@ -1456,9 +1454,7 @@ export default function WorkspacePage() {
   const createCaseMutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        name: newCaseName.trim(),
-        caseNumber: newCaseNumber.trim() || undefined,
-        jurisdiction: newCaseJurisdiction.trim() || undefined,
+        title: newCaseName.trim(),
       };
       const res = await apiRequestRaw("POST", "/api/cases", payload);
       if (!res.ok) {
@@ -1473,8 +1469,6 @@ export default function WorkspacePage() {
       qc.invalidateQueries({ queryKey: ["/api/workspace"] });
       setIsCreateCaseOpen(false);
       setNewCaseName("");
-      setNewCaseNumber("");
-      setNewCaseJurisdiction("");
       if (payload.retroactiveDocumentReview?.requiresReview) {
         setRetroactivePrompt({
           caseId: payload.case.id,
@@ -1726,24 +1720,6 @@ export default function WorkspacePage() {
                 placeholder="e.g., Smith v. Jones"
                 value={newCaseName}
                 onChange={(e) => setNewCaseName(e.target.value)}
-                maxLength={200}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="case-number">Case number (optional)</Label>
-              <Input
-                id="case-number"
-                value={newCaseNumber}
-                onChange={(e) => setNewCaseNumber(e.target.value)}
-                maxLength={200}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="case-jurisdiction">Jurisdiction (optional)</Label>
-              <Input
-                id="case-jurisdiction"
-                value={newCaseJurisdiction}
-                onChange={(e) => setNewCaseJurisdiction(e.target.value)}
                 maxLength={200}
               />
             </div>

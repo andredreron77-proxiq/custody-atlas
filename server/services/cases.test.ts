@@ -13,18 +13,18 @@ test("extractMissingInsertColumn returns null for unrelated errors", () => {
   assert.equal(column, null);
 });
 
-test("mapCaseRow supports legacy cases table columns", () => {
+test("mapCaseRow uses live cases table columns", () => {
   const mapped = mapCaseRow({
     id: "case-1",
     user_id: "user-1",
-    name: "Legacy Case Name",
-    case_number: "24-DR-00123",
-    jurisdiction: "California",
+    title: "Parenting Plan 2026",
+    case_type: "general",
+    status: "active",
     created_at: "2026-04-03T00:00:00.000Z",
   });
 
-  assert.equal(mapped.title, "Legacy Case Name");
-  assert.equal(mapped.jurisdictionState, "California");
+  assert.equal(mapped.title, "Parenting Plan 2026");
+  assert.equal(mapped.jurisdictionState, null);
   assert.equal(mapped.status, "active");
   assert.equal(mapped.updatedAt, "2026-04-03T00:00:00.000Z");
 });

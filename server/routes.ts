@@ -3083,13 +3083,7 @@ Do not add facts not present in the provided evidence.`,
   app.post("/api/cases", requireAuth, async (req, res) => {
     const user = (req as any).user;
     const schema = z.object({
-      title: z.string().min(1).max(200).optional(),
-      name: z.string().min(1).max(200).optional(),
-      caseNumber: z.string().max(200).optional(),
-      jurisdiction: z.string().max(200).optional(),
-      description: z.string().max(1000).optional(),
-      jurisdictionState: z.string().optional(),
-      jurisdictionCounty: z.string().optional(),
+      title: z.string().min(1).max(200),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -3098,18 +3092,10 @@ Do not add facts not present in the provided evidence.`,
     try {
       const existingCases = await listCases(user.id, 2);
       const isFirstCase = existingCases.length === 0;
-      const nextTitle = parsed.data.name ?? parsed.data.title;
-      if (!nextTitle) {
-        return res.status(400).json({ error: "Case name is required." });
-      }
-      const jurisdictionState = parsed.data.jurisdictionState
-        ?? parsed.data.jurisdiction
-        ?? undefined;
       const createCaseResult = await createCaseWithDiagnostics(user.id, {
-        title: nextTitle,
-        description: parsed.data.description ?? parsed.data.caseNumber,
-        jurisdictionState,
-        jurisdictionCounty: parsed.data.jurisdictionCounty,
+        title: parsed.data.title,
+        caseType: "general",
+        status: "active",
       });
       const newCase = createCaseResult.createdCase;
       if (!newCase) {
@@ -3118,10 +3104,7 @@ Do not add facts not present in the provided evidence.`,
           errorId,
           userId: user.id,
           requestPayload: {
-            title: nextTitle,
-            description: parsed.data.description ?? parsed.data.caseNumber ?? null,
-            jurisdictionState: jurisdictionState ?? null,
-            jurisdictionCounty: parsed.data.jurisdictionCounty ?? null,
+            title: parsed.data.title,
           },
           failure: createCaseResult.failure,
         });
@@ -3146,7 +3129,7 @@ Do not add facts not present in the provided evidence.`,
         buildRetroactiveDocReviewItem(
           doc,
           newCase,
-          parsed.data.caseNumber ?? null,
+          null,
           historicalUnassignedDocs,
         ));
 
