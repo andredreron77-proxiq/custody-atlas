@@ -110,6 +110,33 @@ export interface CaseMemory {
   createdAt: string;
 }
 
+export interface CaseCreateFailure {
+  stage: "modern_insert" | "legacy_insert";
+  category:
+    | "table_missing"
+    | "column_missing"
+    | "wrong_column_names"
+    | "not_null_violation"
+    | "rls_policy_block"
+    | "auth_session_issue"
+    | "malformed_payload"
+    | "wrong_schema"
+    | "service_role_client_issue"
+    | "other";
+  insertPayload: Record<string, unknown>;
+  error: {
+    message?: string | null;
+    code?: string | null;
+    details?: string | null;
+    hint?: string | null;
+  };
+}
+
+export interface CreateCaseResult {
+  createdCase: Case | null;
+  failure: CaseCreateFailure | null;
+}
+
 /* ── Row mappers ──────────────────────────────────────────────────────────── */
 
 export function mapCaseRow(r: any): Case {
@@ -128,8 +155,38 @@ export function mapCaseRow(r: any): Case {
 
 export function extractMissingInsertColumn(message: string | undefined): string | null {
   if (!message) return null;
-  const match = message.match(/Could not find the '([^']+)' column/i);
-  return match?.[1] ?? null;
+  const postgrestMatch = message.match(/Could not find the '([^']+)' column/i);
+  if (postgrestMatch?.[1]) return postgrestMatch[1];
+
+  const postgresMatch = message.match(/column ["']?([^"']+)["']? of relation ["']?cases["']? does not exist/i);
+  if (postgresMatch?.[1]) return postgresMatch[1];
+
+  return null;
+}
+
+function categorizeCreateCaseError(err: {
+  message?: string | null;
+  code?: string | null;
+  details?: string | null;
+  hint?: string | null;
+}): CaseCreateFailure["category"] {
+  const message = (err.message ?? "").toLowerCase();
+  const details = (err.details ?? "").toLowerCase();
+  const hint = (err.hint ?? "").toLowerCase();
+  const code = (err.code ?? "").toLowerCase();
+
+  if (message.includes("relation") && message.includes("does not exist")) return "table_missing";
+  if (message.includes("column") && message.includes("does not exist")) return "column_missing";
+  if (code === "23502" || message.includes("null value in column")) return "not_null_violation";
+  if (code === "42501" || message.includes("row-level security") || details.includes("violates row-level security")) {
+    return "rls_policy_block";
+  }
+  if (message.includes("jwt") || message.includes("not authenticated")) return "auth_session_issue";
+  if (code === "22p02" || message.includes("invalid input syntax")) return "malformed_payload";
+  if (message.includes("schema cache") || hint.includes("schema cache")) return "wrong_schema";
+  if (message.includes("service role") || message.includes("permission denied")) return "service_role_client_issue";
+  if (message.includes("could not find the") && message.includes("column")) return "wrong_column_names";
+  return "other";
 }
 
 function mapConversation(r: any): Conversation {
@@ -190,7 +247,42 @@ export async function createCase(
     jurisdictionCounty?: string;
   },
 ): Promise<Case | null> {
-  if (!supabaseAdmin) return null;
+  const result = await createCaseWithDiagnostics(userId, opts);
+  return result.createdCase;
+}
+
+export async function createCaseWithDiagnostics(
+  userId: string,
+  opts: {
+    title: string;
+    description?: string;
+    jurisdictionState?: string;
+    jurisdictionCounty?: string;
+  },
+): Promise<CreateCaseResult> {
+  if (!supabaseAdmin) {
+    return {
+      createdCase: null,
+      failure: {
+        stage: "modern_insert",
+        category: "service_role_client_issue",
+        insertPayload: {
+          user_id: userId,
+          title: opts.title.slice(0, 200),
+          description: opts.description ?? null,
+          jurisdiction_state: opts.jurisdictionState ?? null,
+          jurisdiction_county: opts.jurisdictionCounty ?? null,
+          status: "active",
+        },
+        error: {
+          message: "Supabase admin client is not configured.",
+          code: null,
+          details: null,
+          hint: "Set VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+        },
+      },
+    };
+  }
   try {
     const normalizedTitle = opts.title.slice(0, 200);
     const modernInsertPayload = {
@@ -209,7 +301,7 @@ export async function createCase(
       .single();
 
     if (!error && data) {
-      return mapCaseRow(data);
+      return { createdCase: mapCaseRow(data), failure: null };
     }
 
     const missingColumn = extractMissingInsertColumn(error?.message);
@@ -234,28 +326,71 @@ export async function createCase(
         console.warn(
           `[cases] createCase used legacy schema fallback (missing column '${missingColumn}').`,
         );
-        return mapCaseRow(legacyInsert.data);
+        return { createdCase: mapCaseRow(legacyInsert.data), failure: null };
       }
 
-      console.error("[cases] createCase legacy fallback error:", {
-        message: legacyInsert.error?.message,
-        code: legacyInsert.error?.code,
-        details: legacyInsert.error?.details,
-        hint: legacyInsert.error?.hint,
-      });
-      return null;
+      return {
+        createdCase: null,
+        failure: {
+          stage: "legacy_insert",
+          category: categorizeCreateCaseError({
+            message: legacyInsert.error?.message,
+            code: legacyInsert.error?.code,
+            details: legacyInsert.error?.details,
+            hint: legacyInsert.error?.hint,
+          }),
+          insertPayload: legacyInsertPayload,
+          error: {
+            message: legacyInsert.error?.message,
+            code: legacyInsert.error?.code,
+            details: legacyInsert.error?.details,
+            hint: legacyInsert.error?.hint,
+          },
+        },
+      };
     }
 
-    console.error("[cases] createCase error:", {
-      message: error?.message,
-      code: error?.code,
-      details: error?.details,
-      hint: error?.hint,
-    });
-    return null;
+    return {
+      createdCase: null,
+      failure: {
+        stage: "modern_insert",
+        category: categorizeCreateCaseError({
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint,
+        }),
+        insertPayload: modernInsertPayload,
+        error: {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint,
+        },
+      },
+    };
   } catch (err) {
-    console.error("[cases] createCase exception:", err);
-    return null;
+    return {
+      createdCase: null,
+      failure: {
+        stage: "modern_insert",
+        category: "other",
+        insertPayload: {
+          user_id: userId,
+          title: opts.title.slice(0, 200),
+          description: opts.description ?? null,
+          jurisdiction_state: opts.jurisdictionState ?? null,
+          jurisdiction_county: opts.jurisdictionCounty ?? null,
+          status: "active",
+        },
+        error: {
+          message: err instanceof Error ? err.message : String(err),
+          code: null,
+          details: null,
+          hint: null,
+        },
+      },
+    };
   }
 }
 
