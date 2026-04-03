@@ -172,8 +172,7 @@ interface WorkspaceSignals {
 
 /* Returns true if the document has a completed analysis. */
 function isDocAnalyzed(doc: WorkspaceDocument): boolean {
-  if (doc.isAnalysisAvailable) return true;
-  return !!doc.analysisJson && typeof doc.analysisJson.summary === "string" && doc.analysisJson.summary.length > 0;
+  return doc.isAnalysisAvailable;
 }
 
 /* Keywords that indicate time-sensitive obligations or compliance requirements. */
@@ -846,6 +845,7 @@ function DocumentsSection({
                         size="sm"
                         className="text-[11px] h-6 px-1.5 text-muted-foreground hover:text-foreground"
                         data-testid={`button-review-doc-${doc.id}`}
+                        disabled={!doc.isAnalysisAvailable}
                         onClick={() => onOpenDocumentSafely(doc.id)}
                       >
                         Review
@@ -1194,9 +1194,12 @@ function TimelineAndActivityPanel({
               return (
                 <li
                   key={`document-${doc.id}`}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-muted/30 cursor-pointer group"
+                  className={`flex items-center gap-2.5 rounded-lg px-2 py-2 group ${doc.isAnalysisAvailable ? "hover:bg-muted/30 cursor-pointer" : "opacity-70 cursor-not-allowed"}`}
                   data-testid={`activity-document-${doc.id}`}
-                  onClick={() => onOpenDocumentSafely(doc.id)}
+                  onClick={() => {
+                    if (!doc.isAnalysisAvailable) return;
+                    onOpenDocumentSafely(doc.id);
+                  }}
                 >
                     <div className="w-6 h-6 rounded-md bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0">
                       <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1260,7 +1263,12 @@ export default function WorkspacePage() {
     queryFn: async () => {
       const res = await apiRequestRaw("GET", "/api/workspace");
       if (!res.ok) return { threads: [], documents: [], timelineEvents: [] };
-      return res.json();
+      const payload = await res.json();
+      const documentIds = Array.isArray(payload?.documents)
+        ? payload.documents.map((doc: WorkspaceDocument) => doc.id)
+        : [];
+      console.info("[trace][workspace] rendered documentIds:", documentIds);
+      return payload;
     },
   });
   const { data: casesData } = useQuery<{ cases: CaseRecord[] }>({
@@ -1302,7 +1310,9 @@ export default function WorkspacePage() {
   const hasRisks = documents.some(docHasRiskSignals);
 
   const openDocumentSafely = async (documentId: string) => {
+    console.info("[trace][workspace] navigate request documentId=", documentId);
     const res = await apiRequestRaw("GET", `/api/documents/${documentId}`);
+    console.info("[trace][workspace] detail preflight", { documentId, status: res.status });
     if (res.ok) {
       navigate(`/document/${documentId}`);
       return;
@@ -1385,9 +1395,10 @@ export default function WorkspacePage() {
       latestActivityIso,
     };
     console.debug("[Workspace state]", signals);
+    console.debug("[trace][workspace] visible documentIds", documents.map((d) => d.id));
   // Intentionally omit stable refs — fires whenever meaningful signals change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceState, documentCount, analyzedCount, conversationCount, hasRisks, hasJurisdiction, recommendedActionReason]);
+  }, [workspaceState, documentCount, analyzedCount, conversationCount, hasRisks, hasJurisdiction, recommendedActionReason, documents]);
 
   // ── CTA href for the recommended action card ──────────────────────────────
   const scenarioCta = ((): string => {

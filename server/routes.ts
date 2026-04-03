@@ -1965,6 +1965,11 @@ ${userQuestion}`;
           integrityIssue: integrity.integrityIssue,
         };
       });
+      console.info("[trace][workspace-api] documents", documents.map((d) => ({
+        id: d.id,
+        isAnalysisAvailable: d.isAnalysisAvailable,
+        analysisStatus: d.analysisStatus,
+      })));
       return res.json({ threads, documents, timelineEvents });
     } catch (err) {
       console.error("[workspace] GET error:", err);
@@ -2262,29 +2267,29 @@ CRITICAL RULES:
     const user = (req as any).user;
     const { documentId } = req.params;
     try {
+      console.info(`[documents] detail request user=${user.id} documentId=${documentId}`);
       const doc = await getDocumentById(documentId, user.id);
       if (!doc) return res.status(404).json({ error: "Document not found." });
       const integrity = getDocumentIntegrity(doc);
       if (!integrity.isAnalysisAvailable) {
-        return res.status(409).json({
-          error: "Document analysis is unavailable.",
-          code: "DOCUMENT_ANALYSIS_MISSING",
-          document: {
+        console.warn("[documents] detail missing-analysis", {
+          requestedDocumentId: documentId,
+          row: {
             id: doc.id,
+            userId: doc.userId,
+            caseId: doc.caseId,
+            analysisJson: doc.analysisJson,
             fileName: doc.fileName,
             mimeType: doc.mimeType,
-            docType: doc.docType,
             pageCount: doc.pageCount,
-            caseId: doc.caseId,
+            storagePath: doc.storagePath,
             createdAt: doc.createdAt,
-            hasStoragePath: !!doc.storagePath,
-            analysisStatus: integrity.analysisStatus,
-            integrityIssue: integrity.integrityIssue,
           },
+          integrity,
         });
       }
       // Return a safe subset — no extractedText (large, not needed by the client here)
-      return res.json({
+      const payload = {
         document: {
           id: doc.id,
           fileName: doc.fileName,
@@ -2300,7 +2305,11 @@ CRITICAL RULES:
           analysisStatus: integrity.analysisStatus,
           integrityIssue: integrity.integrityIssue,
         },
-      });
+      };
+      console.info(
+        `[documents] detail response user=${user.id} requested=${documentId} returned=${payload.document.id} analysisAvailable=${payload.document.isAnalysisAvailable}`,
+      );
+      return res.json(payload);
     } catch (err) {
       console.error("[documents] GET single error:", err);
       return res.status(500).json({ error: "Failed to load document." });
