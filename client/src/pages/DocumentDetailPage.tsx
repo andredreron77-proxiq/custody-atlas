@@ -9,6 +9,7 @@
  */
 
 import { useParams, useLocation } from "wouter";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -54,6 +55,15 @@ interface DocumentDetail {
   createdAt: string;
   /** Reflects whether a storage_path exists in the backend — not used in UI rendering. */
   hasStoragePath: boolean;
+  isAnalysisAvailable?: boolean;
+  analysisStatus?: "uploaded" | "analyzing" | "analyzed" | "failed";
+  integrityIssue?: "missing_analysis" | null;
+}
+
+interface DocumentMissingAnalysisError {
+  code: "DOCUMENT_ANALYSIS_MISSING";
+  error: string;
+  document: Omit<DocumentDetail, "analysisJson">;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -541,7 +551,7 @@ function DocumentNotFoundState({ documentId }: { documentId: string }) {
 
 export default function DocumentDetailPage() {
   const { documentId } = useParams<{ documentId: string }>();
-  const [, navigate] = useLocation();
+  const [missingAnalysis, setMissingAnalysis] = useState<DocumentMissingAnalysisError | null>(null);
 
   const { data: doc, isLoading, isError } = useQuery<DocumentDetail>({
     queryKey: ["/api/documents", documentId],
@@ -549,8 +559,14 @@ export default function DocumentDetailPage() {
       const res = await fetch(`/api/documents/${documentId}`, {
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Document not found");
       const json = await res.json();
+      if (!res.ok) {
+        if (res.status === 409 && json?.code === "DOCUMENT_ANALYSIS_MISSING") {
+          setMissingAnalysis(json as DocumentMissingAnalysisError);
+          throw new Error("Document analysis unavailable");
+        }
+        throw new Error("Document not found");
+      }
       return json.document as DocumentDetail;
     },
     enabled: !!documentId,
@@ -565,6 +581,10 @@ export default function DocumentDetailPage() {
   const backLabel = doc?.caseId ? "Case Dashboard" : "Workspace";
 
   /* ── Error state — document not found or inaccessible ── */
+  if (missingAnalysis?.code === "DOCUMENT_ANALYSIS_MISSING") {
+    return <DocumentNotFoundState documentId={documentId ?? ""} />;
+  }
+
   if (isError) {
     return (
       <DocumentNotFoundState documentId={documentId ?? ""} />

@@ -63,6 +63,9 @@ interface WorkspaceDocument {
   analysisJson: Record<string, unknown>;
   createdAt: string;
   hasStoragePath: boolean;
+  isAnalysisAvailable: boolean;
+  analysisStatus: "uploaded" | "analyzing" | "analyzed" | "failed";
+  integrityIssue: "missing_analysis" | null;
 }
 
 interface WorkspaceTimelineEvent {
@@ -169,11 +172,8 @@ interface WorkspaceSignals {
 
 /* Returns true if the document has a completed analysis. */
 function isDocAnalyzed(doc: WorkspaceDocument): boolean {
-  return (
-    !!doc.analysisJson &&
-    typeof doc.analysisJson.summary === "string" &&
-    doc.analysisJson.summary.length > 0
-  );
+  if (doc.isAnalysisAvailable) return true;
+  return !!doc.analysisJson && typeof doc.analysisJson.summary === "string" && doc.analysisJson.summary.length > 0;
 }
 
 /* Keywords that indicate time-sensitive obligations or compliance requirements. */
@@ -227,7 +227,8 @@ function getTopPriorityItems({
   documents: WorkspaceDocument[];
   timelineEvents: WorkspaceTimelineEvent[];
 }) {
-  const riskDocuments = documents.filter(docHasRiskSignals).slice(0, 2);
+  const validDocuments = documents.filter((doc) => doc.isAnalysisAvailable);
+  const riskDocuments = validDocuments.filter(docHasRiskSignals).slice(0, 2);
   const upcomingEvents = timelineEvents
     .filter((ev) => new Date(ev.eventDate).getTime() >= Date.now())
     .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
@@ -295,6 +296,7 @@ function WhatMattersNowPanel({
   askAIPath,
   conversationCount,
   analyzedCount,
+  onOpenDocumentSafely,
 }: {
   workspaceState: WorkspaceState;
   scenario: StepScenario;
@@ -305,6 +307,7 @@ function WhatMattersNowPanel({
   askAIPath: string;
   conversationCount: number;
   analyzedCount: number;
+  onOpenDocumentSafely: (documentId: string) => Promise<void>;
 }) {
   const askLabel = conversationCount > 0
     ? "Ask a follow-up question"
@@ -359,8 +362,9 @@ function WhatMattersNowPanel({
       </HeroPanelHeader>
 
       <HeroPanelContent className="space-y-2.5 px-4 sm:px-5 py-3.5">
-        {priorityItems.map((item) => (
-          <Link key={item.id} href={item.href}>
+        {priorityItems.map((item) => {
+          const docMatch = item.href.match(/^\/document\/(.+)$/);
+          const card = (
             <div className={`rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${item.tone === "urgent" ? "border-amber-300 bg-amber-50/60 dark:border-amber-700/50 dark:bg-amber-950/20" : "border-border/70 bg-background hover:bg-muted/30"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -373,8 +377,16 @@ function WhatMattersNowPanel({
                 <ArrowRight className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
               </div>
             </div>
-          </Link>
-        ))}
+          );
+          if (docMatch?.[1]) {
+            return (
+              <button key={item.id} type="button" className="w-full text-left" onClick={() => onOpenDocumentSafely(docMatch[1])}>
+                {card}
+              </button>
+            );
+          }
+          return <Link key={item.id} href={item.href}>{card}</Link>;
+        })}
       </HeroPanelContent>
 
       <HeroPanelFooter className="py-3 px-4 sm:px-5">
@@ -749,12 +761,13 @@ function CaseBriefSection({ caseIdParam }: { caseIdParam?: string }) {
 /* ── Documents — compact dashboard preview ────────────────────────────────── */
 
 function DocumentsSection({
-  documents, isLoading, askAIPath, caseNameById,
+  documents, isLoading, askAIPath, caseNameById, onOpenDocumentSafely,
 }: {
   documents: WorkspaceDocument[];
   isLoading: boolean;
   askAIPath: string;
   caseNameById: Record<string, string>;
+  onOpenDocumentSafely: (documentId: string) => Promise<void>;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -828,16 +841,15 @@ function DocumentsSection({
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-medium leading-5 truncate text-foreground">{doc.fileName}</p>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <Link href={`/document/${doc.id}`}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-[11px] h-6 px-1.5 text-muted-foreground hover:text-foreground"
-                          data-testid={`button-review-doc-${doc.id}`}
-                        >
-                          Review
-                        </Button>
-                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[11px] h-6 px-1.5 text-muted-foreground hover:text-foreground"
+                        data-testid={`button-review-doc-${doc.id}`}
+                        onClick={() => onOpenDocumentSafely(doc.id)}
+                      >
+                        Review
+                      </Button>
                       <Link href={`${askAIPath}${askAIPath.includes("?") ? "&" : "?"}document=${encodeURIComponent(doc.id)}`}>
                         <Button variant="ghost" size="sm" className="text-[11px] gap-1 h-6 px-1.5 text-primary/80 hover:text-primary" data-testid={`button-ask-doc-${doc.id}`}>
                           Ask
@@ -858,7 +870,11 @@ function DocumentsSection({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {Object.keys(doc.analysisJson).length > 0 && <AnalyzedBadge />}
+                    {doc.isAnalysisAvailable ? (
+                      <AnalyzedBadge />
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5">Analysis unavailable</Badge>
+                    )}
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5">
                       {caseLabel}
                     </Badge>
@@ -963,12 +979,14 @@ function TimelineAndActivityPanel({
   documents,
   isLoading,
   askAIPath,
+  onOpenDocumentSafely,
 }: {
   events: WorkspaceTimelineEvent[];
   threads: WorkspaceThread[];
   documents: WorkspaceDocument[];
   isLoading: boolean;
   askAIPath: string;
+  onOpenDocumentSafely: (documentId: string) => Promise<void>;
 }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -1174,11 +1192,12 @@ function TimelineAndActivityPanel({
               const doc = item.document;
               const analyzed = isDocAnalyzed(doc);
               return (
-                <Link key={`document-${doc.id}`} href={`/documents/${doc.id}`}>
-                  <li
-                      className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-muted/30 cursor-pointer group"
-                    data-testid={`activity-document-${doc.id}`}
-                  >
+                <li
+                  key={`document-${doc.id}`}
+                  className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-muted/30 cursor-pointer group"
+                  data-testid={`activity-document-${doc.id}`}
+                  onClick={() => onOpenDocumentSafely(doc.id)}
+                >
                     <div className="w-6 h-6 rounded-md bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center flex-shrink-0">
                       <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     </div>
@@ -1190,7 +1209,6 @@ function TimelineAndActivityPanel({
                     </div>
                     <ArrowRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/60 transition-colors flex-shrink-0" />
                   </li>
-                </Link>
               );
             })}
           </ul>
@@ -1217,8 +1235,10 @@ function TimelineAndActivityPanel({
 
 export default function WorkspacePage() {
   const [location] = useLocation();
+  const [, navigate] = useLocation();
   const { jurisdiction } = useJurisdiction();
   const { user } = useCurrentUser();
+  const { toast } = useToast();
   const caseIdParam = new URLSearchParams(
     location.split("?")[1] || window.location.search.slice(1),
   ).get("case") ?? undefined;
@@ -1280,6 +1300,28 @@ export default function WorkspacePage() {
   const conversationCount = threads.length;
   const hasJurisdiction = !!jurisdiction;
   const hasRisks = documents.some(docHasRiskSignals);
+
+  const openDocumentSafely = async (documentId: string) => {
+    const res = await apiRequestRaw("GET", `/api/documents/${documentId}`);
+    if (res.ok) {
+      navigate(`/document/${documentId}`);
+      return;
+    }
+    const payload = await res.json().catch(() => ({}));
+    if (res.status === 409 || payload?.code === "DOCUMENT_ANALYSIS_MISSING") {
+      toast({
+        title: "Analysis unavailable",
+        description: "This document's analysis is missing. Remove it from Workspace to clean up broken entries.",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Document unavailable",
+      description: "We couldn't open this document right now.",
+      variant: "destructive",
+    });
+  };
 
   const allTimestamps = [
     ...documents.map((d) => d.createdAt),
@@ -1415,6 +1457,7 @@ export default function WorkspacePage() {
             askAIPath={askAIPath}
             conversationCount={conversationCount}
             analyzedCount={analyzedCount}
+            onOpenDocumentSafely={openDocumentSafely}
           />
 
           <QuickActionsPanel askAIPath={askAIPath} />
@@ -1422,10 +1465,11 @@ export default function WorkspacePage() {
           <div id="documents">
             <DocumentsPanel groupedCaseCount={new Set(documents.map((doc) => doc.caseId ?? "unassigned")).size}>
               <DocumentsSection
-              documents={documents}
-              isLoading={isLoadingWorkspace && !!user}
-              askAIPath={askAIPath}
+                documents={documents}
+                isLoading={isLoadingWorkspace && !!user}
+                askAIPath={askAIPath}
                 caseNameById={caseNameById}
+                onOpenDocumentSafely={openDocumentSafely}
               />
             </DocumentsPanel>
           </div>
@@ -1461,6 +1505,7 @@ export default function WorkspacePage() {
               documents={documents}
               isLoading={isLoadingWorkspace && !!user}
               askAIPath={askAIPath}
+              onOpenDocumentSafely={openDocumentSafely}
             />
           ) : (
             <Panel testId="card-timeline-activity" className="h-full">

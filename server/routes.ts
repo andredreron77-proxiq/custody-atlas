@@ -39,7 +39,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, type DocumentType, type SavedDocument } from "./services/documents";
+import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, type DocumentType, type SavedDocument } from "./services/documents";
 import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
@@ -1503,6 +1503,7 @@ CRITICAL RULES:
           .digest("hex");
         const analysisWithSourceHash = {
           ...(validated.data as Record<string, unknown>),
+          analysis_status: "analyzed",
           source_file_sha256: sourceFileSha256,
         };
 
@@ -1548,7 +1549,14 @@ CRITICAL RULES:
             await ensureDocumentCaseAssociation(savedDoc.id, docCaseId, docUserId).catch(() => false);
           }
           if (duplicateDoc) {
-            await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
+            const updated = await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
+            if (!updated) {
+              console.error("[analyze-document] duplicate analysis update failed");
+              return res.status(500).json({
+                error: "Document analysis completed, but we could not persist this upload. Please retry.",
+                code: "DOCUMENT_PERSISTENCE_FAILED",
+              });
+            }
           }
 
           const analysisRunId = await createAnalysisRun({
@@ -1634,6 +1642,31 @@ CRITICAL RULES:
         },
       });
     } catch (err: any) {
+      const docUserId = (req as any).user?.id as string | undefined;
+      const docCaseId: string | undefined = req.body?.caseId || undefined;
+      if (docUserId && req.file) {
+        const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
+        const retentionTier = resolveRetentionTierFromRequest(req);
+        const retentionWindow = buildRetentionWindow(retentionTier);
+        await saveDocument(docUserId, {
+          fileName: req.file.originalname || "document",
+          storagePath: null,
+          caseId: docCaseId ?? null,
+          sourceFileSha256: null,
+          retentionTier,
+          originalExpiresAt: retentionWindow.originalExpiresAt,
+          intelligenceExpiresAt: retentionWindow.intelligenceExpiresAt,
+          lifecycleState: "active",
+          mimeType: req.file.mimetype,
+          pageCount,
+          analysisJson: {
+            analysis_status: "failed",
+            error: getSafeErrorMessage(err, "Document analysis failed"),
+          },
+          extractedText: "",
+          docType: "other",
+        }).catch(() => null);
+      }
       console.error("Document analysis error:", err);
       return res.status(500).json({
         error: "We couldn't analyze that document right now. Please try again.",
@@ -1922,10 +1955,16 @@ ${userQuestion}`;
       ]);
       // Strip internal fields (storagePath, extractedText) from workspace response;
       // expose hasStoragePath flag so the UI can show a broken-file indicator.
-      const documents = rawDocuments.map(({ storagePath, extractedText, ...safe }) => ({
-        ...safe,
-        hasStoragePath: !!storagePath,
-      }));
+      const documents = rawDocuments.map(({ storagePath, extractedText, ...safe }) => {
+        const integrity = getDocumentIntegrity(safe);
+        return {
+          ...safe,
+          hasStoragePath: !!storagePath,
+          isAnalysisAvailable: integrity.isAnalysisAvailable,
+          analysisStatus: integrity.analysisStatus,
+          integrityIssue: integrity.integrityIssue,
+        };
+      });
       return res.json({ threads, documents, timelineEvents });
     } catch (err) {
       console.error("[workspace] GET error:", err);
@@ -2089,12 +2128,18 @@ ${userQuestion}`;
     const user = (req as any).user;
     try {
       const rawDocs = await getDocuments(user.id);
-      const documents = rawDocs.map(({ extractedText, storagePath, ...safe }) => ({
-        ...safe,
-        hasStoragePath: !!storagePath,
-        // Include a short summary snippet for the picker label
-        summary: ((safe.analysisJson as any)?.summary as string | undefined)?.slice(0, 120) ?? null,
-      }));
+      const documents = rawDocs.map(({ extractedText, storagePath, ...safe }) => {
+        const integrity = getDocumentIntegrity(safe);
+        return {
+          ...safe,
+          hasStoragePath: !!storagePath,
+          isAnalysisAvailable: integrity.isAnalysisAvailable,
+          analysisStatus: integrity.analysisStatus,
+          integrityIssue: integrity.integrityIssue,
+          // Include a short summary snippet for the picker label
+          summary: ((safe.analysisJson as any)?.summary as string | undefined)?.slice(0, 120) ?? null,
+        };
+      });
       return res.json({ documents });
     } catch (err) {
       console.error("[documents] GET list error:", err);
@@ -2183,8 +2228,18 @@ CRITICAL RULES:
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
+      const analysisPayload = {
+        ...(validated.data as Record<string, unknown>),
+        analysis_status: "analyzed",
+      };
       // Update the existing document row — no new row created
-      await updateDocumentAnalysis(documentId, user.id, validated.data as Record<string, unknown>).catch(() => {});
+      const updated = await updateDocumentAnalysis(documentId, user.id, analysisPayload).catch(() => false);
+      if (!updated) {
+        return res.status(500).json({
+          error: "Re-analysis finished, but we could not persist the result. Please try again.",
+          code: "DOCUMENT_PERSISTENCE_FAILED",
+        });
+      }
 
       return res.json({ ...validated.data, extractedText: truncatedText, documentId });
     } catch (err: any) {
@@ -2209,6 +2264,25 @@ CRITICAL RULES:
     try {
       const doc = await getDocumentById(documentId, user.id);
       if (!doc) return res.status(404).json({ error: "Document not found." });
+      const integrity = getDocumentIntegrity(doc);
+      if (!integrity.isAnalysisAvailable) {
+        return res.status(409).json({
+          error: "Document analysis is unavailable.",
+          code: "DOCUMENT_ANALYSIS_MISSING",
+          document: {
+            id: doc.id,
+            fileName: doc.fileName,
+            mimeType: doc.mimeType,
+            docType: doc.docType,
+            pageCount: doc.pageCount,
+            caseId: doc.caseId,
+            createdAt: doc.createdAt,
+            hasStoragePath: !!doc.storagePath,
+            analysisStatus: integrity.analysisStatus,
+            integrityIssue: integrity.integrityIssue,
+          },
+        });
+      }
       // Return a safe subset — no extractedText (large, not needed by the client here)
       return res.json({
         document: {
@@ -2222,6 +2296,9 @@ CRITICAL RULES:
           createdAt: doc.createdAt,
           // Boolean only — never expose raw storage_path to client
           hasStoragePath: !!doc.storagePath,
+          isAnalysisAvailable: integrity.isAnalysisAvailable,
+          analysisStatus: integrity.analysisStatus,
+          integrityIssue: integrity.integrityIssue,
         },
       });
     } catch (err) {
@@ -2515,13 +2592,14 @@ CRITICAL RULES:
       const docs = activeCase
         ? await getDocumentsByCase(activeCase.id, user.id)
         : allDocs.filter((d) => !d.caseId);
+      const analyzableDocs = docs.filter((d) => getDocumentIntegrity(d).isAnalysisAvailable);
 
-      const caseDocIdSet = new Set(docs.map((d) => d.id));
+      const caseDocIdSet = new Set(analyzableDocs.map((d) => d.id));
       const scopedThreads = activeCase
         ? threads.filter((t) => !!t.documentId && caseDocIdSet.has(t.documentId))
         : threads.filter((t) => !t.documentId || allDocs.find((d) => d.id === t.documentId && !d.caseId));
 
-      if (docs.length === 0 && scopedThreads.length === 0) {
+      if (analyzableDocs.length === 0 && scopedThreads.length === 0) {
         return res.status(400).json({
           error: activeCase
             ? "No documents or activity are linked to this case yet."
@@ -2529,7 +2607,7 @@ CRITICAL RULES:
         });
       }
 
-      const parsedDocs = docs.map(parseDocumentSignals);
+      const parsedDocs = analyzableDocs.map(parseDocumentSignals);
       const [caseFactsRows, messageChunks] = await Promise.all([
         activeCase ? getCaseFacts(activeCase.id, user.id) : Promise.resolve([]),
         Promise.all(scopedThreads.slice(0, 6).map((t) => getRecentMessages(t.id, 4))),
