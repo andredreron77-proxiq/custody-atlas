@@ -3096,6 +3096,7 @@ Do not add facts not present in the provided evidence.`,
         title: parsed.data.title,
         caseType: "general",
         status: "active",
+        authToken: req.headers.authorization?.replace("Bearer ", "").trim() ?? null,
       });
       const newCase = createCaseResult.createdCase;
       if (!newCase) {
