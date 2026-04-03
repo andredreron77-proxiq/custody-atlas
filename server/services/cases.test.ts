@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { extractMissingInsertColumn, mapCaseRow } from "./cases";
+import { extractMissingInsertColumn, extractNotNullViolationColumn, mapCaseRow } from "./cases";
 
 test("extractMissingInsertColumn parses PostgREST missing column errors", () => {
   const column = extractMissingInsertColumn("Could not find the 'title' column of 'cases' in the schema cache");
@@ -11,6 +11,13 @@ test("extractMissingInsertColumn parses PostgREST missing column errors", () => 
 test("extractMissingInsertColumn returns null for unrelated errors", () => {
   const column = extractMissingInsertColumn("permission denied for table cases");
   assert.equal(column, null);
+});
+
+test("extractNotNullViolationColumn parses required legacy column errors", () => {
+  const column = extractNotNullViolationColumn(
+    'null value in column "name" of relation "cases" violates not-null constraint',
+  );
+  assert.equal(column, "name");
 });
 
 test("mapCaseRow supports legacy cases table columns", () => {
