@@ -23,6 +23,7 @@ import { buildRetentionWindow } from "./lib/documentRetention";
 import { planUploadAssociation } from "./lib/documentIdentity";
 import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
 import { decideCaseAssignment, type AssignmentCandidate } from "./lib/documentCaseAssignment";
+import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -3462,7 +3463,11 @@ Do not add facts not present in the provided evidence.`,
           ranked.push(event);
           if (ranked.length >= 3) break;
         }
-        return ranked.map((event) => ({ date: event.dateRaw, label: event.normalizedLabel }));
+        return ranked.map((event) => ({
+          date: event.dateRaw,
+          label: event.normalizedLabel,
+          whyThisMatters: eventWhyThisMatters(event.normalizedType, event.normalizedLabel) ?? undefined,
+        }));
       })();
 
       const postureByStage: Record<DashboardStageKey, string> = {
@@ -3552,6 +3557,7 @@ Do not add facts not present in the provided evidence.`,
         kind: DashboardAlertKind;
         title: string;
         message: string;
+        impact: string;
         severity: DashboardAlertSeverity;
         relatedItem: string;
         recommendedAction: string;
@@ -3563,6 +3569,7 @@ Do not add facts not present in the provided evidence.`,
           kind: "missing_document",
           title: "Add foundational case documents",
           message: "No case filings are on file, so deadlines and hearing context are incomplete.",
+          impact: alertImpactWhyThisMatters("missing_document"),
           severity: "high",
           relatedItem: "Case document set",
           recommendedAction: "Upload your most recent petition, order, or notice of hearing.",
@@ -3575,6 +3582,7 @@ Do not add facts not present in the provided evidence.`,
           kind: "timeline_gap",
           title: "Timeline may be missing key dates",
           message: "Only a few dated events are listed, which can hide upcoming obligations.",
+          impact: alertImpactWhyThisMatters("timeline_gap"),
           severity: "medium",
           relatedItem: "Case timeline coverage",
           recommendedAction: "Review the timeline and add missing hearing, filing, or deadline dates.",
@@ -3588,6 +3596,7 @@ Do not add facts not present in the provided evidence.`,
           kind: "overdue",
           title: "Past-due court item",
           message: `${overdue.normalizedLabel} dated ${overdue.dateRaw} requires immediate review.`,
+          impact: alertImpactWhyThisMatters("overdue"),
           severity: "high",
           relatedItem: `${overdue.normalizedLabel} (${overdue.dateRaw})`,
           recommendedAction: "Confirm whether this item was completed or if a late filing/update is needed.",
@@ -3601,6 +3610,7 @@ Do not add facts not present in the provided evidence.`,
           kind: "analysis_missing",
           title: "Document needs analysis",
           message: `${doc.fileName} is on file but not fully analyzed yet.`,
+          impact: alertImpactWhyThisMatters("analysis_missing"),
           severity: "medium",
           relatedItem: doc.fileName,
           recommendedAction: "Open the document detail and verify extracted dates and obligations.",
@@ -3613,6 +3623,7 @@ Do not add facts not present in the provided evidence.`,
           kind: "no_recent_activity",
           title: "Ask Atlas to map next steps",
           message: "Case activity is limited, so priorities are not yet clear.",
+          impact: alertImpactWhyThisMatters("no_recent_activity"),
           severity: "info",
           relatedItem: "Case strategy guidance",
           recommendedAction: "Ask Atlas what to upload or verify next to improve case visibility.",
@@ -3642,6 +3653,7 @@ Do not add facts not present in the provided evidence.`,
           label: event.normalizedLabel,
           type: event.normalizedType,
           status: event.status,
+          whyThisMatters: eventWhyThisMatters(event.normalizedType, event.normalizedLabel) ?? undefined,
         })),
         timelineSecondary: secondaryTimeline.map((event) => ({
           id: event.id,

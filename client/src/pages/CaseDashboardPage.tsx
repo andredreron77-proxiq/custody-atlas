@@ -21,11 +21,11 @@ type CaseDashboardPayload = {
   whatMattersNow: {
     currentStage: string;
     stageKey?: "approaching_hearing" | "between_pretrial_and_final" | "preparing_for_deadlines" | "early_intake";
-    nextKeyItems: Array<{ date: string; label: string }>;
+    nextKeyItems: Array<{ date: string; label: string; whyThisMatters?: string }>;
     watchouts: string[];
     suggestedFocus: string;
   };
-  timeline: Array<{ id: string; date: string; label: string; type: "hearing" | "filing" | "deadline" | "order" | "mediation"; status: "past" | "upcoming" | "overdue" | "future" }>;
+  timeline: Array<{ id: string; date: string; label: string; type: "hearing" | "filing" | "deadline" | "order" | "mediation"; status: "past" | "upcoming" | "overdue" | "future"; whyThisMatters?: string }>;
   timelineSecondary?: Array<{ id: string; date: string; label: string; type: "allegation" | "context"; status: "past" | "upcoming" | "overdue" | "future" }>;
   timelineMeta?: { visibleCount: number; totalCount: number; hasMore: boolean; secondaryCount?: number };
   documents: Array<{ id: string; title: string; status: string; tags: string[] }>;
@@ -48,6 +48,7 @@ type CaseDashboardPayload = {
     kind: "missing_document" | "no_recent_activity" | "timeline_gap" | "overdue" | "analysis_missing";
     title: string;
     message: string;
+    impact: string;
     severity: "high" | "medium" | "info";
     relatedItem: string;
     recommendedAction: string;
@@ -174,7 +175,10 @@ export default function CaseDashboardPage() {
             {data.whatMattersNow.nextKeyItems.length > 0 ? (
               <ul className="space-y-1">
                 {data.whatMattersNow.nextKeyItems.slice(0, 3).map((item) => (
-                  <li key={`${item.date}-${item.label}`} className="text-sm">{formatDate(item.date)} — {item.label}</li>
+                  <li key={`${item.date}-${item.label}`} className="text-sm">
+                    <p>{formatDate(item.date)} — {item.label}</p>
+                    {item.whyThisMatters ? <p className="text-xs text-muted-foreground">{item.whyThisMatters}</p> : null}
+                  </li>
                 ))}
               </ul>
             ) : <p className="text-muted-foreground">No upcoming key items.</p>}
@@ -207,12 +211,15 @@ export default function CaseDashboardPage() {
                 <>
                 <ol className="space-y-1.5 text-sm">
                   {(showFullTimeline ? data.timeline : data.timeline.slice(0, data.timelineMeta?.visibleCount ?? 8)).map((event) => (
-                    <li key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 ${timelineStatusClass(event.status)}`}>
-                      <span className="flex items-center gap-1.5">
-                        {timelineTypeIcon(event.type)}
-                        {formatDate(event.date)}
-                      </span>
-                      <span className="truncate pl-2 text-right">{event.label}</span>
+                    <li key={event.id} className={`rounded border px-2 py-1.5 ${timelineStatusClass(event.status)}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5">
+                          {timelineTypeIcon(event.type)}
+                          {formatDate(event.date)}
+                        </span>
+                        <span className="truncate pl-2 text-right">{event.label}</span>
+                      </div>
+                      {event.whyThisMatters ? <p className="pl-6 pt-0.5 text-xs text-muted-foreground">{event.whyThisMatters}</p> : null}
                     </li>
                   ))}
                 </ol>
@@ -310,6 +317,7 @@ export default function CaseDashboardPage() {
                   <div className="space-y-1">
                     <p className="font-medium">{alert.title}</p>
                     <p>{alert.message}</p>
+                    <p className="text-xs text-muted-foreground">{alert.impact}</p>
                     <p className="text-xs text-muted-foreground">Related: {alert.relatedItem}</p>
                     <p className="text-xs">{alert.recommendedAction}</p>
                     <Link href={alert.target.href}><Button size="sm" variant="outline" className="h-7">{alert.target.label}</Button></Link>
