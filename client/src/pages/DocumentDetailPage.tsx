@@ -15,7 +15,7 @@ import { Link } from "wouter";
 import {
   ArrowLeft, FileText, Calendar, Hash, Building2,
   User, Gavel, MapPin, BookOpen, Sparkles, Clock, MessageSquare,
-  ChevronRight, AlertCircle, HelpCircle, Search,
+  AlertCircle, HelpCircle, Search,
   Upload, Loader2, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,8 +38,10 @@ import {
   DocActionInsight,
   parseDocAnalysis,
   hasAnalysis,
+  deriveObligations,
 } from "@/components/app/DocIntelPanel";
 import { apiRequestRaw } from "@/lib/queryClient";
+import { classifyDateStatus } from "@shared/dateStatus";
 import {
   fetchDocumentDetail,
   type DocumentDetail,
@@ -141,11 +143,15 @@ function KeyDatesSection({ analysisJson }: { analysisJson: Record<string, unknow
   return (
     <section data-testid="doc-detail-key-dates">
       <h2 className="text-lg font-semibold mb-4">Key dates &amp; deadlines</h2>
-      <ul className="space-y-3">
+      <ul className="space-y-4">
         {key_dates.map((date, i) => (
-          <li key={i} className="flex items-start gap-2 text-base text-foreground leading-relaxed">
-            <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
-            <span>{date}</span>
+          <li key={i} className="flex items-start gap-3 text-base text-foreground leading-relaxed">
+            {classifyDateStatus(date) === "past" ? (
+              <span className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">✓</span>
+            ) : (
+              <Clock className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+            )}
+            <span className={classifyDateStatus(date) === "past" ? "text-muted-foreground" : ""}>{date}</span>
           </li>
         ))}
       </ul>
@@ -174,18 +180,32 @@ function ImportantTermsSection({ analysisJson }: { analysisJson: Record<string, 
   if (!hasAnalysis(analysisJson)) return null;
   const { important_terms } = parseDocAnalysis(analysisJson);
   if (!important_terms || important_terms.length === 0) return null;
+  const [expanded, setExpanded] = useState(false);
+  const visibleTerms = expanded ? important_terms : important_terms.slice(0, 4);
+  const hasMore = important_terms.length > 4;
 
   return (
     <section data-testid="doc-detail-terms">
       <h2 className="text-lg font-semibold mb-4">Important terms in this document</h2>
       <ul className="space-y-3">
-        {important_terms.map((term, i) => (
+        {visibleTerms.map((term, i) => (
           <li key={i} className="flex items-start gap-2 text-base text-foreground leading-relaxed">
             <span className="w-1 h-1 rounded-full bg-muted-foreground/40 flex-shrink-0 mt-2" />
             <span>{term}</span>
           </li>
         ))}
       </ul>
+      {hasMore && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-3 h-8 px-2 text-sm text-muted-foreground hover:text-foreground"
+          onClick={() => setExpanded(prev => !prev)}
+          data-testid="btn-toggle-important-terms"
+        >
+          {expanded ? "Show less" : `Show more (${important_terms.length - 4})`}
+        </Button>
+      )}
     </section>
   );
 }
@@ -201,17 +221,124 @@ function QuestionsSection({ analysisJson }: { analysisJson: Record<string, unkno
   return (
     <section data-testid="doc-detail-questions">
       <h2 className="text-lg font-semibold mb-4">Questions to ask your attorney</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Use these questions when speaking with your attorney or Ask Atlas for guidance.
+      </p>
       <ul className="space-y-3">
         {questions.map((q, i) => (
           <li
             key={i}
-            className="group flex items-start gap-3 rounded-lg border border-border/70 bg-card px-4 py-3 text-base text-foreground leading-relaxed transition-colors hover:border-primary/40 hover:bg-muted/30"
+            className="group cursor-pointer flex items-start gap-3 rounded-lg border border-border/70 bg-card px-4 py-3 text-base text-foreground leading-relaxed transition-all hover:border-primary/40 hover:bg-muted/30 hover:shadow-sm"
           >
             <HelpCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary flex-shrink-0 mt-1 transition-colors" />
             <span>{q}</span>
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function WhatMattersNowSection({
+  analysisJson,
+  docType,
+}: {
+  analysisJson: Record<string, unknown>;
+  docType: string;
+}) {
+  const analysis = parseDocAnalysis(analysisJson);
+  const obligations = deriveObligations(analysis);
+  const { extracted_facts: ef, key_dates, possible_implications } = analysis;
+  const keyDates = key_dates ?? [];
+
+  const statusLine = obligations.find(item => item.variant === "historical")
+    ? "Current status: At least one hearing milestone appears to have already passed."
+    : obligations.find(item => item.variant === "hearing")
+      ? "Current status: A hearing-related milestone is active."
+      : "Current status: Review appears active with no completed hearing signal detected.";
+
+  const upcomingDate = keyDates.find(date => classifyDateStatus(date) === "today" || classifyDateStatus(date) === "upcoming")
+    ?? ef?.hearing_date
+    ?? ef?.effective_date
+    ?? ef?.filing_date;
+
+  const actionCandidates = [
+    possible_implications?.[0],
+    possible_implications?.[1],
+    `Ask Atlas: "What should I do next for this ${DOC_TYPE_LABELS[docType] ?? "document"}?"`,
+  ].filter((item): item is string => !!item && item.trim().length > 0).slice(0, 2);
+
+  const bullets = [
+    statusLine,
+    upcomingDate ? `Most important upcoming deadline: ${upcomingDate}` : "Most important upcoming deadline: No clear future date detected — verify with your attorney.",
+    ...actionCandidates.map(action => `Recommended next action: ${action}`),
+  ].slice(0, 4);
+
+  return (
+    <section className="rounded-xl border bg-muted/40 p-5 shadow-sm" data-testid="doc-detail-what-matters-now">
+      <h2 className="text-lg font-semibold mb-3">What Matters Now</h2>
+      <ul className="space-y-2">
+        {bullets.map((bullet, index) => (
+          <li key={index} className="flex items-start gap-2 text-sm md:text-base leading-relaxed">
+            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-primary/70 flex-shrink-0" />
+            <span>{bullet}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function AlertsSection({ analysisJson }: { analysisJson: Record<string, unknown> }) {
+  const analysis = parseDocAnalysis(analysisJson);
+  const obligations = deriveObligations(analysis);
+  const alerts = obligations
+    .filter(item => item.variant === "historical" || item.variant === "deadline" || item.variant === "timelimit")
+    .slice(0, 2);
+
+  if (alerts.length === 0) return null;
+
+  const definitions: Record<string, { title: string; detail: string; actions?: string[] }> = {
+    historical: {
+      title: "Past hearing detected",
+      detail: "This document appears to reference a hearing date that has already passed. Confirm what orders or follow-ups were issued.",
+      actions: ["Request minute orders or transcript notes", "Confirm if any post-hearing filings are due"],
+    },
+    deadline: {
+      title: "Response window may be active",
+      detail: "A deadline or response keyword was detected. Missing response timing can affect your options.",
+      actions: ["Verify exact due date and filing method", "Prepare required response materials now"],
+    },
+    timelimit: {
+      title: "Time-sensitive requirement found",
+      detail: "The document includes language that may require prompt compliance.",
+    },
+  };
+
+  return (
+    <section data-testid="doc-detail-alerts" className="space-y-3">
+      {alerts.map((alert, index) => {
+        const content = definitions[alert.variant];
+        return (
+          <div
+            key={`${alert.variant}-${index}`}
+            className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4"
+          >
+            <h3 className="text-base font-bold text-amber-900">{content.title}</h3>
+            <p className="mt-1 text-sm md:text-base text-amber-900/90">{content.detail}</p>
+            {content.actions && (
+              <ul className="mt-2 space-y-1">
+                {content.actions.map((action, actionIndex) => (
+                  <li key={actionIndex} className="text-sm text-amber-900/85 flex items-start gap-2">
+                    <span className="mt-1.5 h-1 w-1 rounded-full bg-amber-900/60 flex-shrink-0" />
+                    <span>{action}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -284,14 +411,14 @@ function AnalysisRetentionNote({ fileName }: { fileName: string }) {
 
   return (
     <section
-      className="rounded-xl border p-5 space-y-3"
+      className="rounded-xl border p-5 space-y-3 text-sm"
       data-testid="doc-detail-analysis-retention"
     >
       <div className="flex items-center gap-2">
         <Sparkles className="w-4 h-4 text-primary/70" />
         <h2 className="text-sm font-semibold">Analysis retained</h2>
       </div>
-      <p className="text-xs text-muted-foreground leading-relaxed">
+      <p className="text-xs text-muted-foreground/90 leading-relaxed">
         Original files are not stored after analysis — your document was processed,
         key information was extracted, and the source file was discarded. Everything
         above reflects the full intelligence captured from{" "}
@@ -301,7 +428,7 @@ function AnalysisRetentionNote({ fileName }: { fileName: string }) {
         <Button
           variant="ghost"
           size="sm"
-          className="gap-2 text-xs text-muted-foreground hover:text-foreground h-7 px-2"
+          className="gap-2 text-xs text-muted-foreground/80 hover:text-foreground h-7 px-2"
           onClick={() => navigate("/workspace")}
           data-testid="btn-analyze-another"
         >
@@ -369,13 +496,13 @@ function DeleteDocumentSection({
 
   return (
     <section
-      className="rounded-xl border border-dashed border-destructive/30 p-5 space-y-3"
+      className="rounded-xl border border-dashed border-destructive/20 p-5 space-y-3 text-sm"
       data-testid="doc-detail-delete-section"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-sm font-semibold text-destructive/80">Delete this document</h2>
-          <p className="text-xs text-muted-foreground leading-relaxed max-w-sm">
+          <h2 className="text-sm font-semibold text-destructive/70">Delete this document</h2>
+          <p className="text-xs text-muted-foreground/80 leading-relaxed max-w-sm">
             Permanently removes all extracted intelligence, analysis, and insights for this document.
             This cannot be undone.
           </p>
@@ -386,7 +513,7 @@ function DeleteDocumentSection({
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:border-destructive/60 flex-shrink-0"
+              className="gap-2 border-destructive/30 text-destructive/80 hover:bg-destructive/10 hover:border-destructive/50 flex-shrink-0"
               data-testid="btn-delete-doc-trigger"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -642,32 +769,29 @@ export default function DocumentDetailPage() {
             <DocObligationBadge analysisJson={doc.analysisJson} />
           </header>
 
-          {/* ── Action insight ── */}
-          <div className="rounded-lg border border-amber-200/70 bg-amber-50/50 dark:bg-amber-950/15 p-4">
-            <DocActionInsight
-              analysisJson={doc.analysisJson}
-              docType={doc.docType}
-              className="text-base not-italic text-foreground leading-relaxed"
-            />
-          </div>
+          {/* 1) What Matters Now */}
+          <WhatMattersNowSection analysisJson={doc.analysisJson} docType={doc.docType} />
+
+          {/* 2) Alerts */}
+          <AlertsSection analysisJson={doc.analysisJson} />
 
           <Separator />
 
-          {/* ── Summary ── */}
+          {/* 3) Summary */}
           <SummarySection analysisJson={doc.analysisJson} />
 
           {analyzed && (
             <>
               <Separator />
-              {/* ── Key facts grid ── */}
+              {/* 4) Key facts */}
               <ExtractedFactsSection analysisJson={doc.analysisJson} />
 
               <Separator />
-              {/* ── Key dates ── */}
+              {/* 5) Key dates */}
               <KeyDatesSection analysisJson={doc.analysisJson} />
 
               <Separator />
-              {/* ── What this may require ── */}
+              {/* 6) What this may require */}
               <section data-testid="doc-detail-implications" className="rounded-lg border bg-muted/30 p-5">
                 <h2 className="text-lg font-semibold mb-4">What this may require</h2>
                 <ul className="space-y-3">
@@ -686,12 +810,12 @@ export default function DocumentDetailPage() {
               </section>
 
               <Separator />
-              {/* ── Important terms ── */}
-              <ImportantTermsSection analysisJson={doc.analysisJson} />
+              {/* 7) Questions */}
+              <QuestionsSection analysisJson={doc.analysisJson} />
 
               <Separator />
-              {/* ── Questions to ask attorney ── */}
-              <QuestionsSection analysisJson={doc.analysisJson} />
+              {/* 8) Remaining sections */}
+              <ImportantTermsSection analysisJson={doc.analysisJson} />
             </>
           )}
 
