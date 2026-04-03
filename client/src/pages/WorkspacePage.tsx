@@ -551,9 +551,9 @@ const STEP_CONFIGS: Record<StepScenario, StepConfig> = {
   },
   "pro-summarize": {
     icon: Sparkles, iconBg: "bg-[#fdf9ee] dark:bg-amber-950/40", iconColor: "text-[#b5922f] dark:text-amber-400",
-    title: "Generate your case brief",
-    description: "Generate a structured case brief across extracted facts, dates, risks, and document intelligence.",
-    ctaLabel: "Generate Case Brief", ctaHref: "#case-brief", secondaryLabel: "Maybe later",
+    title: "Generate your workspace brief",
+    description: "Generate a structured workspace brief across extracted facts, dates, risks, and document intelligence.",
+    ctaLabel: "Generate Workspace Brief", ctaHref: "#case-brief", secondaryLabel: "Maybe later",
   },
   "ask-about-docs": {
     icon: MessageSquare, iconBg: "bg-primary/[0.08] dark:bg-primary/20", iconColor: "text-primary",
@@ -659,15 +659,29 @@ function EmptyState({
   );
 }
 
-const CASE_BRIEF_LABEL = (import.meta.env.VITE_WORKSPACE_CASE_BRIEF_LABEL as string | undefined)?.trim() || "Case Brief";
-
 /* ── Case Brief Section ───────────────────────────────────────────────────── */
 
-function CaseBriefSection({ caseIdParam }: { caseIdParam?: string }) {
+function CaseBriefSection({
+  caseIdParam,
+  hasGeneralBriefContent,
+  hasCases,
+  firstCaseId,
+  onCreateCase,
+}: {
+  caseIdParam?: string;
+  hasGeneralBriefContent: boolean;
+  hasCases: boolean;
+  firstCaseId: string | null;
+  onCreateCase: () => void;
+}) {
+  const [, navigate] = useLocation();
   const [brief, setBrief] = useState<CaseBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const isCaseContext = !!caseIdParam;
+  const briefLabel = isCaseContext ? "Case Brief" : "Workspace Brief";
+  const showGenerateButton = isCaseContext || hasGeneralBriefContent;
 
   const briefMutation = useMutation({
     mutationFn: async () => {
@@ -687,13 +701,16 @@ function CaseBriefSection({ caseIdParam }: { caseIdParam?: string }) {
       setError(err.message);
     },
   });
+  const showGeneralEmptyState = !isCaseContext && !hasGeneralBriefContent && !briefMutation.isPending && !brief;
+  const isGeneralContentError = !isCaseContext
+    && error?.includes("No unassigned documents or activity found for a workspace brief.");
 
   return (
     <div id="case-brief" className="scroll-mt-4 h-full">
       <Panel testId="card-case-brief" className="h-full">
       <PanelHeader
         icon={Sparkles}
-        label={CASE_BRIEF_LABEL}
+        label={briefLabel}
         action={
           brief ? (
             <button
@@ -713,33 +730,59 @@ function CaseBriefSection({ caseIdParam }: { caseIdParam?: string }) {
               <Sparkles className="w-5 h-5 text-primary" />
             </div>
             <div className="space-y-1 max-w-sm">
-              <p className="text-sm font-semibold text-foreground">{CASE_BRIEF_LABEL}</p>
+              <p className="text-sm font-semibold text-foreground">{briefLabel}</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Build a structured brief from extracted facts, deadlines, risks, document alerts,
                 and case activity.
               </p>
             </div>
-            {error && (
+            {error && !isGeneralContentError && (
               <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-left max-w-sm w-full">
                 <TriangleAlert className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-destructive leading-snug">{error}</p>
               </div>
             )}
-            <Button
-              onClick={() => briefMutation.mutate()}
-              className="gap-2"
-              data-testid="button-generate-brief"
-            >
-              <Sparkles className="w-4 h-4" />
-              Generate {CASE_BRIEF_LABEL}
-            </Button>
+            {showGenerateButton && (
+              <Button
+                onClick={() => briefMutation.mutate()}
+                className="gap-2"
+                data-testid="button-generate-brief"
+              >
+                <Sparkles className="w-4 h-4" />
+                Generate {briefLabel}
+              </Button>
+            )}
+            {showGeneralEmptyState && (
+              <div className="w-full max-w-sm rounded-md border border-border/70 bg-muted/30 p-3.5 text-left space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">All documents are assigned to cases</p>
+                  <p className="text-xs text-muted-foreground">Open a case to generate a case brief.</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    if (hasCases && firstCaseId) {
+                      navigate(`/case/${firstCaseId}`);
+                      return;
+                    }
+                    onCreateCase();
+                  }}
+                  data-testid="button-open-case-for-brief"
+                >
+                  {hasCases ? "Open a case" : "Create a case"}
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
         {briefMutation.isPending && (
           <div className="flex flex-col items-center gap-2.5 py-4">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <p className="text-xs text-muted-foreground">Compiling your structured case brief…</p>
+            <p className="text-xs text-muted-foreground">Compiling your structured {briefLabel.toLowerCase()}…</p>
           </div>
         )}
 
@@ -1445,12 +1488,19 @@ export default function WorkspacePage() {
   const documents: WorkspaceDocument[] = workspaceData?.documents ?? [];
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
   const cases = casesData?.cases ?? [];
+  const firstCaseId = cases[0]?.id ?? null;
   const activeCase = caseIdParam ? cases.find((c) => c.id === caseIdParam) ?? null : null;
   const activeCaseName = (activeCase?.name ?? activeCase?.title)?.trim() || (caseIdParam ? "Unnamed Case" : null);
   const caseNameById = cases.reduce<Record<string, string>>((acc, c) => {
     acc[c.id] = (c.name ?? c.title)?.trim() || "Unnamed Case";
     return acc;
   }, {});
+  const unassignedAnalyzableDocIds = new Set(
+    documents.filter((doc) => !doc.caseId && doc.isAnalysisAvailable).map((doc) => doc.id),
+  );
+  const hasGeneralBriefContent = unassignedAnalyzableDocIds.size > 0 || threads.some(
+    (thread) => !thread.documentId || unassignedAnalyzableDocIds.has(thread.documentId),
+  );
 
   const createCaseMutation = useMutation({
     mutationFn: async () => {
@@ -1848,10 +1898,16 @@ export default function WorkspacePage() {
 
         <div className="h-full">
           {user ? (
-            <CaseBriefSection caseIdParam={caseIdParam} />
+            <CaseBriefSection
+              caseIdParam={caseIdParam}
+              hasGeneralBriefContent={hasGeneralBriefContent}
+              hasCases={cases.length > 0}
+              firstCaseId={firstCaseId}
+              onCreateCase={() => setIsCreateCaseOpen(true)}
+            />
           ) : (
             <Panel testId="card-case-brief-unauth" className="h-full">
-              <PanelHeader icon={Sparkles} label={CASE_BRIEF_LABEL} />
+              <PanelHeader icon={Sparkles} label="Case Brief" />
               <PanelContent className="p-2.5">
                 <EmptyState
                   icon={Sparkles}
