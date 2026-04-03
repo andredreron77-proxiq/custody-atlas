@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { FolderOpen } from "lucide-react";
 import {
   Select,
@@ -16,6 +17,7 @@ interface WorkspaceHeaderProps {
   preferredName?: string | null;
   cases: Array<{ id: string; title: string }>;
   onSelectCase: (caseId: string) => void;
+  onCreateCase: () => void;
 }
 
 export function WorkspaceHeader({
@@ -26,6 +28,7 @@ export function WorkspaceHeader({
   preferredName,
   cases,
   onSelectCase,
+  onCreateCase,
 }: WorkspaceHeaderProps) {
   const hasActiveCase = !!activeCaseName;
 
@@ -48,6 +51,9 @@ export function WorkspaceHeader({
         </div>
 
         <div className="flex items-center gap-2">
+          <Button size="sm" className="h-8" onClick={onCreateCase} data-testid="button-create-case">
+            Create Case
+          </Button>
           <Select
             value={activeCaseId ?? "all"}
             onValueChange={(value) => onSelectCase(value)}

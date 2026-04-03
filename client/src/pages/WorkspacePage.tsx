@@ -22,6 +22,14 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   PageContainer,
@@ -118,6 +126,7 @@ interface CaseBrief {
 interface CaseRecord {
   id: string;
   title: string;
+  name?: string;
 }
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -990,7 +999,7 @@ function DocumentsSection({
                         <SelectValue placeholder="Assign to case" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="unassigned">Leave unassigned</SelectItem>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
                         {cases.map((caseItem) => (
                           <SelectItem key={caseItem.id} value={caseItem.id}>
                             {caseItem.title}
@@ -1364,7 +1373,12 @@ export default function WorkspacePage() {
   const { jurisdiction } = useJurisdiction();
   const { user } = useCurrentUser();
   const { data: profile } = useUserProfile();
+  const qc = useQueryClient();
   const { toast } = useToast();
+  const [isCreateCaseOpen, setIsCreateCaseOpen] = useState(false);
+  const [newCaseName, setNewCaseName] = useState("");
+  const [newCaseNumber, setNewCaseNumber] = useState("");
+  const [newCaseJurisdiction, setNewCaseJurisdiction] = useState("");
   const caseIdParam = new URLSearchParams(
     location.split("?")[1] || window.location.search.slice(1),
   ).get("case") ?? undefined;
@@ -1406,11 +1420,38 @@ export default function WorkspacePage() {
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
   const cases = casesData?.cases ?? [];
   const activeCase = caseIdParam ? cases.find((c) => c.id === caseIdParam) ?? null : null;
-  const activeCaseName = activeCase?.title?.trim() || (caseIdParam ? "Unnamed Case" : null);
+  const activeCaseName = (activeCase?.name ?? activeCase?.title)?.trim() || (caseIdParam ? "Unnamed Case" : null);
   const caseNameById = cases.reduce<Record<string, string>>((acc, c) => {
-    acc[c.id] = c.title?.trim() || "Unnamed Case";
+    acc[c.id] = (c.name ?? c.title)?.trim() || "Unnamed Case";
     return acc;
   }, {});
+
+  const createCaseMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        name: newCaseName.trim(),
+        caseNumber: newCaseNumber.trim() || undefined,
+        jurisdiction: newCaseJurisdiction.trim() || undefined,
+      };
+      const res = await apiRequestRaw("POST", "/api/cases", payload);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not create case.");
+      }
+      return res.json() as Promise<{ case: { id: string } }>;
+    },
+    onSuccess: (payload) => {
+      qc.invalidateQueries({ queryKey: ["/api/cases"] });
+      setIsCreateCaseOpen(false);
+      setNewCaseName("");
+      setNewCaseNumber("");
+      setNewCaseJurisdiction("");
+      navigate(`/case/${payload.case.id}`);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Case creation failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   // ── Workspace signals ────────────────────────────────────────────────────
   // Count unique analyzed docs (de-duplicate by fileName, keep latest per file
@@ -1595,7 +1636,60 @@ export default function WorkspacePage() {
           }
           navigate(`/case/${nextCaseId}`);
         }}
+        onCreateCase={() => setIsCreateCaseOpen(true)}
       />
+
+      <Dialog open={isCreateCaseOpen} onOpenChange={setIsCreateCaseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Case</DialogTitle>
+            <DialogDescription>
+              Add a case to organize documents and prepare for your case dashboard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="case-name">Case name</Label>
+              <Input
+                id="case-name"
+                placeholder="e.g., Smith v. Jones"
+                value={newCaseName}
+                onChange={(e) => setNewCaseName(e.target.value)}
+                maxLength={200}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="case-number">Case number (optional)</Label>
+              <Input
+                id="case-number"
+                value={newCaseNumber}
+                onChange={(e) => setNewCaseNumber(e.target.value)}
+                maxLength={200}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="case-jurisdiction">Jurisdiction (optional)</Label>
+              <Input
+                id="case-jurisdiction"
+                value={newCaseJurisdiction}
+                onChange={(e) => setNewCaseJurisdiction(e.target.value)}
+                maxLength={200}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateCaseOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!newCaseName.trim() || createCaseMutation.isPending}
+              onClick={() => createCaseMutation.mutate()}
+            >
+              {createCaseMutation.isPending ? "Creating…" : "Create Case"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         <div className="xl:col-span-8 space-y-4">

@@ -1728,7 +1728,7 @@ export default function UploadDocumentPage() {
                         value={pendingCaseSelection}
                         onChange={(e) => setPendingCaseSelection(e.target.value)}
                       >
-                        <option value="unassigned">Leave unassigned</option>
+                        <option value="unassigned">Unassigned</option>
                         {userCases.map((caseItem) => (
                           <option key={caseItem.id} value={caseItem.id}>{caseItem.title}</option>
                         ))}
