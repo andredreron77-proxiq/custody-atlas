@@ -113,7 +113,6 @@ export interface CaseCreateFailure {
   category:
     | "table_missing"
     | "column_missing"
-    | "wrong_column_names"
     | "not_null_violation"
     | "rls_policy_block"
     | "auth_session_issue"
@@ -138,6 +137,11 @@ export interface CreateCaseResult {
 /* ── Row mappers ──────────────────────────────────────────────────────────── */
 
 export function mapCaseRow(r: any): Case {
+  const createdAt =
+    typeof r.created_at === "string" && r.created_at.trim().length > 0
+      ? r.created_at
+      : new Date().toISOString();
+
   return {
     id: r.id,
     userId: r.user_id,
@@ -146,20 +150,9 @@ export function mapCaseRow(r: any): Case {
     jurisdictionState: r.jurisdiction_state ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     status: r.status ?? "active",
-    createdAt: r.created_at,
-    updatedAt: r.updated_at ?? r.created_at,
+    createdAt,
+    updatedAt: r.updated_at ?? createdAt,
   };
-}
-
-export function extractMissingInsertColumn(message: string | undefined): string | null {
-  if (!message) return null;
-  const postgrestMatch = message.match(/Could not find the '([^']+)' column/i);
-  if (postgrestMatch?.[1]) return postgrestMatch[1];
-
-  const postgresMatch = message.match(/column ["']?([^"']+)["']? of relation ["']?cases["']? does not exist/i);
-  if (postgresMatch?.[1]) return postgresMatch[1];
-
-  return null;
 }
 
 function categorizeCreateCaseError(err: {
@@ -183,7 +176,6 @@ function categorizeCreateCaseError(err: {
   if (code === "22p02" || message.includes("invalid input syntax")) return "malformed_payload";
   if (message.includes("schema cache") || hint.includes("schema cache")) return "wrong_schema";
   if (message.includes("service role") || message.includes("permission denied")) return "service_role_client_issue";
-  if (message.includes("could not find the") && message.includes("column")) return "wrong_column_names";
   return "other";
 }
 
@@ -257,7 +249,13 @@ export async function createCaseWithDiagnostics(
   },
 ): Promise<CreateCaseResult> {
   const normalizedTitle = opts.title.slice(0, 200);
-  const insertPayload = {
+  // Keep inserts aligned to confirmed live schema columns only.
+  const insertPayload: {
+    user_id: string;
+    title: string;
+    case_type: string;
+    status: string;
+  } = {
     user_id: userId,
     title: normalizedTitle,
     case_type: opts.caseType ?? "general",
