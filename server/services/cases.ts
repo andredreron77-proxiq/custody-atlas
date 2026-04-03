@@ -110,6 +110,19 @@ export interface CaseMemory {
   createdAt: string;
 }
 
+export interface CaseCreateFailure {
+  stage: "unconfigured" | "insert" | "legacy_fallback" | "exception";
+  message: string | null;
+  code: string | null;
+  details: string | null;
+  hint: string | null;
+}
+
+export interface CreateCaseResult {
+  caseRecord: Case | null;
+  failure: CaseCreateFailure | null;
+}
+
 /* ── Row mappers ──────────────────────────────────────────────────────────── */
 
 export function mapCaseRow(r: any): Case {
@@ -129,6 +142,12 @@ export function mapCaseRow(r: any): Case {
 export function extractMissingInsertColumn(message: string | undefined): string | null {
   if (!message) return null;
   const match = message.match(/Could not find the '([^']+)' column/i);
+  return match?.[1] ?? null;
+}
+
+export function extractNotNullViolationColumn(message: string | undefined): string | null {
+  if (!message) return null;
+  const match = message.match(/null value in column "([^"]+)"/i);
   return match?.[1] ?? null;
 }
 
@@ -189,8 +208,22 @@ export async function createCase(
     jurisdictionState?: string;
     jurisdictionCounty?: string;
   },
-): Promise<Case | null> {
-  if (!supabaseAdmin) return null;
+  trace?: {
+    errorId?: string;
+  },
+): Promise<CreateCaseResult> {
+  if (!supabaseAdmin) {
+    return {
+      caseRecord: null,
+      failure: {
+        stage: "unconfigured",
+        message: "Supabase admin client not configured",
+        code: null,
+        details: null,
+        hint: null,
+      },
+    };
+  }
   try {
     const normalizedTitle = opts.title.slice(0, 200);
     const modernInsertPayload = {
@@ -209,14 +242,16 @@ export async function createCase(
       .single();
 
     if (!error && data) {
-      return mapCaseRow(data);
+      return { caseRecord: mapCaseRow(data), failure: null };
     }
 
     const missingColumn = extractMissingInsertColumn(error?.message);
+    const notNullColumn = extractNotNullViolationColumn(error?.message);
     const canRetryWithLegacySchema = missingColumn !== null
       && ["title", "description", "jurisdiction_state", "jurisdiction_county", "status"].includes(missingColumn);
+    const canRetryWithLegacyRequiredName = notNullColumn === "name";
 
-    if (canRetryWithLegacySchema) {
+    if (canRetryWithLegacySchema || canRetryWithLegacyRequiredName) {
       const legacyInsertPayload = {
         user_id: userId,
         name: normalizedTitle,
@@ -232,30 +267,62 @@ export async function createCase(
 
       if (!legacyInsert.error && legacyInsert.data) {
         console.warn(
-          `[cases] createCase used legacy schema fallback (missing column '${missingColumn}').`,
+          `[cases] createCase used legacy schema fallback (errorId=${trace?.errorId ?? "n/a"}, missingColumn='${missingColumn ?? "n/a"}', notNullColumn='${notNullColumn ?? "n/a"}').`,
         );
-        return mapCaseRow(legacyInsert.data);
+        return { caseRecord: mapCaseRow(legacyInsert.data), failure: null };
       }
 
       console.error("[cases] createCase legacy fallback error:", {
+        errorId: trace?.errorId ?? null,
         message: legacyInsert.error?.message,
         code: legacyInsert.error?.code,
         details: legacyInsert.error?.details,
         hint: legacyInsert.error?.hint,
       });
-      return null;
+      return {
+        caseRecord: null,
+        failure: {
+          stage: "legacy_fallback",
+          message: legacyInsert.error?.message ?? null,
+          code: legacyInsert.error?.code ?? null,
+          details: legacyInsert.error?.details ?? null,
+          hint: legacyInsert.error?.hint ?? null,
+        },
+      };
     }
 
     console.error("[cases] createCase error:", {
+      errorId: trace?.errorId ?? null,
       message: error?.message,
       code: error?.code,
       details: error?.details,
       hint: error?.hint,
     });
-    return null;
+    return {
+      caseRecord: null,
+      failure: {
+        stage: "insert",
+        message: error?.message ?? null,
+        code: error?.code ?? null,
+        details: error?.details ?? null,
+        hint: error?.hint ?? null,
+      },
+    };
   } catch (err) {
-    console.error("[cases] createCase exception:", err);
-    return null;
+    console.error("[cases] createCase exception:", {
+      errorId: trace?.errorId ?? null,
+      err,
+    });
+    return {
+      caseRecord: null,
+      failure: {
+        stage: "exception",
+        message: err instanceof Error ? err.message : "Unknown createCase exception",
+        code: null,
+        details: null,
+        hint: null,
+      },
+    };
   }
 }
 
