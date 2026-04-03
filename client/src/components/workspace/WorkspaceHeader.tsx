@@ -7,16 +7,19 @@ interface WorkspaceHeaderProps {
   caseCount: number;
   timelineEventCount: number;
   activeCaseId?: string;
+  preferredName?: string | null;
 }
 
-export function WorkspaceHeader({ activeCaseName, caseCount, timelineEventCount, activeCaseId }: WorkspaceHeaderProps) {
+export function WorkspaceHeader({ activeCaseName, caseCount, timelineEventCount, activeCaseId, preferredName }: WorkspaceHeaderProps) {
   const hasActiveCase = !!activeCaseName;
 
   return (
     <div className="sticky top-2 z-10 rounded-xl border border-border/70 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-sm px-4 py-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-1 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Active Workspace</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {preferredName ? `${preferredName}'s Workspace` : "Active Workspace"}
+          </p>
           <div className="flex items-center gap-2 min-w-0">
             <FolderOpen className="w-4 h-4 text-primary/70 flex-shrink-0" />
             <h1 className="text-lg md:text-xl font-semibold truncate" data-testid="heading-workspace">

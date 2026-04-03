@@ -10,6 +10,7 @@ import { MinimalFooter } from "@/components/app/Footer";
 import { ThemeProvider } from "@/components/app/ThemeProvider";
 import { AuthRequiredCard } from "@/components/app/AuthRequiredCard";
 import { OnboardingModal } from "@/components/app/OnboardingModal";
+import { DisplayNamePromptGate } from "@/components/app/DisplayNamePromptGate";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { apiRequestRaw } from "@/lib/queryClient";
 
@@ -100,7 +101,11 @@ function ProtectedRoute({
     return <AuthRequiredCard feature={feature} />;
   }
 
-  return <Page />;
+  return (
+    <DisplayNamePromptGate>
+      <Page />
+    </DisplayNamePromptGate>
+  );
 }
 
 function Router() {
