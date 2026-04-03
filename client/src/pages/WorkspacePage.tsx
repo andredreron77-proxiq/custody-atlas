@@ -39,6 +39,7 @@ import {
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
 import { DocumentsPanel } from "@/components/workspace/DocumentsPanel";
 import { CaseContextPanel } from "@/components/workspace/CaseContextPanel";
+import { classifyDateStatus } from "@shared/dateStatus";
 
 /* ── API types ────────────────────────────────────────────────────────────── */
 
@@ -90,7 +91,7 @@ interface CaseBrief {
   };
   currentSituation: string;
   whatMattersMost: Array<{ priority: string; reason: string; level: "high" | "medium" }>;
-  keyDatesAndDeadlines: Array<{ date: string; label: string; source: string; urgency: "upcoming" | "future" | "unknown" }>;
+  keyDatesAndDeadlines: Array<{ date: string; label: string; source: string; urgency: "upcoming" | "today" | "past" | "unknown" }>;
   risksWatchItems: string[];
   documentInsights: Array<{ documentId: string; fileName: string; insight: string; whyItMatters: string }>;
   missingInformationGaps: string[];
@@ -229,7 +230,10 @@ function getTopPriorityItems({
   const validDocuments = documents.filter((doc) => doc.isAnalysisAvailable);
   const riskDocuments = validDocuments.filter(docHasRiskSignals).slice(0, 2);
   const upcomingEvents = timelineEvents
-    .filter((ev) => new Date(ev.eventDate).getTime() >= Date.now())
+    .filter((ev) => {
+      const status = classifyDateStatus(ev.eventDate);
+      return status === "upcoming" || status === "today";
+    })
     .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
     .slice(0, 1);
 
