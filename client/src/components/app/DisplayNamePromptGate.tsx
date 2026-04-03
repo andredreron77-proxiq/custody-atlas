@@ -6,12 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { DISPLAY_NAME_SKIP_SESSION_KEY, firstNameFromDisplayName, useUserProfile } from "@/hooks/use-user-profile";
+import {
+  DISPLAY_NAME_SKIP_SESSION_KEY,
+  firstNameFromDisplayName,
+  shouldSuppressDisplayNamePrompt,
+  skipDisplayNamePromptForAWhile,
+  useUserProfile,
+} from "@/hooks/use-user-profile";
 
 function shouldPrompt(displayName: string | null | undefined): boolean {
   if (displayName) return false;
-  if (typeof window === "undefined") return false;
-  return window.sessionStorage.getItem(DISPLAY_NAME_SKIP_SESSION_KEY) !== "1";
+  return !shouldSuppressDisplayNamePrompt();
 }
 
 export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
@@ -81,6 +86,7 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
             variant="ghost"
             onClick={() => {
               window.sessionStorage.setItem(DISPLAY_NAME_SKIP_SESSION_KEY, "1");
+              skipDisplayNamePromptForAWhile();
               navigate("/workspace", { replace: true });
             }}
             data-testid="button-skip-display-name"
