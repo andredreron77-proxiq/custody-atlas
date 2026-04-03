@@ -363,6 +363,7 @@ function DocumentContextPanel({
   documents,
   selectedDocIds,
   initialized,
+  uploadHref,
   onToggle,
   onSelectAll,
   onClearAll,
@@ -370,6 +371,7 @@ function DocumentContextPanel({
   documents: DocumentRecord[];
   selectedDocIds: Set<string>;
   initialized: boolean;
+  uploadHref: string;
   onToggle: (id: string) => void;
   onSelectAll: () => void;
   onClearAll: () => void;
@@ -472,7 +474,7 @@ function DocumentContextPanel({
           {/* Upload link */}
           <div className="border-t border-border/60 px-3.5 py-2">
             <Link
-              href="/upload"
+              href={uploadHref}
               className="text-xs text-primary/70 hover:text-primary transition-colors"
               data-testid="link-upload-document"
             >
@@ -808,6 +810,16 @@ export default function AskAIPage() {
   const answeringScopeLabel = activeCaseName
     ? `Answering from: ${activeCaseName}`
     : "Answering from: General Workspace";
+  const uploadAnotherDocumentHref = (() => {
+    const params = new URLSearchParams();
+    if (activeCaseId) params.set("case", activeCaseId);
+    if (jurisdiction.state) params.set("state", jurisdiction.state);
+    if (jurisdiction.county) params.set("county", jurisdiction.county);
+    // Preserve return context so upload flows can bring users back to Ask Atlas when supported.
+    params.set("returnTo", location);
+    const query = params.toString();
+    return query ? `/upload-document?${query}` : "/upload-document";
+  })();
 
   /* ── Main Ask AI layout ───────────────────────────────────────────────── */
   return (
@@ -960,6 +972,7 @@ export default function AskAIPage() {
           documents={userDocuments}
           selectedDocIds={selectedDocIds}
           initialized={docSelectionInitialized}
+          uploadHref={uploadAnotherDocumentHref}
           onToggle={(id) => {
             setSelectedDocIds((prev) => {
               const next = new Set(prev);
