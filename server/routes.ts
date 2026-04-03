@@ -53,7 +53,6 @@ import {
 } from "./services/timeline";
 import {
   createCase,
-  createCaseWithDiagnostics,
   listCases,
   getCaseById,
   createConversation,
@@ -3105,26 +3104,15 @@ Do not add facts not present in the provided evidence.`,
       const jurisdictionState = parsed.data.jurisdictionState
         ?? parsed.data.jurisdiction
         ?? undefined;
-      const createCaseResult = await createCaseWithDiagnostics(user.id, {
+      const newCase = await createCase(user.id, {
         title: nextTitle,
         description: parsed.data.description ?? parsed.data.caseNumber,
         jurisdictionState,
         jurisdictionCounty: parsed.data.jurisdictionCounty,
       });
-      const newCase = createCaseResult.createdCase;
       if (!newCase) {
         const errorId = `case_create_${Date.now().toString(36)}`;
-        console.error("[cases] create-case storage failure", {
-          errorId,
-          userId: user.id,
-          requestPayload: {
-            title: nextTitle,
-            description: parsed.data.description ?? parsed.data.caseNumber ?? null,
-            jurisdictionState: jurisdictionState ?? null,
-            jurisdictionCounty: parsed.data.jurisdictionCounty ?? null,
-          },
-          failure: createCaseResult.failure,
-        });
+        console.error(`[cases] create-case storage failure (errorId=${errorId}, userId=${user.id})`);
         return res.status(503).json({
           error: "Case storage unavailable.",
           errorId,
