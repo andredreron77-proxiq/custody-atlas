@@ -45,6 +45,17 @@ export interface SavedDocument {
   createdAt: string;
 }
 
+export type DocumentCaseAssignmentStatus = "assigned" | "suggested" | "unassigned";
+
+export interface DocumentCaseAssignmentView {
+  status: DocumentCaseAssignmentStatus;
+  caseId: string | null;
+  suggestedCaseId: string | null;
+  confidenceScore: number | null;
+  reason: string | null;
+  autoAssigned: boolean;
+}
+
 export interface DuplicateDocumentLookup {
   fileHash: string;
 }
@@ -116,6 +127,23 @@ function mapRow(r: any): SavedDocument {
     analysisJson:  r.analysis_json ?? {},
     extractedText: r.extracted_text ?? "",
     createdAt:     r.created_at,
+  };
+}
+
+export function getDocumentCaseAssignmentView(
+  doc: Pick<SavedDocument, "caseId" | "analysisJson">,
+): DocumentCaseAssignmentView {
+  const raw = (doc.analysisJson?.case_assignment ?? {}) as Record<string, unknown>;
+  const status = raw.status === "assigned" || raw.status === "suggested" || raw.status === "unassigned"
+    ? raw.status
+    : (doc.caseId ? "assigned" : "unassigned");
+  return {
+    status,
+    caseId: doc.caseId ?? null,
+    suggestedCaseId: typeof raw.suggested_case_id === "string" ? raw.suggested_case_id : null,
+    confidenceScore: typeof raw.confidence_score === "number" ? raw.confidence_score : null,
+    reason: typeof raw.reason === "string" ? raw.reason : null,
+    autoAssigned: Boolean(raw.auto_assigned),
   };
 }
 
@@ -462,6 +490,77 @@ export async function ensureDocumentCaseAssociation(
     return linkWriteSucceeded || !legacyError;
   } catch (err) {
     console.error("[documents] ensureDocumentCaseAssociation exception:", err);
+    return false;
+  }
+}
+
+export async function setDocumentCaseAssignment(
+  documentId: string,
+  userId: string,
+  caseId: string | null,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+
+  try {
+    const { data: current, error: fetchError } = await supabaseAdmin
+      .from("documents")
+      .select("analysis_json")
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .single();
+    if (fetchError) return false;
+
+    if (caseId) {
+      const linked = await ensureDocumentCaseAssociation(documentId, caseId, userId);
+      if (!linked) return false;
+      const nextAnalysis = {
+        ...(current?.analysis_json ?? {}),
+        case_assignment: {
+          status: "assigned",
+          suggested_case_id: null,
+          confidence_score: 100,
+          reason: "user_selected_case",
+          auto_assigned: false,
+        },
+      };
+      const { error: updateError } = await supabaseAdmin
+        .from("documents")
+        .update({
+          case_id: caseId,
+          analysis_json: nextAnalysis,
+        })
+        .eq("id", documentId)
+        .eq("user_id", userId);
+      return !updateError;
+    }
+
+    await supabaseAdmin
+      .from("document_case_links")
+      .delete()
+      .eq("document_id", documentId)
+      .eq("user_id", userId);
+
+    const nextAnalysis = {
+      ...(current?.analysis_json ?? {}),
+      case_assignment: {
+        status: "unassigned",
+        suggested_case_id: null,
+        confidence_score: null,
+        reason: "user_left_unassigned",
+        auto_assigned: false,
+      },
+    };
+    const { error: updateError } = await supabaseAdmin
+      .from("documents")
+      .update({
+        case_id: null,
+        analysis_json: nextAnalysis,
+      })
+      .eq("id", documentId)
+      .eq("user_id", userId);
+    return !updateError;
+  } catch (err) {
+    console.error("[documents] setDocumentCaseAssignment exception:", err);
     return false;
   }
 }
