@@ -12,9 +12,7 @@
  *     id                  uuid PK DEFAULT gen_random_uuid()
  *     user_id             uuid NOT NULL
  *     title               text NOT NULL
- *     description         text
- *     jurisdiction_state  text
- *     jurisdiction_county text
+ *     case_type           text
  *     status              text DEFAULT 'active'
  *     created_at          timestamptz DEFAULT now()
  *     updated_at          timestamptz DEFAULT now()
@@ -111,7 +109,7 @@ export interface CaseMemory {
 }
 
 export interface CaseCreateFailure {
-  stage: "modern_insert" | "legacy_insert";
+  stage: "insert";
   category:
     | "table_missing"
     | "column_missing"
@@ -143,9 +141,9 @@ export function mapCaseRow(r: any): Case {
   return {
     id: r.id,
     userId: r.user_id,
-    title: r.title ?? r.name ?? "Untitled case",
+    title: r.title ?? "Untitled case",
     description: r.description ?? null,
-    jurisdictionState: r.jurisdiction_state ?? r.jurisdiction ?? null,
+    jurisdictionState: r.jurisdiction_state ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     status: r.status ?? "active",
     createdAt: r.created_at,
@@ -242,9 +240,8 @@ export async function createCase(
   userId: string,
   opts: {
     title: string;
-    description?: string;
-    jurisdictionState?: string;
-    jurisdictionCounty?: string;
+    caseType?: string;
+    status?: string;
   },
 ): Promise<Case | null> {
   const result = await createCaseWithDiagnostics(userId, opts);
@@ -255,25 +252,25 @@ export async function createCaseWithDiagnostics(
   userId: string,
   opts: {
     title: string;
-    description?: string;
-    jurisdictionState?: string;
-    jurisdictionCounty?: string;
+    caseType?: string;
+    status?: string;
   },
 ): Promise<CreateCaseResult> {
+  const normalizedTitle = opts.title.slice(0, 200);
+  const insertPayload = {
+    user_id: userId,
+    title: normalizedTitle,
+    case_type: opts.caseType ?? "general",
+    status: opts.status ?? "active",
+  };
+
   if (!supabaseAdmin) {
     return {
       createdCase: null,
       failure: {
-        stage: "modern_insert",
+        stage: "insert",
         category: "service_role_client_issue",
-        insertPayload: {
-          user_id: userId,
-          title: opts.title.slice(0, 200),
-          description: opts.description ?? null,
-          jurisdiction_state: opts.jurisdictionState ?? null,
-          jurisdiction_county: opts.jurisdictionCounty ?? null,
-          status: "active",
-        },
+        insertPayload,
         error: {
           message: "Supabase admin client is not configured.",
           code: null,
@@ -284,83 +281,37 @@ export async function createCaseWithDiagnostics(
     };
   }
   try {
-    const normalizedTitle = opts.title.slice(0, 200);
-    const modernInsertPayload = {
-      user_id: userId,
-      title: normalizedTitle,
-      description: opts.description ?? null,
-      jurisdiction_state: opts.jurisdictionState ?? null,
-      jurisdiction_county: opts.jurisdictionCounty ?? null,
-      status: "active",
-    };
-
     const { data, error } = await supabaseAdmin
       .from("cases")
-      .insert(modernInsertPayload)
+      .insert(insertPayload)
       .select()
       .single();
 
     if (!error && data) {
       return { createdCase: mapCaseRow(data), failure: null };
     }
-
-    const missingColumn = extractMissingInsertColumn(error?.message);
-    const canRetryWithLegacySchema = missingColumn !== null
-      && ["title", "description", "jurisdiction_state", "jurisdiction_county", "status"].includes(missingColumn);
-
-    if (canRetryWithLegacySchema) {
-      const legacyInsertPayload = {
-        user_id: userId,
-        name: normalizedTitle,
-        case_number: opts.description ?? null,
-        jurisdiction: opts.jurisdictionState ?? null,
-      };
-
-      const legacyInsert = await supabaseAdmin
-        .from("cases")
-        .insert(legacyInsertPayload)
-        .select()
-        .single();
-
-      if (!legacyInsert.error && legacyInsert.data) {
-        console.warn(
-          `[cases] createCase used legacy schema fallback (missing column '${missingColumn}').`,
-        );
-        return { createdCase: mapCaseRow(legacyInsert.data), failure: null };
-      }
-
-      return {
-        createdCase: null,
-        failure: {
-          stage: "legacy_insert",
-          category: categorizeCreateCaseError({
-            message: legacyInsert.error?.message,
-            code: legacyInsert.error?.code,
-            details: legacyInsert.error?.details,
-            hint: legacyInsert.error?.hint,
-          }),
-          insertPayload: legacyInsertPayload,
-          error: {
-            message: legacyInsert.error?.message,
-            code: legacyInsert.error?.code,
-            details: legacyInsert.error?.details,
-            hint: legacyInsert.error?.hint,
-          },
-        },
-      };
-    }
+    console.error("[cases] createCase insert failed", {
+      userId,
+      insertPayload,
+      error: {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+      },
+    });
 
     return {
       createdCase: null,
       failure: {
-        stage: "modern_insert",
+        stage: "insert",
         category: categorizeCreateCaseError({
           message: error?.message,
           code: error?.code,
           details: error?.details,
           hint: error?.hint,
         }),
-        insertPayload: modernInsertPayload,
+        insertPayload,
         error: {
           message: error?.message,
           code: error?.code,
@@ -370,19 +321,13 @@ export async function createCaseWithDiagnostics(
       },
     };
   } catch (err) {
+    console.error("[cases] createCase insert exception", { userId, insertPayload, err });
     return {
       createdCase: null,
       failure: {
-        stage: "modern_insert",
+        stage: "insert",
         category: "other",
-        insertPayload: {
-          user_id: userId,
-          title: opts.title.slice(0, 200),
-          description: opts.description ?? null,
-          jurisdiction_state: opts.jurisdictionState ?? null,
-          jurisdiction_county: opts.jurisdictionCounty ?? null,
-          status: "active",
-        },
+        insertPayload,
         error: {
           message: err instanceof Error ? err.message : String(err),
           code: null,
