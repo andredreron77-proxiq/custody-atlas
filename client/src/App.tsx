@@ -162,6 +162,9 @@ function FullPageLoading() {
 function HomeRoute() {
   const { user, isLoading: isAuthLoading } = useCurrentUser();
   const [location] = useLocation();
+  const hasPriorAuthHint =
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem("custody-atlas:auth-user-id") !== null;
 
   const { data: hasDocuments, isLoading: isWorkspaceLoading } = useQuery({
     queryKey: ["/api/workspace", "home-redirect"],
@@ -184,7 +187,7 @@ function HomeRoute() {
     }
   }, [hasDocuments, isAuthLoading, isWorkspaceLoading, location, user]);
 
-  if (isAuthLoading || (user && isWorkspaceLoading)) {
+  if (isAuthLoading || (user && isWorkspaceLoading) || (!user && hasPriorAuthHint)) {
     return <FullPageLoading />;
   }
 

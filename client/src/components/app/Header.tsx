@@ -46,6 +46,7 @@ export function Header() {
     staleTime: 30_000,
   });
   const isAdmin = adminStatus?.isAdmin === true;
+  const logoHref = user ? "/workspace" : "/";
 
   const isActive = (href: string, exact = false) => {
     if (exact) return location === href;
@@ -71,7 +72,12 @@ export function Header() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 flex-shrink-0" aria-label="Custody Atlas home">
+          <Link
+            href={logoHref}
+            className="flex items-center gap-2.5 flex-shrink-0"
+            aria-label={user ? "Custody Atlas workspace" : "Custody Atlas home"}
+            data-testid="link-header-logo"
+          >
             <LogoMark size={26} variant="onDark" />
             <span className="hidden sm:block font-semibold text-white tracking-tight" style={{ fontSize: "15px" }}>
               Custody Atlas
