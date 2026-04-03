@@ -556,10 +556,17 @@ export default function DocumentDetailPage() {
   const { data: doc, isLoading, isError } = useQuery<DocumentDetail>({
     queryKey: ["/api/documents", documentId],
     queryFn: async () => {
+      console.info("[trace][detail] route documentId=", documentId);
       const res = await fetch(`/api/documents/${documentId}`, {
         credentials: "include",
       });
       const json = await res.json();
+      console.info("[trace][detail] api response", {
+        routeDocumentId: documentId,
+        status: res.status,
+        responseDocumentId: json?.document?.id,
+        code: json?.code,
+      });
       if (!res.ok) {
         if (res.status === 409 && json?.code === "DOCUMENT_ANALYSIS_MISSING") {
           setMissingAnalysis(json as DocumentMissingAnalysisError);
