@@ -765,6 +765,7 @@ function PagesReviewView({
   analyzeDisabled = false,
   hasResult = false,
   documentId,
+  askAtlasHref,
   onAddCamera,
   onAddImage,
   onMoveUp,
@@ -783,6 +784,7 @@ function PagesReviewView({
   analyzeDisabled?: boolean;
   hasResult?: boolean;
   documentId?: string | null;
+  askAtlasHref: string;
   onAddCamera: () => void;
   onAddImage: () => void;
   onMoveUp: (index: number) => void;
@@ -964,7 +966,7 @@ function PagesReviewView({
               size="lg"
               data-testid="button-ask-atlas-document"
             >
-              <a href={`/ask?document=${documentId}`}>
+              <a href={askAtlasHref}>
                 <MessageSquare className="w-4 h-4" />
                 Ask Atlas About This Document
               </a>
@@ -1030,8 +1032,10 @@ function PagesReviewView({
 /* ── Main page ────────────────────────────────────────────────────────────── */
 
 export default function UploadDocumentPage() {
-  // Read optional ?case= URL param so uploads can be tied to an active case.
-  const activeCaseId: string | null = new URLSearchParams(window.location.search).get("case");
+  // Read optional URL params so uploads can be tied to an active case and return context.
+  const searchParams = new URLSearchParams(window.location.search);
+  const activeCaseId: string | null = searchParams.get("case");
+  const returnTo: string | null = searchParams.get("returnTo");
 
   // Document pages being prepared for submission
   const [pages, setPages] = useState<File[]>([]);
@@ -1081,6 +1085,14 @@ export default function UploadDocumentPage() {
   ).length + 1;
   // Whether "Add Another Page" should be offered in camera preview
   const cameraCanAddMore = pendingPageNumber < MAX_PAGES;
+  const askAtlasHref = (() => {
+    if (!documentId) return "/ask";
+    const params = new URLSearchParams();
+    params.set("document", documentId);
+    if (activeCaseId) params.set("case", activeCaseId);
+    if (returnTo?.startsWith("/ask")) params.set("returnTo", returnTo);
+    return `/ask?${params.toString()}`;
+  })();
 
   /* ── Validation ──────────────────────────────────────────────────────── */
 
@@ -1534,6 +1546,7 @@ export default function UploadDocumentPage() {
               analyzeDisabled={docLimitReached}
               hasResult={!!result}
               documentId={documentId}
+              askAtlasHref={askAtlasHref}
               onAddCamera={() => addCameraInputRef.current?.click()}
               onAddImage={() => addImageInputRef.current?.click()}
               onMoveUp={(i) => movePage(i, i - 1)}
