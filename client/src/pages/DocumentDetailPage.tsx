@@ -35,7 +35,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   DocObligationBadge,
-  DocImplicationsSection,
   DocActionInsight,
   parseDocAnalysis,
   hasAnalysis,
@@ -116,14 +115,14 @@ function ExtractedFactsSection({ analysisJson }: { analysisJson: Record<string, 
 
   return (
     <section data-testid="doc-detail-facts">
-      <h2 className="text-sm font-semibold mb-3">Key facts extracted from this document</h2>
-      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+      <h2 className="text-lg font-semibold mb-4">Key facts extracted from this document</h2>
+      <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
         {rows.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="flex items-start gap-2">
-            <Icon className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <dt className="text-[10px] text-muted-foreground uppercase tracking-wide leading-4">{label}</dt>
-              <dd className="text-sm text-foreground leading-snug">{value}</dd>
+          <div key={label} className="rounded-lg border bg-card px-4 py-3 flex items-start gap-3">
+            <Icon className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 space-y-1">
+              <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</dt>
+              <dd className="text-base text-foreground leading-relaxed break-words">{value}</dd>
             </div>
           </div>
         ))}
@@ -141,11 +140,11 @@ function KeyDatesSection({ analysisJson }: { analysisJson: Record<string, unknow
 
   return (
     <section data-testid="doc-detail-key-dates">
-      <h2 className="text-sm font-semibold mb-3">Key dates &amp; deadlines</h2>
-      <ul className="space-y-1.5">
+      <h2 className="text-lg font-semibold mb-4">Key dates &amp; deadlines</h2>
+      <ul className="space-y-3">
         {key_dates.map((date, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-            <Clock className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+          <li key={i} className="flex items-start gap-2 text-base text-foreground leading-relaxed">
+            <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
             <span>{date}</span>
           </li>
         ))}
@@ -162,9 +161,9 @@ function SummarySection({ analysisJson }: { analysisJson: Record<string, unknown
   if (!summary) return null;
 
   return (
-    <section data-testid="doc-detail-summary">
-      <h2 className="text-sm font-semibold mb-2">Summary</h2>
-      <p className="text-sm text-muted-foreground leading-relaxed">{summary}</p>
+    <section data-testid="doc-detail-summary" className="space-y-3 py-1">
+      <h2 className="text-lg font-semibold">Summary</h2>
+      <p className="text-base leading-relaxed max-w-2xl text-foreground">{summary}</p>
     </section>
   );
 }
@@ -178,10 +177,10 @@ function ImportantTermsSection({ analysisJson }: { analysisJson: Record<string, 
 
   return (
     <section data-testid="doc-detail-terms">
-      <h2 className="text-sm font-semibold mb-3">Important terms in this document</h2>
-      <ul className="space-y-1.5">
+      <h2 className="text-lg font-semibold mb-4">Important terms in this document</h2>
+      <ul className="space-y-3">
         {important_terms.map((term, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+          <li key={i} className="flex items-start gap-2 text-base text-foreground leading-relaxed">
             <span className="w-1 h-1 rounded-full bg-muted-foreground/40 flex-shrink-0 mt-2" />
             <span>{term}</span>
           </li>
@@ -201,11 +200,14 @@ function QuestionsSection({ analysisJson }: { analysisJson: Record<string, unkno
 
   return (
     <section data-testid="doc-detail-questions">
-      <h2 className="text-sm font-semibold mb-3">Questions to ask your attorney</h2>
-      <ul className="space-y-2">
+      <h2 className="text-lg font-semibold mb-4">Questions to ask your attorney</h2>
+      <ul className="space-y-3">
         {questions.map((q, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-            <HelpCircle className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+          <li
+            key={i}
+            className="group flex items-start gap-3 rounded-lg border border-border/70 bg-card px-4 py-3 text-base text-foreground leading-relaxed transition-colors hover:border-primary/40 hover:bg-muted/30"
+          >
+            <HelpCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary flex-shrink-0 mt-1 transition-colors" />
             <span>{q}</span>
           </li>
         ))}
@@ -221,15 +223,15 @@ function AskAtlasPanel({ docId, analyzed }: { docId: string; analyzed: boolean }
 
   return (
     <section
-      className="rounded-xl border bg-muted/30 p-5 space-y-4"
+      className="rounded-xl border bg-muted/30 p-6 space-y-4"
       data-testid="doc-detail-ask-panel"
     >
       <div className="flex items-center gap-2">
         <Sparkles className="w-4 h-4 text-primary" />
-        <h2 className="text-sm font-semibold">Ask Atlas about this document</h2>
+        <h2 className="text-lg font-semibold">Ask Atlas about this document</h2>
       </div>
 
-      <p className="text-xs text-muted-foreground leading-relaxed">
+      <p className="text-base leading-relaxed text-foreground/90">
         Atlas answers questions using the text and facts extracted from this specific document.
         {analyzed
           ? " Analysis is complete — Atlas has the full document context."
@@ -257,7 +259,7 @@ function AskAtlasPanel({ docId, analyzed }: { docId: string; analyzed: boolean }
             <Button
               variant="outline"
               size="sm"
-              className="h-7 px-3 text-xs gap-1.5 border-dashed text-muted-foreground hover:text-foreground hover:border-foreground/40"
+              className="h-8 px-3 text-sm gap-1.5 border-dashed text-muted-foreground hover:text-foreground hover:border-foreground/40"
               data-testid={`btn-quick-${id}`}
             >
               <Icon className="w-3 h-3" />
@@ -575,7 +577,7 @@ export default function DocumentDetailPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-7">
+    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
 
       {/* ── Breadcrumb / back ── */}
       <div className="flex items-center gap-2">
@@ -601,33 +603,33 @@ export default function DocumentDetailPage() {
       ) : !doc ? null : (
         <>
           {/* ── Document header ── */}
-          <header className="space-y-2" data-testid="doc-detail-header">
+          <header className="space-y-4" data-testid="doc-detail-header">
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-muted/60 flex items-center justify-center flex-shrink-0">
-                <FileText className="w-4 h-4 text-muted-foreground" />
+              <div className="w-10 h-10 rounded-lg bg-muted/60 flex items-center justify-center flex-shrink-0">
+                <FileText className="w-5 h-5 text-muted-foreground" />
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <h1
-                  className="text-base font-semibold leading-snug break-words"
+                  className="text-2xl font-semibold leading-tight break-words"
                   data-testid="doc-detail-filename"
                 >
                   {doc.fileName}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${typeColor}`}
+                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${typeColor}`}
                     data-testid="doc-detail-type-badge"
                   >
                     {typeLabel}
                   </span>
-                  <span className="text-[11px] text-muted-foreground" data-testid="doc-detail-date">
+                  <span className="text-sm text-muted-foreground" data-testid="doc-detail-date">
                     Uploaded {shortDate(doc.createdAt)}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-sm text-muted-foreground">
                     {doc.pageCount === 1 ? "1 page" : `${doc.pageCount} pages`}
                   </span>
                   {analyzed && (
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 font-medium">
+                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 font-medium">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
                       Analyzed
                     </span>
@@ -641,11 +643,13 @@ export default function DocumentDetailPage() {
           </header>
 
           {/* ── Action insight ── */}
-          <DocActionInsight
-            analysisJson={doc.analysisJson}
-            docType={doc.docType}
-            className="text-sm not-italic text-muted-foreground border-l-2 border-amber-400/60 pl-3"
-          />
+          <div className="rounded-lg border border-amber-200/70 bg-amber-50/50 dark:bg-amber-950/15 p-4">
+            <DocActionInsight
+              analysisJson={doc.analysisJson}
+              docType={doc.docType}
+              className="text-base not-italic text-foreground leading-relaxed"
+            />
+          </div>
 
           <Separator />
 
@@ -664,17 +668,20 @@ export default function DocumentDetailPage() {
 
               <Separator />
               {/* ── What this may require ── */}
-              <section data-testid="doc-detail-implications">
-                <h2 className="text-sm font-semibold mb-3">What this may require</h2>
-                <DocImplicationsSection
-                  analysisJson={doc.analysisJson}
-                  maxItems={10}
-                  className=""
-                />
+              <section data-testid="doc-detail-implications" className="rounded-lg border bg-muted/30 p-5">
+                <h2 className="text-lg font-semibold mb-4">What this may require</h2>
+                <ul className="space-y-3">
+                  {(parseDocAnalysis(doc.analysisJson).possible_implications ?? []).slice(0, 10).map((impl, i) => (
+                    <li key={i} className="flex items-start gap-3 text-base text-foreground leading-relaxed">
+                      <span className="mt-2 h-1.5 w-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                      <span>{impl}</span>
+                    </li>
+                  ))}
+                </ul>
                 <DocActionInsight
                   analysisJson={doc.analysisJson}
                   docType={doc.docType}
-                  className="mt-2 text-sm"
+                  className="mt-5 text-base text-foreground leading-relaxed"
                 />
               </section>
 
