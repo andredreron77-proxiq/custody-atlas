@@ -49,6 +49,12 @@ export interface DuplicateDocumentLookup {
   fileHash: string;
 }
 
+export interface DocumentIntegrity {
+  isAnalysisAvailable: boolean;
+  analysisStatus: "uploaded" | "analyzing" | "analyzed" | "failed";
+  integrityIssue: "missing_analysis" | null;
+}
+
 export function mergeCaseScopedDocumentIds(
   linkedDocumentIds: string[],
   legacyDocumentIds: string[],
@@ -111,6 +117,30 @@ function mapRow(r: any): SavedDocument {
     extractedText: r.extracted_text ?? "",
     createdAt:     r.created_at,
   };
+}
+
+export function getDocumentIntegrity(doc: Pick<SavedDocument, "analysisJson">): DocumentIntegrity {
+  const analysis = (doc.analysisJson ?? {}) as Record<string, unknown>;
+  const explicitStatus = typeof analysis.analysis_status === "string"
+    ? analysis.analysis_status.trim().toLowerCase()
+    : "";
+  const summary = typeof analysis.summary === "string" ? analysis.summary.trim() : "";
+
+  if (explicitStatus === "failed") {
+    return { isAnalysisAvailable: false, analysisStatus: "failed", integrityIssue: "missing_analysis" };
+  }
+  if (explicitStatus === "analyzing") {
+    return { isAnalysisAvailable: false, analysisStatus: "analyzing", integrityIssue: "missing_analysis" };
+  }
+  if (explicitStatus === "uploaded") {
+    return { isAnalysisAvailable: false, analysisStatus: "uploaded", integrityIssue: "missing_analysis" };
+  }
+
+  if (summary.length > 0) {
+    return { isAnalysisAvailable: true, analysisStatus: "analyzed", integrityIssue: null };
+  }
+
+  return { isAnalysisAvailable: false, analysisStatus: "failed", integrityIssue: "missing_analysis" };
 }
 
 export async function getDocuments(userId: string): Promise<SavedDocument[]> {
