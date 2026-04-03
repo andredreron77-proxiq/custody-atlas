@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Info, TriangleAlert } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Scale, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,8 +25,9 @@ type CaseDashboardPayload = {
     watchouts: string[];
     suggestedFocus: string;
   };
-  timeline: Array<{ id: string; date: string; label: string; type: "hearing" | "filing" | "deadline" | "order" | "report" | "allegation" | "mediation"; isPast: boolean; isUpcoming: boolean }>;
-  timelineMeta?: { visibleCount: number; totalCount: number; hasMore: boolean };
+  timeline: Array<{ id: string; date: string; label: string; type: "hearing" | "filing" | "deadline" | "order" | "mediation"; status: "past" | "upcoming" | "overdue" | "future" }>;
+  timelineSecondary?: Array<{ id: string; date: string; label: string; type: "allegation" | "context"; status: "past" | "upcoming" | "overdue" | "future" }>;
+  timelineMeta?: { visibleCount: number; totalCount: number; hasMore: boolean; secondaryCount?: number };
   documents: Array<{ id: string; title: string; status: string; tags: string[] }>;
   snapshot: {
     currentSituation: string;
@@ -66,6 +67,21 @@ function alertIcon(kind: CaseDashboardPayload["alerts"][number]["kind"]) {
   if (kind === "analysis_missing") return <FileText className="h-4 w-4 text-indigo-600" />;
   if (kind === "timeline_gap") return <Clock3 className="h-4 w-4 text-blue-600" />;
   return <Info className="h-4 w-4 text-muted-foreground" />;
+}
+
+function timelineTypeIcon(type: "hearing" | "filing" | "deadline" | "order" | "mediation" | "allegation" | "context") {
+  if (type === "hearing") return <Gavel className="h-4 w-4" />;
+  if (type === "deadline") return <CalendarClock className="h-4 w-4" />;
+  if (type === "order") return <Scale className="h-4 w-4" />;
+  if (type === "mediation") return <Clock3 className="h-4 w-4" />;
+  return <FileText className="h-4 w-4" />;
+}
+
+function timelineStatusClass(status: "past" | "upcoming" | "overdue" | "future"): string {
+  if (status === "overdue") return "border-red-300 bg-red-50 text-red-800";
+  if (status === "upcoming") return "border-primary/40 bg-primary/5 text-foreground";
+  if (status === "past") return "border-border bg-muted/40 text-muted-foreground";
+  return "border-border bg-background text-foreground";
 }
 
 export default function CaseDashboardPage() {
@@ -164,7 +180,7 @@ export default function CaseDashboardPage() {
         <div className="space-y-3 lg:col-span-3">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Timeline Card</CardTitle>
+              <CardTitle className="text-base">Legal Timeline</CardTitle>
             </CardHeader>
             <CardContent id="timeline">
               {data.timeline.length === 0 ? (
@@ -173,8 +189,11 @@ export default function CaseDashboardPage() {
                 <>
                 <ol className="space-y-1.5 text-sm">
                   {(showFullTimeline ? data.timeline : data.timeline.slice(0, data.timelineMeta?.visibleCount ?? 8)).map((event) => (
-                    <li key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 ${event.isUpcoming ? "border-primary/40 bg-primary/5" : "border-border text-muted-foreground"}`}>
-                      <span>{formatDate(event.date)}</span>
+                    <li key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 ${timelineStatusClass(event.status)}`}>
+                      <span className="flex items-center gap-1.5">
+                        {timelineTypeIcon(event.type)}
+                        {formatDate(event.date)}
+                      </span>
                       <span className="truncate pl-2 text-right">{event.label}</span>
                     </li>
                   ))}
@@ -185,6 +204,26 @@ export default function CaseDashboardPage() {
                       {showFullTimeline ? "Show fewer items" : `View full timeline (${data.timelineMeta.totalCount})`}
                     </Button>
                   </div>
+                ) : null}
+                {data.timelineSecondary && data.timelineSecondary.length > 0 ? (
+                  <Collapsible className="mt-3">
+                    <CollapsibleTrigger asChild>
+                      <Button size="sm" variant="ghost" className="h-7 px-0 text-xs text-muted-foreground">
+                        Context & allegations ({data.timelineMeta?.secondaryCount ?? data.timelineSecondary.length})
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-1 space-y-1.5">
+                      {data.timelineSecondary.map((event) => (
+                        <div key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 text-xs ${timelineStatusClass(event.status)}`}>
+                          <span className="flex items-center gap-1.5">
+                            {timelineTypeIcon(event.type)}
+                            {formatDate(event.date)}
+                          </span>
+                          <span className="truncate pl-2 text-right">{event.label}</span>
+                        </div>
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
                 ) : null}
                 </>
               )}
