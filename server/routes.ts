@@ -3465,6 +3465,62 @@ Do not add facts not present in the provided evidence.`,
         return ranked.map((event) => ({ date: event.dateRaw, label: event.normalizedLabel }));
       })();
 
+      const postureByStage: Record<DashboardStageKey, string> = {
+        approaching_hearing: "This case is active and approaching a hearing.",
+        between_pretrial_and_final: "This case is active between major court milestones.",
+        preparing_for_deadlines: "This case is active and focused on upcoming deadlines.",
+        early_intake: "This case is in early intake and still being organized.",
+      };
+
+      const keyDocSignals = [
+        { label: "initiating filing", matches: ["petition", "complaint", "application"] },
+        { label: "court order", matches: ["order", "judgment", "decree"] },
+        { label: "hearing notice", matches: ["notice of hearing", "hearing notice", "hearing"] },
+        { label: "motion/response filing", matches: ["motion", "response", "reply"] },
+      ];
+      const normalizedDocTitles = documents.map((doc) => doc.fileName.toLowerCase());
+      const keyDocCoverage = keyDocSignals.map((signal) => ({
+        label: signal.label,
+        present: normalizedDocTitles.some((title) => signal.matches.some((needle) => title.includes(needle))),
+      }));
+      const missingKeyDocs = keyDocCoverage.filter((signal) => !signal.present);
+      const keyDocsPresentCount = keyDocCoverage.length - missingKeyDocs.length;
+
+      const now = Date.now();
+      const upcomingCriticalEvents = primaryTimeline.filter((event) => (
+        (event.normalizedType === "hearing" || event.normalizedType === "deadline")
+        && (event.status === "upcoming" || event.status === "future")
+        && Boolean(event.dateParsed)
+      ));
+      const nextCriticalDaysAway = upcomingCriticalEvents.reduce<number | null>((closest, event) => {
+        if (!event.dateParsed) return closest;
+        const daysAway = Math.ceil((event.dateParsed.getTime() - now) / (1000 * 60 * 60 * 24));
+        if (daysAway < 0) return closest;
+        if (closest === null) return daysAway;
+        return Math.min(closest, daysAway);
+      }, null);
+
+      const urgency: "Low" | "Medium" | "High" = (() => {
+        if (overdueEvents.length > 0) return "High";
+        if ((nextCriticalDaysAway !== null && nextCriticalDaysAway <= 7) || missingKeyDocs.length >= 2) return "High";
+        if ((nextCriticalDaysAway !== null && nextCriticalDaysAway <= 21) || openActions.length > 0 || missingKeyDocs.length > 0) return "Medium";
+        return "Low";
+      })();
+
+      const documentCompleteness: "Strong" | "Partial" | "Needs review" = (() => {
+        if (documents.length === 0 || keyDocsPresentCount <= 1) return "Needs review";
+        if (missingKeyDocs.length === 0) return "Strong";
+        return "Partial";
+      })();
+
+      const immediateConcern = (() => {
+        if (overdueEvents.length > 0) return "A court-related item appears overdue and should be reviewed immediately.";
+        if (nextCriticalDaysAway !== null && nextCriticalDaysAway <= 7) return "A hearing or filing deadline is very close and needs immediate preparation.";
+        if (missingKeyDocs.length > 0) return "Key case documents appear missing and should be uploaded or verified.";
+        if (missingSummaryDocs.length > 0) return "A document appears unanalyzed and should be checked for missing dates or obligations.";
+        return "No immediate risks are flagged; continue routine case monitoring.";
+      })();
+
       const snapshotCurrentSituation = normalizedTimeline.length > 0
         ? `This case includes ${primaryTimeline.length} court-related event${primaryTimeline.length > 1 ? "s" : ""}, with ${upcomingEvents.length} upcoming.`
         : "No court-related events have been added yet.";
@@ -3606,6 +3662,12 @@ Do not add facts not present in the provided evidence.`,
           status: (doc.analysisJson?.analysis_status as string | undefined) ?? "analyzed",
           tags: extractDashboardDocumentTags(doc.analysisJson ?? {}),
         })),
+        caseHealth: {
+          currentPosture: postureByStage[stage.key],
+          urgency,
+          documentCompleteness,
+          immediateConcern,
+        },
         snapshot: {
           currentSituation: normalizeDashboardText(snapshotCurrentSituation, "No snapshot data available."),
           keyPoints,

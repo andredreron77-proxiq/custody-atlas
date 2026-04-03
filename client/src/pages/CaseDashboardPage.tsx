@@ -29,6 +29,12 @@ type CaseDashboardPayload = {
   timelineSecondary?: Array<{ id: string; date: string; label: string; type: "allegation" | "context"; status: "past" | "upcoming" | "overdue" | "future" }>;
   timelineMeta?: { visibleCount: number; totalCount: number; hasMore: boolean; secondaryCount?: number };
   documents: Array<{ id: string; title: string; status: string; tags: string[] }>;
+  caseHealth: {
+    currentPosture: string;
+    urgency: "Low" | "Medium" | "High";
+    documentCompleteness: "Strong" | "Partial" | "Needs review";
+    immediateConcern: string;
+  };
   snapshot: {
     currentSituation: string;
     keyPoints: string[];
@@ -82,6 +88,18 @@ function timelineStatusClass(status: "past" | "upcoming" | "overdue" | "future")
   if (status === "upcoming") return "border-primary/40 bg-primary/5 text-foreground";
   if (status === "past") return "border-border bg-muted/40 text-muted-foreground";
   return "border-border bg-background text-foreground";
+}
+
+function urgencyBadgeClass(value: "Low" | "Medium" | "High"): string {
+  if (value === "High") return "bg-red-100 text-red-800 border-red-300";
+  if (value === "Medium") return "bg-amber-100 text-amber-800 border-amber-300";
+  return "bg-emerald-100 text-emerald-800 border-emerald-300";
+}
+
+function completenessBadgeClass(value: "Strong" | "Partial" | "Needs review"): string {
+  if (value === "Needs review") return "bg-red-100 text-red-800 border-red-300";
+  if (value === "Partial") return "bg-amber-100 text-amber-800 border-amber-300";
+  return "bg-emerald-100 text-emerald-800 border-emerald-300";
 }
 
 export default function CaseDashboardPage() {
@@ -258,27 +276,27 @@ export default function CaseDashboardPage() {
 
         <div className="space-y-3 lg:col-span-2">
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Case Snapshot</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Case Health</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Situation</p>
-                <p>{sentence(data.snapshot.currentSituation, "Current situation is still being assessed.")}</p>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current posture</p>
+                <p>{sentence(data.caseHealth.currentPosture, "Case posture is still being assessed.")}</p>
               </section>
               <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key Points</p>
-                {data.snapshot.keyPoints.length > 0 ? (
-                  <ul className="list-disc space-y-1 pl-5">
-                    {data.snapshot.keyPoints.slice(0, 4).map((point) => <li key={point}>{point}</li>)}
-                  </ul>
-                ) : <p className="text-muted-foreground">No key points available.</p>}
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Urgency</p>
+                <Badge variant="outline" className={urgencyBadgeClass(data.caseHealth.urgency)}>
+                  {data.caseHealth.urgency}
+                </Badge>
               </section>
               <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Things to Watch</p>
-                {data.snapshot.thingsToWatch.length > 0 ? (
-                  <ul className="list-disc space-y-1 pl-5">
-                    {data.snapshot.thingsToWatch.slice(0, 3).map((point) => <li key={point}>{point}</li>)}
-                  </ul>
-                ) : <p className="text-muted-foreground">No active watch items.</p>}
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Document completeness</p>
+                <Badge variant="outline" className={completenessBadgeClass(data.caseHealth.documentCompleteness)}>
+                  {data.caseHealth.documentCompleteness}
+                </Badge>
+              </section>
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Immediate concern</p>
+                <p>{sentence(data.caseHealth.immediateConcern, "No immediate concern identified.")}</p>
               </section>
             </CardContent>
           </Card>
