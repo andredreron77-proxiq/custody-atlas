@@ -755,10 +755,15 @@ type DashboardStageKey =
   | "between_pretrial_and_final"
   | "preparing_for_deadlines"
   | "early_intake";
-type DashboardTimelineType = "hearing" | "filing" | "deadline" | "order" | "report" | "allegation" | "mediation";
+type DashboardTimelineType = "hearing" | "filing" | "deadline" | "order" | "mediation" | "allegation" | "context";
+type DashboardTimelineStatus = "past" | "upcoming" | "overdue" | "future";
+type DashboardTimelineBucket = "primary" | "secondary";
 
 interface NormalizedDashboardTimelineEvent extends CaseTimelineEvent {
   normalizedType: DashboardTimelineType;
+  normalizedLabel: string;
+  status: DashboardTimelineStatus;
+  bucket: DashboardTimelineBucket;
 }
 
 function classifyDashboardTimelineType(event: CaseTimelineEvent): DashboardTimelineType {
@@ -767,49 +772,78 @@ function classifyDashboardTimelineType(event: CaseTimelineEvent): DashboardTimel
   if (/\bdeadline\b|\bdue\b|\bsubmit\b|\bresponse\b|\bparenting plan\b/.test(label)) return "deadline";
   if (/\bmediation\b|\bsettlement conference\b/.test(label)) return "mediation";
   if (/\border\b|\bjudgment\b|\bdecree\b/.test(label) || event.type === "effective") return "order";
-  if (/\breport\b|\bevaluation\b|\binvestigation\b|\bassessment\b/.test(label)) return "report";
   if (/\ballegation\b|\ballege\b|\bclaim\b|\baccus/.test(label)) return "allegation";
-  return "filing";
+  if (event.type === "filing") return "filing";
+  return "context";
+}
+
+function normalizeTimelineLabel(event: Pick<CaseTimelineEvent, "label"> & { normalizedType: DashboardTimelineType }): string {
+  const label = event.label.toLowerCase();
+  if (event.normalizedType === "hearing" && /\bfinal\b/.test(label)) return "Final custody hearing";
+  if (event.normalizedType === "hearing" && /\bpretrial\b/.test(label)) return "Pretrial hearing";
+  if (event.normalizedType === "hearing") return "Court hearing";
+  if (event.normalizedType === "deadline") return "Filing deadline";
+  if (event.normalizedType === "order") return "Court order issued";
+  if (event.normalizedType === "mediation") return "Mediation session";
+  if (event.normalizedType === "filing") return "Court filing";
+  if (event.normalizedType === "allegation") return "Allegation noted";
+  return "Case context";
 }
 
 function timelineSpecificityScore(event: NormalizedDashboardTimelineEvent): number {
   let score = event.label.trim().length;
   if (event.source !== "Case Facts") score += 20;
   if (!/\b(date|event|filing|hearing)\b/i.test(event.label)) score += 40;
+  if (event.normalizedLabel === "Final custody hearing") score += 120;
+  else if (event.normalizedLabel === "Pretrial hearing") score += 110;
+  else if (event.normalizedLabel === "Court hearing") score += 100;
+  else if (event.normalizedLabel === "Filing deadline") score += 90;
+  else if (event.normalizedLabel === "Court order issued") score += 80;
+  else if (event.normalizedLabel === "Mediation session") score += 70;
   const priority: Record<DashboardTimelineType, number> = {
-    hearing: 80,
-    deadline: 70,
-    order: 60,
-    mediation: 50,
-    filing: 40,
-    report: 30,
+    hearing: 60,
+    deadline: 50,
+    order: 40,
+    mediation: 30,
+    filing: 20,
     allegation: 20,
+    context: 10,
   };
   score += priority[event.normalizedType];
   return score;
 }
 
-function buildEventFamilyKey(event: NormalizedDashboardTimelineEvent): string {
-  const stem = event.label
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token && !["court", "case", "date", "event", "for", "the", "and", "on"].includes(token))
-    .slice(0, 4)
-    .join("-");
-  return `${event.normalizedType}:${stem || "general"}`;
+function computeTimelineStatus(event: CaseTimelineEvent, normalizedType: DashboardTimelineType): DashboardTimelineStatus {
+  if (event.isOverdue) return "overdue";
+  if (!event.dateParsed) return event.isPast ? "past" : "future";
+  const msPerDay = 86400000;
+  const daysAway = Math.ceil((event.dateParsed.getTime() - Date.now()) / msPerDay);
+  if (daysAway < 0) {
+    if (normalizedType === "hearing" || normalizedType === "deadline" || normalizedType === "mediation") return "overdue";
+    return "past";
+  }
+  if (daysAway <= 30) return "upcoming";
+  return "future";
 }
 
 function normalizeDashboardTimeline(events: CaseTimelineEvent[]): NormalizedDashboardTimelineEvent[] {
   const enriched = events.map((event) => ({
     ...event,
     normalizedType: classifyDashboardTimelineType(event),
+    normalizedLabel: "",
+    status: "future" as DashboardTimelineStatus,
+    bucket: "secondary" as DashboardTimelineBucket,
   }));
+  for (const event of enriched) {
+    event.normalizedLabel = normalizeTimelineLabel(event);
+    event.status = computeTimelineStatus(event, event.normalizedType);
+    event.bucket = ["hearing", "deadline", "filing", "order", "mediation"].includes(event.normalizedType) ? "primary" : "secondary";
+  }
 
   const deduped = new Map<string, NormalizedDashboardTimelineEvent>();
   for (const event of enriched) {
     const dateKey = event.dateParsed ? event.dateParsed.toISOString().slice(0, 10) : event.dateRaw.trim().toLowerCase();
-    const key = `${dateKey}:${buildEventFamilyKey(event)}`;
+    const key = `${dateKey}:${event.normalizedType}`;
     const existing = deduped.get(key);
     if (!existing || timelineSpecificityScore(event) > timelineSpecificityScore(existing)) {
       deduped.set(key, event);
@@ -823,7 +857,7 @@ function normalizeDashboardTimeline(events: CaseTimelineEvent[]): NormalizedDash
 }
 
 function classifyDashboardStage(events: NormalizedDashboardTimelineEvent[], documentCount: number): { key: DashboardStageKey; label: string } {
-  const upcoming = events.filter((event) => event.isUpcoming);
+  const upcoming = events.filter((event) => event.status === "upcoming" || event.status === "future");
   const hearing = upcoming.find((event) => event.normalizedType === "hearing" && event.dateParsed);
   if (hearing?.dateParsed) {
     const daysUntil = Math.ceil((hearing.dateParsed.getTime() - Date.now()) / 86400000);
@@ -832,8 +866,8 @@ function classifyDashboardStage(events: NormalizedDashboardTimelineEvent[], docu
     }
   }
 
-  const pretrialPast = events.some((event) => /\bpretrial\b/.test(event.label.toLowerCase()) && event.isPast);
-  const finalUpcoming = upcoming.some((event) => /\bfinal\b/.test(event.label.toLowerCase()));
+  const pretrialPast = events.some((event) => event.normalizedLabel === "Pretrial hearing" && (event.status === "past" || event.status === "overdue"));
+  const finalUpcoming = upcoming.some((event) => event.normalizedLabel === "Final custody hearing");
   if (pretrialPast && finalUpcoming) {
     return { key: "between_pretrial_and_final", label: "Between pretrial and final hearing milestones." };
   }
@@ -3391,15 +3425,17 @@ Do not add facts not present in the provided evidence.`,
       ]);
 
       const normalizedTimeline = normalizeDashboardTimeline(timelineEvents);
-      const visibleTimelineLimit = 8;
-      const visibleTimeline = normalizedTimeline.slice(0, visibleTimelineLimit);
-      const upcomingEvents = normalizedTimeline.filter((event) => event.isUpcoming);
-      const overdueEvents = normalizedTimeline.filter((event) => event.isOverdue);
+      const primaryTimeline = normalizedTimeline.filter((event) => event.bucket === "primary");
+      const secondaryTimeline = normalizedTimeline.filter((event) => event.bucket === "secondary");
+      const visibleTimelineLimit = 10;
+      const visibleTimeline = primaryTimeline.slice(0, visibleTimelineLimit);
+      const upcomingEvents = primaryTimeline.filter((event) => event.status === "upcoming");
+      const overdueEvents = primaryTimeline.filter((event) => event.status === "overdue");
 
       const openActions = actions
         .filter((action) => action.status === "open")
         .slice(0, 4);
-      const stage = classifyDashboardStage(normalizedTimeline, documents.length);
+      const stage = classifyDashboardStage(primaryTimeline, documents.length);
 
       const watchouts: string[] = [];
       if (overdueEvents.length > 0) watchouts.push(`${overdueEvents.length} past-due court item${overdueEvents.length > 1 ? "s need" : " needs"} attention`);
@@ -3426,11 +3462,11 @@ Do not add facts not present in the provided evidence.`,
           ranked.push(event);
           if (ranked.length >= 3) break;
         }
-        return ranked.map((event) => ({ date: event.dateRaw, label: event.label }));
+        return ranked.map((event) => ({ date: event.dateRaw, label: event.normalizedLabel }));
       })();
 
       const snapshotCurrentSituation = normalizedTimeline.length > 0
-        ? `Timeline shows ${normalizedTimeline.length} key event${normalizedTimeline.length > 1 ? "s" : ""}, with ${upcomingEvents.length} upcoming.`
+        ? `Timeline shows ${primaryTimeline.length} key event${primaryTimeline.length > 1 ? "s" : ""}, with ${upcomingEvents.length} upcoming.`
         : "No structured timeline events are available yet.";
 
       const keyPoints = [
@@ -3443,7 +3479,7 @@ Do not add facts not present in the provided evidence.`,
       const thingsToWatch = [
         overdueEvents.length > 0 ? "Overdue items need immediate review." : "No overdue hearing-level items detected.",
         documents.length === 0 ? "Document coverage gap: upload foundational filings." : "Document set exists but may need completeness review.",
-        normalizedTimeline.length < 2 ? "Timeline coverage appears thin; verify missing dates." : "Confirm each upcoming event still matches current court notices.",
+        primaryTimeline.length < 2 ? "Timeline coverage appears thin; verify missing dates." : "Confirm each upcoming event still matches current court notices.",
       ].slice(0, 3);
 
       const extractedFacts = documents.flatMap((doc) => {
@@ -3477,7 +3513,7 @@ Do not add facts not present in the provided evidence.`,
           target: { label: "Add document", href: `/upload-document?case=${caseId}`, section: "add_document" },
         });
       }
-      if (normalizedTimeline.length < 2) {
+      if (primaryTimeline.length < 2) {
         alerts.push({
           id: "timeline-gap",
           kind: "timeline_gap",
@@ -3495,9 +3531,9 @@ Do not add facts not present in the provided evidence.`,
           id: "overdue",
           kind: "overdue",
           title: "Past-due court item",
-          message: `${overdue.label} dated ${overdue.dateRaw} may require immediate review.`,
+          message: `${overdue.normalizedLabel} dated ${overdue.dateRaw} may require immediate review.`,
           severity: "high",
-          relatedItem: `${overdue.label} (${overdue.dateRaw})`,
+          relatedItem: `${overdue.normalizedLabel} (${overdue.dateRaw})`,
           recommendedAction: "Confirm whether this item was completed or if a late filing/update is needed.",
           target: { label: "Review timeline item", href: `/cases/${caseId}/dashboard#timeline`, section: "timeline" },
         });
@@ -3515,7 +3551,7 @@ Do not add facts not present in the provided evidence.`,
           target: { label: "Open related document", href: `/document/${doc.id}`, section: "document" },
         });
       }
-      if (openActions.length === 0 && normalizedTimeline.length === 0) {
+      if (openActions.length === 0 && primaryTimeline.length === 0) {
         alerts.push({
           id: "no-activity",
           kind: "no_recent_activity",
@@ -3544,18 +3580,25 @@ Do not add facts not present in the provided evidence.`,
           watchouts: watchouts.slice(0, 2),
           suggestedFocus: normalizeDashboardText(suggestedFocus, "Focus on the next filing-critical item."),
         },
-        timeline: normalizedTimeline.map((event) => ({
+        timeline: primaryTimeline.map((event) => ({
           id: event.id,
           date: event.dateRaw,
-          label: event.label,
+          label: event.normalizedLabel,
           type: event.normalizedType,
-          isPast: event.isPast,
-          isUpcoming: event.isUpcoming,
+          status: event.status,
+        })),
+        timelineSecondary: secondaryTimeline.map((event) => ({
+          id: event.id,
+          date: event.dateRaw,
+          label: event.normalizedLabel,
+          type: event.normalizedType,
+          status: event.status,
         })),
         timelineMeta: {
           visibleCount: visibleTimeline.length,
-          totalCount: normalizedTimeline.length,
-          hasMore: normalizedTimeline.length > visibleTimeline.length,
+          totalCount: primaryTimeline.length,
+          hasMore: primaryTimeline.length > visibleTimeline.length,
+          secondaryCount: secondaryTimeline.length,
         },
         documents: documents.map((doc) => ({
           id: doc.id,
@@ -3570,7 +3613,7 @@ Do not add facts not present in the provided evidence.`,
           fullCaseBrief: `${snapshotCurrentSituation} ${normalizeDashboardText(suggestedFocus, "")}`.trim(),
           extractedFacts,
           deepAnalysis: [
-            `Upcoming timeline events: ${upcomingEvents.length}.`,
+            `Upcoming timeline events (30 days): ${upcomingEvents.length}.`,
             `Overdue timeline events: ${overdueEvents.length}.`,
             `Documents requiring analysis attention: ${missingSummaryDocs.length}.`,
           ],
