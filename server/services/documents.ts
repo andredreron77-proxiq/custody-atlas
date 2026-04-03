@@ -565,6 +565,51 @@ export async function setDocumentCaseAssignment(
   }
 }
 
+export async function setDocumentCaseSuggestion(
+  documentId: string,
+  userId: string,
+  suggestedCaseId: string | null,
+  confidenceScore: number | null,
+  reason: string,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+
+  try {
+    const { data: current, error: fetchError } = await supabaseAdmin
+      .from("documents")
+      .select("analysis_json")
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .single();
+    if (fetchError) return false;
+
+    const nextAnalysis = {
+      ...(current?.analysis_json ?? {}),
+      case_assignment: {
+        status: suggestedCaseId ? "suggested" : "unassigned",
+        suggested_case_id: suggestedCaseId,
+        confidence_score: confidenceScore,
+        reason,
+        auto_assigned: false,
+      },
+    };
+
+    const { error: updateError } = await supabaseAdmin
+      .from("documents")
+      .update({
+        case_id: null,
+        analysis_json: nextAnalysis,
+      })
+      .eq("id", documentId)
+      .eq("user_id", userId);
+
+    return !updateError;
+  } catch (err) {
+    console.error("[documents] setDocumentCaseSuggestion exception:", err);
+    return false;
+  }
+}
+
 /**
  * Fetch a single document by ID, enforcing user ownership.
  * Returns null if the document doesn't exist or belongs to a different user.

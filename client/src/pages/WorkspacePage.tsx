@@ -129,6 +129,26 @@ interface CaseRecord {
   name?: string;
 }
 
+interface RetroactiveDocumentReviewItem {
+  documentId: string;
+  fileName: string;
+  status: "suggested" | "unassigned";
+  suggestedCaseId: string | null;
+  confidenceScore: number | null;
+  reason: string;
+}
+
+interface CreateCaseResponse {
+  case: { id: string };
+  retroactiveDocumentReview?: {
+    requiresReview: boolean;
+    totalPreExistingDocuments: number;
+    suggestedCount: number;
+    unassignedCount: number;
+    items: RetroactiveDocumentReviewItem[];
+  };
+}
+
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
 
@@ -1379,6 +1399,13 @@ export default function WorkspacePage() {
   const [newCaseName, setNewCaseName] = useState("");
   const [newCaseNumber, setNewCaseNumber] = useState("");
   const [newCaseJurisdiction, setNewCaseJurisdiction] = useState("");
+  const [retroactivePrompt, setRetroactivePrompt] = useState<{
+    caseId: string;
+    suggestedCount: number;
+    totalCount: number;
+    items: RetroactiveDocumentReviewItem[];
+  } | null>(null);
+  const [isApplyingRetroactive, setIsApplyingRetroactive] = useState(false);
   const caseIdParam = new URLSearchParams(
     location.split("?")[1] || window.location.search.slice(1),
   ).get("case") ?? undefined;
@@ -1438,20 +1465,63 @@ export default function WorkspacePage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Could not create case.");
       }
-      return res.json() as Promise<{ case: { id: string } }>;
+      return res.json() as Promise<CreateCaseResponse>;
     },
     onSuccess: (payload) => {
       qc.invalidateQueries({ queryKey: ["/api/cases"] });
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
       setIsCreateCaseOpen(false);
       setNewCaseName("");
       setNewCaseNumber("");
       setNewCaseJurisdiction("");
+      if (payload.retroactiveDocumentReview?.requiresReview) {
+        setRetroactivePrompt({
+          caseId: payload.case.id,
+          suggestedCount: payload.retroactiveDocumentReview.suggestedCount,
+          totalCount: payload.retroactiveDocumentReview.totalPreExistingDocuments,
+          items: payload.retroactiveDocumentReview.items,
+        });
+        return;
+      }
       navigate(`/case/${payload.case.id}`);
     },
     onError: (err: Error) => {
       toast({ title: "Case creation failed", description: err.message, variant: "destructive" });
     },
   });
+
+  const attachSuggestedDocuments = async () => {
+    if (!retroactivePrompt) return;
+    const suggestedDocs = retroactivePrompt.items.filter((item) => item.status === "suggested");
+    setIsApplyingRetroactive(true);
+    try {
+      const responses = await Promise.all(
+        suggestedDocs.map((item) =>
+          apiRequestRaw("PATCH", `/api/documents/${item.documentId}/case-assignment`, { caseId: retroactivePrompt.caseId }),
+        ),
+      );
+      if (responses.some((res) => !res.ok)) {
+        throw new Error("One or more document updates failed.");
+      }
+      qc.invalidateQueries({ queryKey: ["/api/workspace"] });
+      toast({
+        title: "Suggested documents attached",
+        description: suggestedDocs.length > 0
+          ? `${suggestedDocs.length} pre-existing documents were attached to your new case.`
+          : "No documents had enough confidence to auto-suggest.",
+      });
+      setRetroactivePrompt(null);
+      navigate(`/case/${retroactivePrompt.caseId}`);
+    } catch {
+      toast({
+        title: "Could not attach suggested documents",
+        description: "You can still review each document individually from Workspace.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsApplyingRetroactive(false);
+    }
+  };
 
   // ── Workspace signals ────────────────────────────────────────────────────
   // Count unique analyzed docs (de-duplicate by fileName, keep latest per file
@@ -1687,6 +1757,64 @@ export default function WorkspacePage() {
             >
               {createCaseMutation.isPending ? "Creating…" : "Create Case"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!retroactivePrompt}
+        onOpenChange={(open) => {
+          if (!open && !isApplyingRetroactive) setRetroactivePrompt(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Review pre-existing documents</DialogTitle>
+            <DialogDescription>
+              We found {retroactivePrompt?.totalCount ?? 0} documents uploaded before case management.
+              {" "}
+              They remain unassigned unless you attach them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
+            <p className="text-sm font-medium">
+              {retroactivePrompt?.suggestedCount ?? 0} document(s) are suggested for this case.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Confidence uses case number, court, party names, jurisdiction, and related dates when available.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              variant="outline"
+              disabled={isApplyingRetroactive}
+              onClick={() => {
+                if (!retroactivePrompt) return;
+                const caseId = retroactivePrompt.caseId;
+                setRetroactivePrompt(null);
+                navigate(`/case/${caseId}`);
+              }}
+            >
+              Review individually
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                disabled={isApplyingRetroactive}
+                onClick={() => {
+                  setRetroactivePrompt(null);
+                  toast({
+                    title: "Skipped for now",
+                    description: "Pre-existing documents remain unassigned and can be reviewed later in Workspace.",
+                  });
+                }}
+              >
+                Skip for now
+              </Button>
+              <Button disabled={isApplyingRetroactive} onClick={attachSuggestedDocuments}>
+                {isApplyingRetroactive ? "Attaching…" : "Attach suggested documents"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
