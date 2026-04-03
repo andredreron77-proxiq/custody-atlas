@@ -20,11 +20,13 @@ type CaseDashboardPayload = {
   };
   whatMattersNow: {
     currentStage: string;
+    stageKey?: "approaching_hearing" | "between_pretrial_and_final" | "preparing_for_deadlines" | "early_intake";
     nextKeyItems: Array<{ date: string; label: string }>;
     watchouts: string[];
     suggestedFocus: string;
   };
-  timeline: Array<{ id: string; date: string; label: string; isPast: boolean; isUpcoming: boolean }>;
+  timeline: Array<{ id: string; date: string; label: string; type: "hearing" | "filing" | "deadline" | "order" | "report" | "allegation" | "mediation"; isPast: boolean; isUpcoming: boolean }>;
+  timelineMeta?: { visibleCount: number; totalCount: number; hasMore: boolean };
   documents: Array<{ id: string; title: string; status: string; tags: string[] }>;
   snapshot: {
     currentSituation: string;
@@ -34,7 +36,16 @@ type CaseDashboardPayload = {
     extractedFacts: string[];
     deepAnalysis: string[];
   };
-  alerts: Array<{ id: string; kind: "missing_document" | "no_recent_activity" | "timeline_gap" | "overdue"; message: string }>;
+  alerts: Array<{
+    id: string;
+    kind: "missing_document" | "no_recent_activity" | "timeline_gap" | "overdue" | "analysis_missing";
+    title: string;
+    message: string;
+    severity: "high" | "medium" | "info";
+    relatedItem: string;
+    recommendedAction: string;
+    target: { label: string; href: string; section: "timeline" | "document" | "add_document" | "ask_atlas" };
+  }>;
 };
 
 function sentence(input: string, fallback: string): string {
@@ -52,6 +63,7 @@ function formatDate(value: string): string {
 function alertIcon(kind: CaseDashboardPayload["alerts"][number]["kind"]) {
   if (kind === "missing_document") return <FileWarning className="h-4 w-4 text-amber-600" />;
   if (kind === "overdue") return <TriangleAlert className="h-4 w-4 text-red-600" />;
+  if (kind === "analysis_missing") return <FileText className="h-4 w-4 text-indigo-600" />;
   if (kind === "timeline_gap") return <Clock3 className="h-4 w-4 text-blue-600" />;
   return <Info className="h-4 w-4 text-muted-foreground" />;
 }
@@ -59,6 +71,7 @@ function alertIcon(kind: CaseDashboardPayload["alerts"][number]["kind"]) {
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const [expanded, setExpanded] = useState(false);
+  const [showFullTimeline, setShowFullTimeline] = useState(false);
 
   const dashboardQuery = useQuery<CaseDashboardPayload>({
     queryKey: ["/api/cases", caseId, "dashboard"],
@@ -153,18 +166,27 @@ export default function CaseDashboardPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Timeline Card</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent id="timeline">
               {data.timeline.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No timeline events available for this case.</p>
               ) : (
+                <>
                 <ol className="space-y-1.5 text-sm">
-                  {data.timeline.map((event) => (
+                  {(showFullTimeline ? data.timeline : data.timeline.slice(0, data.timelineMeta?.visibleCount ?? 8)).map((event) => (
                     <li key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 ${event.isUpcoming ? "border-primary/40 bg-primary/5" : "border-border text-muted-foreground"}`}>
                       <span>{formatDate(event.date)}</span>
                       <span className="truncate pl-2 text-right">{event.label}</span>
                     </li>
                   ))}
                 </ol>
+                {data.timelineMeta?.hasMore ? (
+                  <div className="mt-2">
+                    <Button size="sm" variant="outline" className="h-7" onClick={() => setShowFullTimeline((value) => !value)}>
+                      {showFullTimeline ? "Show fewer items" : `View full timeline (${data.timelineMeta.totalCount})`}
+                    </Button>
+                  </div>
+                ) : null}
+                </>
               )}
             </CardContent>
           </Card>
@@ -228,7 +250,13 @@ export default function CaseDashboardPage() {
               {data.alerts.length > 0 ? data.alerts.map((alert) => (
                 <div key={alert.id} className="flex items-start gap-2 rounded border px-2 py-1.5">
                   {alertIcon(alert.kind)}
-                  <p>{alert.message}</p>
+                  <div className="space-y-1">
+                    <p className="font-medium">{alert.title}</p>
+                    <p>{alert.message}</p>
+                    <p className="text-xs text-muted-foreground">Related: {alert.relatedItem}</p>
+                    <p className="text-xs">{alert.recommendedAction}</p>
+                    <Link href={alert.target.href}><Button size="sm" variant="outline" className="h-7">{alert.target.label}</Button></Link>
+                  </div>
                 </div>
               )) : (
                 <div className="flex items-start gap-2 rounded border px-2 py-1.5 text-muted-foreground">
