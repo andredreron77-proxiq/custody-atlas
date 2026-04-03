@@ -1463,7 +1463,8 @@ export default function WorkspacePage() {
       const res = await apiRequestRaw("POST", "/api/cases", payload);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Could not create case.");
+        const errorIdSuffix = typeof body.errorId === "string" ? ` (ref: ${body.errorId})` : "";
+        throw new Error((body.error ?? "Could not create case.") + errorIdSuffix);
       }
       return res.json() as Promise<CreateCaseResponse>;
     },

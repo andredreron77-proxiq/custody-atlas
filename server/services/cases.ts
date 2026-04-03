@@ -112,18 +112,24 @@ export interface CaseMemory {
 
 /* ── Row mappers ──────────────────────────────────────────────────────────── */
 
-function mapCase(r: any): Case {
+export function mapCaseRow(r: any): Case {
   return {
     id: r.id,
     userId: r.user_id,
-    title: r.title,
+    title: r.title ?? r.name ?? "Untitled case",
     description: r.description ?? null,
-    jurisdictionState: r.jurisdiction_state ?? null,
+    jurisdictionState: r.jurisdiction_state ?? r.jurisdiction ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     status: r.status ?? "active",
     createdAt: r.created_at,
     updatedAt: r.updated_at ?? r.created_at,
   };
+}
+
+export function extractMissingInsertColumn(message: string | undefined): string | null {
+  if (!message) return null;
+  const match = message.match(/Could not find the '([^']+)' column/i);
+  return match?.[1] ?? null;
 }
 
 function mapConversation(r: any): Conversation {
@@ -186,23 +192,67 @@ export async function createCase(
 ): Promise<Case | null> {
   if (!supabaseAdmin) return null;
   try {
+    const normalizedTitle = opts.title.slice(0, 200);
+    const modernInsertPayload = {
+      user_id: userId,
+      title: normalizedTitle,
+      description: opts.description ?? null,
+      jurisdiction_state: opts.jurisdictionState ?? null,
+      jurisdiction_county: opts.jurisdictionCounty ?? null,
+      status: "active",
+    };
+
     const { data, error } = await supabaseAdmin
       .from("cases")
-      .insert({
-        user_id: userId,
-        title: opts.title.slice(0, 200),
-        description: opts.description ?? null,
-        jurisdiction_state: opts.jurisdictionState ?? null,
-        jurisdiction_county: opts.jurisdictionCounty ?? null,
-        status: "active",
-      })
+      .insert(modernInsertPayload)
       .select()
       .single();
-    if (error || !data) {
-      console.error("[cases] createCase error:", error?.message);
+
+    if (!error && data) {
+      return mapCaseRow(data);
+    }
+
+    const missingColumn = extractMissingInsertColumn(error?.message);
+    const canRetryWithLegacySchema = missingColumn !== null
+      && ["title", "description", "jurisdiction_state", "jurisdiction_county", "status"].includes(missingColumn);
+
+    if (canRetryWithLegacySchema) {
+      const legacyInsertPayload = {
+        user_id: userId,
+        name: normalizedTitle,
+        case_number: opts.description ?? null,
+        jurisdiction: opts.jurisdictionState ?? null,
+      };
+
+      const legacyInsert = await supabaseAdmin
+        .from("cases")
+        .insert(legacyInsertPayload)
+        .select()
+        .single();
+
+      if (!legacyInsert.error && legacyInsert.data) {
+        console.warn(
+          `[cases] createCase used legacy schema fallback (missing column '${missingColumn}').`,
+        );
+        return mapCaseRow(legacyInsert.data);
+      }
+
+      console.error("[cases] createCase legacy fallback error:", {
+        message: legacyInsert.error?.message,
+        code: legacyInsert.error?.code,
+        details: legacyInsert.error?.details,
+        hint: legacyInsert.error?.hint,
+      });
       return null;
     }
-    return mapCase(data);
+
+    console.error("[cases] createCase error:", {
+      message: error?.message,
+      code: error?.code,
+      details: error?.details,
+      hint: error?.hint,
+    });
+    return null;
   } catch (err) {
     console.error("[cases] createCase exception:", err);
     return null;
@@ -219,7 +269,7 @@ export async function listCases(userId: string, limit = 50): Promise<Case[]> {
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error || !data) return [];
-    return data.map(mapCase);
+    return data.map(mapCaseRow);
   } catch {
     return [];
   }
@@ -235,7 +285,7 @@ export async function getCaseById(caseId: string, userId: string): Promise<Case 
       .eq("user_id", userId)
       .single();
     if (error || !data) return null;
-    return mapCase(data);
+    return mapCaseRow(data);
   } catch {
     return null;
   }

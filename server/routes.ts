@@ -3110,7 +3110,14 @@ Do not add facts not present in the provided evidence.`,
         jurisdictionState,
         jurisdictionCounty: parsed.data.jurisdictionCounty,
       });
-      if (!newCase) return res.status(503).json({ error: "Case storage unavailable." });
+      if (!newCase) {
+        const errorId = `case_create_${Date.now().toString(36)}`;
+        console.error(`[cases] create-case storage failure (errorId=${errorId}, userId=${user.id})`);
+        return res.status(503).json({
+          error: "Case storage unavailable.",
+          errorId,
+        });
+      }
 
       if (!isFirstCase) {
         return res.status(201).json({ case: newCase });
