@@ -2,6 +2,7 @@ import { Switch, Route, useLocation } from "wouter";
 import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/components/app/Header";
@@ -10,6 +11,7 @@ import { ThemeProvider } from "@/components/app/ThemeProvider";
 import { AuthRequiredCard } from "@/components/app/AuthRequiredCard";
 import { OnboardingModal } from "@/components/app/OnboardingModal";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { apiRequestRaw } from "@/lib/queryClient";
 
 import LandingPage from "@/pages/LandingPage";
 import LocationPage from "@/pages/LocationPage";
@@ -105,7 +107,7 @@ function Router() {
   return (
     <Switch>
       {/* Public routes — always accessible */}
-      <Route path="/" component={LandingPage} />
+      <Route path="/" component={HomeRoute} />
       <Route path="/location" component={LocationPage} />
       <Route path="/jurisdiction/:state/:county" component={JurisdictionPage} />
       <Route path="/custody-map" component={CustodyMapPage} />
@@ -126,6 +128,9 @@ function Router() {
       <Route path="/upload-document">
         {() => <ProtectedRoute component={UploadDocumentPage} feature="analyze-document" />}
       </Route>
+      <Route path="/analyze">
+        {() => <ProtectedRoute component={UploadDocumentPage} feature="analyze-document" />}
+      </Route>
       <Route path="/workspace">
         {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
       </Route>
@@ -139,6 +144,50 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+function FullPageLoading() {
+  return (
+    <div className="flex-1 flex items-center justify-center py-24">
+      <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+function HomeRoute() {
+  const { user, isLoading: isAuthLoading } = useCurrentUser();
+  const [location] = useLocation();
+
+  const { data: hasDocuments, isLoading: isWorkspaceLoading } = useQuery({
+    queryKey: ["/api/workspace", "home-redirect"],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/workspace");
+      if (!res.ok) return true; // Fallback to workspace when workspace data is unavailable.
+      const json = await res.json() as { documents?: unknown[] };
+      return Array.isArray(json.documents) && json.documents.length > 0;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (isAuthLoading || !user || isWorkspaceLoading) return;
+    const destination = hasDocuments ? "/workspace" : "/analyze";
+    if (location !== destination) {
+      window.location.replace(destination);
+    }
+  }, [hasDocuments, isAuthLoading, isWorkspaceLoading, location, user]);
+
+  if (isAuthLoading || (user && isWorkspaceLoading)) {
+    return <FullPageLoading />;
+  }
+
+  if (user) {
+    return <FullPageLoading />;
+  }
+
+  return <LandingPage />;
 }
 
 function App() {
