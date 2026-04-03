@@ -1,288 +1,296 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, FileText, Sparkles, TriangleRight } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Info, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { apiRequestRaw } from "@/lib/queryClient";
 
-type CaseRecord = {
-  id: string;
-  title: string;
-  caseType?: string | null;
-  status: string;
-  jurisdictionState?: string | null;
-  jurisdictionCounty?: string | null;
-  stateCode?: string | null;
+type CaseDashboardPayload = {
+  case: {
+    id: string;
+    title: string;
+    caseType: string | null;
+    status: string;
+    stateCode: string | null;
+    countyName: string | null;
+  };
+  whatMattersNow: {
+    currentStage: string;
+    nextKeyItems: Array<{ date: string; label: string }>;
+    watchouts: string[];
+    suggestedFocus: string;
+  };
+  timeline: Array<{ id: string; date: string; label: string; isPast: boolean; isUpcoming: boolean }>;
+  documents: Array<{ id: string; title: string; status: string; tags: string[] }>;
+  snapshot: {
+    currentSituation: string;
+    keyPoints: string[];
+    thingsToWatch: string[];
+    fullCaseBrief: string;
+    extractedFacts: string[];
+    deepAnalysis: string[];
+  };
+  alerts: Array<{ id: string; kind: "missing_document" | "no_recent_activity" | "timeline_gap" | "overdue"; message: string }>;
 };
 
-type CaseDocument = {
-  id: string;
-  fileName: string;
-  createdAt: string;
-  analysisJson: Record<string, unknown>;
-};
-
-type TimelineEvent = {
-  id: string;
-  dateRaw: string;
-  label: string;
-  source: string;
-  isUpcoming: boolean;
-  isOverdue: boolean;
-  isNext: boolean;
-};
-
-type CaseAction = {
-  id: number;
-  actionType: string;
-  actionData: { title?: string; description?: string; status?: string } | null;
-  createdAt: string;
-};
-
-type CaseBrief = {
-  currentSituation: string;
-  recommendedNextActions: string[];
-};
-
-function toTitleCase(input: string | null | undefined): string {
-  if (!input) return "Unknown";
-  return input
-    .replace(/_/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
+function sentence(input: string, fallback: string): string {
+  const normalized = (input || "").trim();
+  if (!normalized) return fallback;
+  return normalized;
 }
 
-function getDocumentFlags(doc: CaseDocument): string[] {
-  const analysis = doc.analysisJson ?? {};
-  const alerts = Array.isArray((analysis as any).document_alerts)
-    ? (analysis as any).document_alerts.filter((v: unknown): v is string => typeof v === "string" && v.trim().length > 0)
-    : [];
-  const implications = Array.isArray((analysis as any).possible_implications)
-    ? (analysis as any).possible_implications.filter((v: unknown): v is string => typeof v === "string" && v.trim().length > 0)
-    : [];
-
-  return [...alerts, ...implications].slice(0, 3);
+function formatDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function getDocumentStatus(doc: CaseDocument): string {
-  const status = (doc.analysisJson as any)?.analysis_status;
-  if (typeof status === "string" && status.trim()) return status;
-  return "analyzed";
+function alertIcon(kind: CaseDashboardPayload["alerts"][number]["kind"]) {
+  if (kind === "missing_document") return <FileWarning className="h-4 w-4 text-amber-600" />;
+  if (kind === "overdue") return <TriangleAlert className="h-4 w-4 text-red-600" />;
+  if (kind === "timeline_gap") return <Clock3 className="h-4 w-4 text-blue-600" />;
+  return <Info className="h-4 w-4 text-muted-foreground" />;
 }
 
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
+  const [expanded, setExpanded] = useState(false);
 
-  const caseQuery = useQuery<{ case: CaseRecord }>({
-    queryKey: ["/api/cases", caseId],
-    enabled: !!caseId,
+  const dashboardQuery = useQuery<CaseDashboardPayload>({
+    queryKey: ["/api/cases", caseId, "dashboard"],
+    enabled: Boolean(caseId),
     queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}`);
-      if (!res.ok) throw new Error("Failed to load case.");
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/dashboard`);
+      if (!res.ok) throw new Error("Failed to load case dashboard.");
       return res.json();
     },
   });
 
-  const docsQuery = useQuery<{ documents: CaseDocument[] }>({
-    queryKey: ["/api/cases", caseId, "documents"],
-    enabled: !!caseId,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/documents`);
-      if (!res.ok) throw new Error("Failed to load case documents.");
-      return res.json();
-    },
-  });
+  const data = dashboardQuery.data;
 
-  const timelineQuery = useQuery<{ events: TimelineEvent[] }>({
-    queryKey: ["/api/cases", caseId, "timeline"],
-    enabled: !!caseId,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/timeline`);
-      if (!res.ok) throw new Error("Failed to load case timeline.");
-      return res.json();
-    },
-  });
+  const suggestedPrompts = useMemo(() => [
+    "What is my highest-priority next step?",
+    "What deadline carries the most risk right now?",
+    "What document should I add next for this case?",
+  ], []);
 
-  const actionsQuery = useQuery<{ actions: CaseAction[] }>({
-    queryKey: ["/api/cases", caseId, "actions"],
-    enabled: !!caseId,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/actions`);
-      if (!res.ok) throw new Error("Failed to load case actions.");
-      return res.json();
-    },
-  });
+  if (dashboardQuery.isLoading) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-3 py-4" data-testid="page-case-dashboard">
+        <Card><CardContent className="py-8 text-sm text-muted-foreground">Loading case dashboard…</CardContent></Card>
+      </div>
+    );
+  }
 
-  const briefQuery = useQuery<CaseBrief>({
-    queryKey: ["/api/workspace/case-brief", caseId],
-    enabled: !!caseId,
-    retry: false,
-    queryFn: async () => {
-      const res = await apiRequestRaw("POST", "/api/workspace/case-brief", { caseId });
-      if (!res.ok) throw new Error("Case brief unavailable.");
-      return res.json();
-    },
-  });
-
-  const documents = docsQuery.data?.documents ?? [];
-  const timelineEvents = timelineQuery.data?.events ?? [];
-  const actions = actionsQuery.data?.actions ?? [];
-
-  const whatMattersNow = useMemo(() => {
-    const nextDeadlines = timelineEvents
-      .filter((event) => event.isUpcoming || event.isNext)
-      .slice(0, 3)
-      .map((event) => `${event.dateRaw} — ${event.label}`);
-
-    const overdueDeadlines = timelineEvents
-      .filter((event) => event.isOverdue)
-      .slice(0, 2)
-      .map((event) => `Overdue: ${event.dateRaw} — ${event.label}`);
-
-    const docRisks = documents
-      .flatMap((doc) => getDocumentFlags(doc).map((flag) => `${doc.fileName}: ${flag}`))
-      .slice(0, 3);
-
-    const keyRisks = [...overdueDeadlines, ...docRisks].slice(0, 5);
-
-    const openAction = actions.find((action) => (action.actionData?.status ?? "open") === "open");
-    const recommendedNextAction = openAction?.actionData?.title
-      ?? nextDeadlines[0]
-      ?? "Analyze your next document to extract deadlines and court facts.";
-
-    return { nextDeadlines, keyRisks, recommendedNextAction };
-  }, [actions, documents, timelineEvents]);
-
-  const caseRecord = caseQuery.data?.case;
+  if (dashboardQuery.isError || !data) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-3 py-4" data-testid="page-case-dashboard">
+        <Card><CardContent className="py-8 text-sm text-muted-foreground">Unable to load this case dashboard.</CardContent></Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6" data-testid="page-case-dashboard">
-      <nav className="text-sm text-muted-foreground">
-        <Link href="/workspace">Workspace</Link>
-        <span className="mx-2">/</span>
-        <span className="text-foreground">Case Dashboard</span>
-      </nav>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">{caseRecord?.title ?? "Case"}</CardTitle>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge variant="secondary">Type: {toTitleCase(caseRecord?.caseType)}</Badge>
-            <Badge variant="secondary">Status: {toTitleCase(caseRecord?.status)}</Badge>
-            <Badge variant="secondary">
-              Jurisdiction: {caseRecord?.jurisdictionState ?? caseRecord?.stateCode ?? "Unknown"}
-              {caseRecord?.jurisdictionCounty ? `, ${caseRecord.jurisdictionCounty}` : ""}
-            </Badge>
+    <div className="mx-auto w-full max-w-6xl space-y-3 px-3 py-3 md:px-4" data-testid="page-case-dashboard">
+      <header className="sticky top-14 z-20 rounded-md border bg-background/95 px-3 py-2 backdrop-blur">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <h1 className="truncate text-xl font-bold leading-tight">{data.case.title}</h1>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{data.case.caseType || "Case type not set"}</span>
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{data.case.status}</Badge>
+              <span>{data.case.stateCode || "State unknown"}{data.case.countyName ? ` • ${data.case.countyName}` : ""}</span>
+            </div>
           </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Link href="/upload-document"><Button size="sm" className="h-8">Add Document</Button></Link>
+            <Link href={`/ask?case=${data.case.id}`}><Button size="sm" variant="secondary" className="h-8">Ask Atlas</Button></Link>
+          </div>
+        </div>
+      </header>
+
+      <Card className="border-2 border-primary/20">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">What Matters Now</CardTitle>
         </CardHeader>
+        <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Stage</p>
+            <p>{sentence(data.whatMattersNow.currentStage, "Case stage not yet established from available evidence.")}</p>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Next Key Items</p>
+            {data.whatMattersNow.nextKeyItems.length > 0 ? (
+              <ul className="space-y-1">
+                {data.whatMattersNow.nextKeyItems.slice(0, 3).map((item) => (
+                  <li key={`${item.date}-${item.label}`} className="text-sm">{formatDate(item.date)} — {item.label}</li>
+                ))}
+              </ul>
+            ) : <p className="text-muted-foreground">No upcoming key items.</p>}
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Watchouts</p>
+            {data.whatMattersNow.watchouts.length > 0 ? (
+              <ul className="list-disc space-y-1 pl-5">
+                {data.whatMattersNow.watchouts.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            ) : <p className="text-muted-foreground">No active watchouts.</p>}
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suggested Focus</p>
+            <p className="rounded-md bg-primary/10 px-2 py-1.5 font-medium">{sentence(data.whatMattersNow.suggestedFocus, "Focus on adding a document with court dates or filing obligations.")}</p>
+          </div>
+        </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2"><CalendarClock className="w-4 h-4" />What Matters Now</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div>
-              <p className="font-medium mb-1">Next deadlines</p>
-              {whatMattersNow.nextDeadlines.length > 0 ? (
-                <ul className="list-disc pl-5 space-y-1">
-                  {whatMattersNow.nextDeadlines.map((deadline) => <li key={deadline}>{deadline}</li>)}
-                </ul>
-              ) : <p className="text-muted-foreground">No upcoming deadlines extracted yet.</p>}
-            </div>
+      <div className="grid gap-3 lg:grid-cols-5">
+        <div className="space-y-3 lg:col-span-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Timeline Card</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.timeline.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No timeline events available for this case.</p>
+              ) : (
+                <ol className="space-y-1.5 text-sm">
+                  {data.timeline.map((event) => (
+                    <li key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 ${event.isUpcoming ? "border-primary/40 bg-primary/5" : "border-border text-muted-foreground"}`}>
+                      <span>{formatDate(event.date)}</span>
+                      <span className="truncate pl-2 text-right">{event.label}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </CardContent>
+          </Card>
 
-            <div>
-              <p className="font-medium mb-1">Key risks</p>
-              {whatMattersNow.keyRisks.length > 0 ? (
-                <ul className="list-disc pl-5 space-y-1">
-                  {whatMattersNow.keyRisks.map((risk) => <li key={risk}>{risk}</li>)}
-                </ul>
-              ) : <p className="text-muted-foreground">No deterministic risk signals detected.</p>}
-            </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Documents Card</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {data.documents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No documents linked to this case.</p>
+              ) : data.documents.map((doc) => (
+                <div key={doc.id} className="flex items-start justify-between gap-2 border-b pb-2 last:border-b-0 last:pb-0">
+                  <div className="min-w-0 space-y-1">
+                    <p className="truncate text-sm font-medium">{doc.title}</p>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{doc.status}</Badge>
+                      {doc.tags.slice(0, 3).map((tag) => <Badge key={tag} variant="outline" className="h-5 px-1.5 text-[10px]">{tag}</Badge>)}
+                    </div>
+                  </div>
+                  <Link href={`/document/${doc.id}`}><Button size="sm" variant="ghost" className="h-7 px-2">View</Button></Link>
+                </div>
+              ))}
+              <div className="pt-1">
+                <Link href="/upload-document"><Button size="sm" variant="outline" className="h-7">+ Add Document</Button></Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-            <div className="rounded-md border p-3 bg-muted/20">
-              <p className="font-medium mb-1">Recommended next action</p>
-              <p>{whatMattersNow.recommendedNextAction}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2"><Sparkles className="w-4 h-4" />Case Brief</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-3">
-            {briefQuery.isSuccess ? (
-              <>
-                <p>{briefQuery.data.currentSituation}</p>
-                {briefQuery.data.recommendedNextActions.length > 0 && (
-                  <ul className="list-disc pl-5 space-y-1">
-                    {briefQuery.data.recommendedNextActions.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+        <div className="space-y-3 lg:col-span-2">
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Case Snapshot Card</CardTitle></CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Situation</p>
+                <p>{sentence(data.snapshot.currentSituation, "Current situation has not been synthesized yet.")}</p>
+              </section>
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key Points</p>
+                {data.snapshot.keyPoints.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5">
+                    {data.snapshot.keyPoints.slice(0, 4).map((point) => <li key={point}>{point}</li>)}
                   </ul>
-                )}
-              </>
-            ) : (
-              <p className="text-muted-foreground">Brief unavailable until documents or case activity are present.</p>
-            )}
-          </CardContent>
-        </Card>
+                ) : <p className="text-muted-foreground">No key points available.</p>}
+              </section>
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Things to Watch</p>
+                {data.snapshot.thingsToWatch.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5">
+                    {data.snapshot.thingsToWatch.slice(0, 3).map((point) => <li key={point}>{point}</li>)}
+                  </ul>
+                ) : <p className="text-muted-foreground">No active watch items.</p>}
+              </section>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Alerts Card</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {data.alerts.length > 0 ? data.alerts.map((alert) => (
+                <div key={alert.id} className="flex items-start gap-2 rounded border px-2 py-1.5">
+                  {alertIcon(alert.kind)}
+                  <p>{alert.message}</p>
+                </div>
+              )) : (
+                <div className="flex items-start gap-2 rounded border px-2 py-1.5 text-muted-foreground">
+                  <AlertTriangle className="h-4 w-4" />
+                  <p>No active alerts right now.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Documents</CardTitle>
-          <Link href="/upload-document"><Button size="sm">Analyze new document</Button></Link>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          {documents.length === 0 ? (
-            <p className="text-muted-foreground">No documents linked to this case yet.</p>
-          ) : documents.map((doc) => {
-            const flags = getDocumentFlags(doc);
-            return (
-              <div key={doc.id} className="rounded-md border p-3 space-y-1">
-                <p className="font-medium">{doc.fileName}</p>
-                <p className="text-xs text-muted-foreground">Status: {toTitleCase(getDocumentStatus(doc))}</p>
-                <p className="text-xs">Key flags: {flags.length > 0 ? flags.join(" • ") : "None"}</p>
-              </div>
-            );
-          })}
+        <CardHeader className="pb-2"><CardTitle className="text-base">Ask Atlas Panel</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <Input placeholder="Ask about this case…" aria-label="Ask about this case" />
+          <div className="flex flex-wrap gap-1.5">
+            {suggestedPrompts.map((prompt) => (
+              <Link key={prompt} href={`/ask?case=${data.case.id}&q=${encodeURIComponent(prompt)}`}>
+                <Button variant="outline" size="sm" className="h-7 text-xs">{prompt}</Button>
+              </Link>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><TriangleRight className="w-4 h-4" />Case Timeline</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {timelineEvents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No timeline events extracted yet.</p>
-          ) : (
-            <ol className="space-y-2 text-sm">
-              {timelineEvents.map((event) => (
-                <li key={event.id} className="rounded-md border p-3">
-                  <p className="font-medium">{event.dateRaw} — {event.label}</p>
-                  <p className="text-xs text-muted-foreground">{event.source}</p>
-                </li>
-              ))}
-            </ol>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><AlertTriangle className="w-4 h-4" />Ask Atlas</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm flex flex-wrap items-center gap-3">
-          <p className="text-muted-foreground">Ask questions in case-aware mode. Atlas will be scoped to this case.</p>
-          <Link href={`/ask-ai?case=${caseId}`}><Button size="sm" variant="secondary">Open Ask Atlas for this case</Button></Link>
-        </CardContent>
-      </Card>
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <Card>
+          <CardHeader className="pb-2">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="h-8 justify-between px-0 text-base font-semibold">
+                <span>Expandable Section</span>
+                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CollapsibleContent>
+            <CardContent className="space-y-3 text-sm">
+              <section>
+                <p className="mb-1 font-semibold">Full Case Brief</p>
+                <p className="text-muted-foreground">{sentence(data.snapshot.fullCaseBrief, "No full brief available yet.")}</p>
+              </section>
+              <section>
+                <p className="mb-1 font-semibold">Extracted Facts</p>
+                {data.snapshot.extractedFacts.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5">
+                    {data.snapshot.extractedFacts.map((fact) => <li key={fact}>{fact}</li>)}
+                  </ul>
+                ) : <p className="text-muted-foreground">No extracted facts available.</p>}
+              </section>
+              <section>
+                <p className="mb-1 font-semibold">Deep analysis</p>
+                {data.snapshot.deepAnalysis.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-5">
+                    {data.snapshot.deepAnalysis.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                ) : <p className="text-muted-foreground">No deep analysis available.</p>}
+              </section>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
     </div>
   );
 }

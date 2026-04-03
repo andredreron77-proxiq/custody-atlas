@@ -742,6 +742,34 @@ const TTS_VOICE_MAP: Record<string, string> = {
 };
 const ALLOWED_TTS_VOICES = new Set(Object.keys(TTS_VOICE_MAP));
 
+type DashboardAlertKind = "missing_document" | "no_recent_activity" | "timeline_gap" | "overdue";
+
+function normalizeDashboardText(input: unknown, fallback: string): string {
+  if (typeof input !== "string") return fallback;
+  const trimmed = input.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function extractDashboardDocumentTags(analysisJson: Record<string, unknown>): string[] {
+  const extractedFacts = (analysisJson.extracted_facts ?? {}) as Record<string, unknown>;
+  const tags: string[] = [];
+
+  if (typeof extractedFacts.hearing_date === "string" && extractedFacts.hearing_date.trim()) {
+    tags.push(`deadline: ${extractedFacts.hearing_date.trim()}`);
+  }
+  if (typeof extractedFacts.case_number === "string" && extractedFacts.case_number.trim()) {
+    tags.push(`case #: ${extractedFacts.case_number.trim()}`);
+  }
+
+  const alerts = Array.isArray(analysisJson.document_alerts)
+    ? analysisJson.document_alerts.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [];
+  if (alerts.length > 0) {
+    tags.push(...alerts.slice(0, 2));
+  }
+  return tags.slice(0, 3);
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
   // ── Usage state ────────────────────────────────────────────────────────────
@@ -3237,6 +3265,136 @@ Do not add facts not present in the provided evidence.`,
     } catch (err) {
       console.error("[cases] GET :caseId error:", err);
       return res.status(500).json({ error: "Failed to load case." });
+    }
+  });
+
+  /**
+   * GET /api/cases/:caseId/dashboard
+   * Single aggregated payload for case dashboard UI.
+   */
+  app.get("/api/cases/:caseId/dashboard", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const [documents, timelineEvents, actions] = await Promise.all([
+        getDocumentsByCase(caseId, user.id),
+        deriveCaseTimeline(caseId, user.id),
+        getCaseActions(caseId, user.id),
+      ]);
+
+      const upcomingEvents = timelineEvents.filter((event) => event.isUpcoming).slice(0, 3);
+      const overdueEvents = timelineEvents.filter((event) => event.isOverdue);
+
+      const openActions = actions
+        .filter((action) => action.status === "open")
+        .slice(0, 4);
+
+      const currentStage = upcomingEvents[0]
+        ? `Preparing for ${upcomingEvents[0].label.toLowerCase()} on ${upcomingEvents[0].dateRaw}.`
+        : documents.length > 0
+          ? "Building case readiness from linked documents and extracted facts."
+          : "Case initialized; waiting for core documents and timeline details.";
+
+      const watchouts: string[] = [];
+      if (overdueEvents.length > 0) watchouts.push(`${overdueEvents.length} overdue timeline item${overdueEvents.length > 1 ? "s" : ""}`);
+      if (documents.length === 0) watchouts.push("No documents linked");
+      const missingSummaryDocs = documents.filter((doc) => !getDocumentIntegrity(doc).isAnalysisAvailable);
+      if (missingSummaryDocs.length > 0) watchouts.push(`${missingSummaryDocs.length} document${missingSummaryDocs.length > 1 ? "s" : ""} missing analysis`);
+
+      const suggestedFocus = openActions[0]?.title && typeof openActions[0].title === "string"
+        ? openActions[0].title
+        : upcomingEvents[0]
+          ? `Prioritize preparation for ${upcomingEvents[0].label.toLowerCase()} on ${upcomingEvents[0].dateRaw}.`
+          : "Add the next most relevant filing or court order to tighten case visibility.";
+
+      const snapshotCurrentSituation = timelineEvents.length > 0
+        ? `Timeline has ${timelineEvents.length} known event${timelineEvents.length > 1 ? "s" : ""}, with ${upcomingEvents.length} upcoming.`
+        : "No structured timeline events are available yet.";
+
+      const keyPoints = [
+        `${documents.length} linked document${documents.length === 1 ? "" : "s"} in this case.`,
+        `${openActions.length} open action${openActions.length === 1 ? "" : "s"} currently tracked.`,
+        upcomingEvents[0] ? `Next key date: ${upcomingEvents[0].dateRaw} (${upcomingEvents[0].label}).` : "No upcoming key date has been identified.",
+        caseRecord.status ? `Case status is ${caseRecord.status}.` : "Case status is not set.",
+      ].slice(0, 4);
+
+      const thingsToWatch = [
+        overdueEvents.length > 0 ? "Overdue items need immediate review." : "No overdue hearing-level items detected.",
+        documents.length === 0 ? "Document coverage gap: upload foundational filings." : "Document set exists but may need completeness review.",
+        timelineEvents.length < 2 ? "Timeline coverage appears thin; verify missing dates." : "Confirm each upcoming event still matches current court notices.",
+      ].slice(0, 3);
+
+      const extractedFacts = documents.flatMap((doc) => {
+        const ef = (doc.analysisJson?.extracted_facts ?? {}) as Record<string, unknown>;
+        const facts: string[] = [];
+        if (typeof ef.case_number === "string" && ef.case_number.trim()) facts.push(`Case number: ${ef.case_number.trim()}`);
+        if (typeof ef.court_name === "string" && ef.court_name.trim()) facts.push(`Court: ${ef.court_name.trim()}`);
+        if (typeof ef.hearing_date === "string" && ef.hearing_date.trim()) facts.push(`Hearing date: ${ef.hearing_date.trim()}`);
+        return facts.slice(0, 3);
+      }).slice(0, 8);
+
+      const alerts: Array<{ id: string; kind: DashboardAlertKind; message: string }> = [];
+      if (documents.length === 0) {
+        alerts.push({ id: "missing-document", kind: "missing_document", message: "Missing document: no case-linked documents yet." });
+      }
+      if (timelineEvents.length < 2) {
+        alerts.push({ id: "timeline-gap", kind: "timeline_gap", message: "Timeline gaps: fewer than two dated events detected." });
+      }
+      if (overdueEvents.length > 0) {
+        alerts.push({ id: "overdue", kind: "overdue", message: `${overdueEvents.length} overdue event${overdueEvents.length > 1 ? "s" : ""} in timeline.` });
+      }
+      if (openActions.length === 0 && timelineEvents.length === 0) {
+        alerts.push({ id: "no-activity", kind: "no_recent_activity", message: "No recent activity signal found for this case." });
+      }
+
+      return res.json({
+        case: {
+          id: caseRecord.id,
+          title: caseRecord.title,
+          caseType: caseRecord.caseType,
+          status: caseRecord.status,
+          stateCode: caseRecord.stateCode ?? null,
+          countyName: caseRecord.jurisdictionCounty ?? null,
+        },
+        whatMattersNow: {
+          currentStage: normalizeDashboardText(currentStage, "Case stage is not yet clear."),
+          nextKeyItems: upcomingEvents.slice(0, 3).map((event) => ({ date: event.dateRaw, label: event.label })),
+          watchouts: watchouts.slice(0, 2),
+          suggestedFocus: normalizeDashboardText(suggestedFocus, "Focus on the next filing-critical item."),
+        },
+        timeline: timelineEvents.map((event) => ({
+          id: event.id,
+          date: event.dateRaw,
+          label: event.label,
+          isPast: event.isPast,
+          isUpcoming: event.isUpcoming,
+        })),
+        documents: documents.map((doc) => ({
+          id: doc.id,
+          title: doc.fileName,
+          status: (doc.analysisJson?.analysis_status as string | undefined) ?? "analyzed",
+          tags: extractDashboardDocumentTags(doc.analysisJson ?? {}),
+        })),
+        snapshot: {
+          currentSituation: normalizeDashboardText(snapshotCurrentSituation, "No snapshot data available."),
+          keyPoints,
+          thingsToWatch,
+          fullCaseBrief: `${snapshotCurrentSituation} ${normalizeDashboardText(suggestedFocus, "")}`.trim(),
+          extractedFacts,
+          deepAnalysis: [
+            `Upcoming timeline events: ${upcomingEvents.length}.`,
+            `Overdue timeline events: ${overdueEvents.length}.`,
+            `Documents requiring analysis attention: ${missingSummaryDocs.length}.`,
+          ],
+        },
+        alerts,
+      });
+    } catch (err) {
+      console.error("[cases] GET dashboard error:", err);
+      return res.status(500).json({ error: "Failed to load case dashboard." });
     }
   });
 
