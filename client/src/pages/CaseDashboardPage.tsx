@@ -102,9 +102,9 @@ export default function CaseDashboardPage() {
   const data = dashboardQuery.data;
 
   const suggestedPrompts = useMemo(() => [
-    "What is my highest-priority next step?",
-    "What deadline carries the most risk right now?",
-    "What document should I add next for this case?",
+    "What should I handle next?",
+    "Which deadline needs attention first?",
+    "What document should I upload next?",
   ], []);
 
   if (dashboardQuery.isLoading) {
@@ -149,7 +149,7 @@ export default function CaseDashboardPage() {
         <CardContent className="grid gap-3 text-sm md:grid-cols-2">
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Stage</p>
-            <p>{sentence(data.whatMattersNow.currentStage, "Case stage not yet established from available evidence.")}</p>
+            <p>{sentence(data.whatMattersNow.currentStage, "Case stage is still being established.")}</p>
           </div>
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Next Key Items</p>
@@ -171,7 +171,7 @@ export default function CaseDashboardPage() {
           </div>
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suggested Focus</p>
-            <p className="rounded-md bg-primary/10 px-2 py-1.5 font-medium">{sentence(data.whatMattersNow.suggestedFocus, "Focus on adding a document with court dates or filing obligations.")}</p>
+            <p className="rounded-md bg-primary/10 px-2 py-1.5 font-medium">{sentence(data.whatMattersNow.suggestedFocus, "Add a core filing with court dates or filing obligations.")}</p>
           </div>
         </CardContent>
       </Card>
@@ -232,7 +232,7 @@ export default function CaseDashboardPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Documents Card</CardTitle>
+              <CardTitle className="text-base">Documents</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {data.documents.length === 0 ? (
@@ -258,11 +258,11 @@ export default function CaseDashboardPage() {
 
         <div className="space-y-3 lg:col-span-2">
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Case Snapshot Card</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Case Snapshot</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               <section>
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Situation</p>
-                <p>{sentence(data.snapshot.currentSituation, "Current situation has not been synthesized yet.")}</p>
+                <p>{sentence(data.snapshot.currentSituation, "Current situation is still being assessed.")}</p>
               </section>
               <section>
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key Points</p>
@@ -284,7 +284,7 @@ export default function CaseDashboardPage() {
           </Card>
 
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Alerts Card</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Alerts</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               {data.alerts.length > 0 ? data.alerts.map((alert) => (
                 <div key={alert.id} className="flex items-start gap-2 rounded border px-2 py-1.5">
@@ -300,7 +300,7 @@ export default function CaseDashboardPage() {
               )) : (
                 <div className="flex items-start gap-2 rounded border px-2 py-1.5 text-muted-foreground">
                   <AlertTriangle className="h-4 w-4" />
-                  <p>No active alerts right now.</p>
+                  <p>No alerts require attention right now.</p>
                 </div>
               )}
             </CardContent>
@@ -309,7 +309,7 @@ export default function CaseDashboardPage() {
       </div>
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Ask Atlas Panel</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-base">Ask Atlas</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           <Input placeholder="Ask about this case…" aria-label="Ask about this case" />
           <div className="flex flex-wrap gap-1.5">

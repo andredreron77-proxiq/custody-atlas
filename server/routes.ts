@@ -862,25 +862,25 @@ function classifyDashboardStage(events: NormalizedDashboardTimelineEvent[], docu
   if (hearing?.dateParsed) {
     const daysUntil = Math.ceil((hearing.dateParsed.getTime() - Date.now()) / 86400000);
     if (daysUntil <= 21) {
-      return { key: "approaching_hearing", label: "Hearing preparation window is active." };
+      return { key: "approaching_hearing", label: "Hearing preparation is active." };
     }
   }
 
   const pretrialPast = events.some((event) => event.normalizedLabel === "Pretrial hearing" && (event.status === "past" || event.status === "overdue"));
   const finalUpcoming = upcoming.some((event) => event.normalizedLabel === "Final custody hearing");
   if (pretrialPast && finalUpcoming) {
-    return { key: "between_pretrial_and_final", label: "Between pretrial and final hearing milestones." };
+    return { key: "between_pretrial_and_final", label: "Between pretrial and final hearing." };
   }
 
   const hasUpcomingDeadlines = upcoming.some((event) => event.normalizedType === "deadline" || event.normalizedType === "filing");
   if (hasUpcomingDeadlines) {
-    return { key: "preparing_for_deadlines", label: "Active filing and deadline preparation period." };
+    return { key: "preparing_for_deadlines", label: "Preparing for upcoming filings and deadlines." };
   }
 
   if (documentCount === 0 || events.length < 2) {
-    return { key: "early_intake", label: "Early intake; core dates and documents are still being assembled." };
+    return { key: "early_intake", label: "Early case setup is still in progress." };
   }
-  return { key: "preparing_for_deadlines", label: "Building toward the next case milestone." };
+  return { key: "preparing_for_deadlines", label: "Focused on the next case milestone." };
 }
 
 function normalizeDashboardText(input: unknown, fallback: string): string {
@@ -3438,16 +3438,16 @@ Do not add facts not present in the provided evidence.`,
       const stage = classifyDashboardStage(primaryTimeline, documents.length);
 
       const watchouts: string[] = [];
-      if (overdueEvents.length > 0) watchouts.push(`${overdueEvents.length} past-due court item${overdueEvents.length > 1 ? "s need" : " needs"} attention`);
-      if (documents.length === 0) watchouts.push("Core court documents are still missing");
+      if (overdueEvents.length > 0) watchouts.push(`${overdueEvents.length} past-due court item${overdueEvents.length > 1 ? "s require" : " requires"} attention`);
+      if (documents.length === 0) watchouts.push("Foundational court documents are missing");
       const missingSummaryDocs = documents.filter((doc) => !getDocumentIntegrity(doc).isAnalysisAvailable);
-      if (missingSummaryDocs.length > 0) watchouts.push(`${missingSummaryDocs.length} document${missingSummaryDocs.length > 1 ? "s are" : " is"} waiting on analysis`);
+      if (missingSummaryDocs.length > 0) watchouts.push(`${missingSummaryDocs.length} document${missingSummaryDocs.length > 1 ? "s need" : " needs"} analysis review`);
 
       const suggestedFocusByStage: Record<DashboardStageKey, string> = {
-        approaching_hearing: "Use the timeline and related filings to confirm hearing readiness and close any open prep tasks this week.",
-        between_pretrial_and_final: "Focus on final-hearing evidence, unresolved motions, and any orders entered after pretrial.",
-        preparing_for_deadlines: "Prioritize the next due filing and confirm supporting documents are attached and complete.",
-        early_intake: "Add core case filings first so Atlas can identify the next deadlines and likely risk points.",
+        approaching_hearing: "Confirm hearing readiness and close outstanding preparation items.",
+        between_pretrial_and_final: "Review unresolved motions, pending orders, and final-hearing preparation.",
+        preparing_for_deadlines: "Prioritize the next filing deadline and confirm supporting documents are complete.",
+        early_intake: "Add core filings and key dates to establish reliable case visibility.",
       };
       const suggestedFocus = suggestedFocusByStage[stage.key];
 
@@ -3466,20 +3466,20 @@ Do not add facts not present in the provided evidence.`,
       })();
 
       const snapshotCurrentSituation = normalizedTimeline.length > 0
-        ? `Timeline shows ${primaryTimeline.length} key event${primaryTimeline.length > 1 ? "s" : ""}, with ${upcomingEvents.length} upcoming.`
-        : "No structured timeline events are available yet.";
+        ? `This case includes ${primaryTimeline.length} court-related event${primaryTimeline.length > 1 ? "s" : ""}, with ${upcomingEvents.length} upcoming.`
+        : "No court-related events have been added yet.";
 
       const keyPoints = [
-        `${documents.length} linked document${documents.length === 1 ? "" : "s"} in this case.`,
-        `${openActions.length} open action${openActions.length === 1 ? "" : "s"} currently tracked.`,
+        `${documents.length} case document${documents.length === 1 ? "" : "s"} on file.`,
+        `${openActions.length} open action${openActions.length === 1 ? "" : "s"} need follow-through.`,
         nextKeyItems[0] ? `Next key date: ${nextKeyItems[0].date} (${nextKeyItems[0].label}).` : "No upcoming key date has been identified.",
         caseRecord.status ? `Case status is ${caseRecord.status}.` : "Case status is not set.",
       ].slice(0, 4);
 
       const thingsToWatch = [
-        overdueEvents.length > 0 ? "Overdue items need immediate review." : "No overdue hearing-level items detected.",
-        documents.length === 0 ? "Document coverage gap: upload foundational filings." : "Document set exists but may need completeness review.",
-        primaryTimeline.length < 2 ? "Timeline coverage appears thin; verify missing dates." : "Confirm each upcoming event still matches current court notices.",
+        overdueEvents.length > 0 ? "Past-due items should be reviewed now." : "No past-due hearing or deadline items.",
+        documents.length === 0 ? "Document coverage gap: add foundational filings." : "Document set should be checked for completeness.",
+        primaryTimeline.length < 2 ? "Event coverage is thin; verify missing dates." : "Confirm upcoming dates against the latest court notices.",
       ].slice(0, 3);
 
       const extractedFacts = documents.flatMap((doc) => {
@@ -3506,7 +3506,7 @@ Do not add facts not present in the provided evidence.`,
           id: "missing-document",
           kind: "missing_document",
           title: "Add foundational case documents",
-          message: "No case filings are linked yet, so deadlines and hearing context may be incomplete.",
+          message: "No case filings are on file, so deadlines and hearing context are incomplete.",
           severity: "high",
           relatedItem: "Case document set",
           recommendedAction: "Upload your most recent petition, order, or notice of hearing.",
@@ -3518,7 +3518,7 @@ Do not add facts not present in the provided evidence.`,
           id: "timeline-gap",
           kind: "timeline_gap",
           title: "Timeline may be missing key dates",
-          message: "Only a small number of dated events were found, which can hide upcoming obligations.",
+          message: "Only a few dated events are listed, which can hide upcoming obligations.",
           severity: "medium",
           relatedItem: "Case timeline coverage",
           recommendedAction: "Review the timeline and add missing hearing, filing, or deadline dates.",
@@ -3531,7 +3531,7 @@ Do not add facts not present in the provided evidence.`,
           id: "overdue",
           kind: "overdue",
           title: "Past-due court item",
-          message: `${overdue.normalizedLabel} dated ${overdue.dateRaw} may require immediate review.`,
+          message: `${overdue.normalizedLabel} dated ${overdue.dateRaw} requires immediate review.`,
           severity: "high",
           relatedItem: `${overdue.normalizedLabel} (${overdue.dateRaw})`,
           recommendedAction: "Confirm whether this item was completed or if a late filing/update is needed.",
@@ -3544,7 +3544,7 @@ Do not add facts not present in the provided evidence.`,
           id: "analysis-missing",
           kind: "analysis_missing",
           title: "Document needs analysis",
-          message: `${doc.fileName} is linked but not fully analyzed yet.`,
+          message: `${doc.fileName} is on file but not fully analyzed yet.`,
           severity: "medium",
           relatedItem: doc.fileName,
           recommendedAction: "Open the document detail and verify extracted dates and obligations.",
@@ -3556,7 +3556,7 @@ Do not add facts not present in the provided evidence.`,
           id: "no-activity",
           kind: "no_recent_activity",
           title: "Ask Atlas to map next steps",
-          message: "There is not enough activity data to confidently prioritize the next move.",
+          message: "Case activity is limited, so priorities are not yet clear.",
           severity: "info",
           relatedItem: "Case strategy guidance",
           recommendedAction: "Ask Atlas what to upload or verify next to improve case visibility.",
