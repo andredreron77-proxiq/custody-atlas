@@ -55,6 +55,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
+import { resolveUSStateCode } from "@shared/usStates";
 
 /* ── Public types ─────────────────────────────────────────────────────────── */
 
@@ -235,6 +236,7 @@ export async function createCase(
     title: string;
     caseType?: string;
     status?: string;
+    stateCode?: string | null;
   },
 ): Promise<Case | null> {
   const result = await createCaseWithDiagnostics(userId, opts);
@@ -247,21 +249,23 @@ export async function createCaseWithDiagnostics(
     title: string;
     caseType?: string;
     status?: string;
+    stateCode?: string | null;
     authToken?: string | null;
   },
 ): Promise<CreateCaseResult> {
   const normalizedTitle = opts.title.slice(0, 200);
+  const normalizedStateCode = resolveUSStateCode(opts.stateCode) ?? "US";
   // Keep inserts aligned to confirmed live schema columns only.
   const insertPayload: {
     user_id: string;
     title: string;
     case_type: string;
-    status: string;
+    state_code: string;
   } = {
     user_id: userId,
     title: normalizedTitle,
-    case_type: opts.caseType ?? "general",
-    status: opts.status ?? "active",
+    case_type: opts.caseType ?? "custody",
+    state_code: normalizedStateCode,
   };
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL;

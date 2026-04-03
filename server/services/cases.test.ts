@@ -8,7 +8,7 @@ test("mapCaseRow uses live cases table columns", () => {
     id: "case-1",
     user_id: "user-1",
     title: "Parenting Plan 2026",
-    case_type: "general",
+    case_type: "custody",
     status: "active",
     created_at: "2026-04-03T00:00:00.000Z",
   });
