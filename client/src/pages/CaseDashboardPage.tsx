@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Scale, TriangleAlert } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Lightbulb, Scale, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -220,7 +220,12 @@ export default function CaseDashboardPage() {
           </div>
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suggested Focus</p>
-            <p className="rounded-md border border-[hsl(var(--semantic-blue)/0.35)] bg-[hsl(var(--semantic-blue)/0.12)] px-2 py-1.5 font-medium text-[hsl(var(--semantic-blue))]">{sentence(data.whatMattersNow.suggestedFocus, "Add a core filing with court dates or filing obligations.")}</p>
+            <div className="rounded-md border border-[rgba(59,130,246,0.20)] bg-[rgba(59,130,246,0.06)] px-2 py-1.5 text-foreground dark:border-[rgba(59,130,246,0.25)] dark:bg-[rgba(59,130,246,0.08)] dark:shadow-[inset_0_1px_0_rgba(147,197,253,0.08)]">
+              <p className="flex items-start gap-1.5 font-medium">
+                <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[rgba(59,130,246,0.7)] dark:text-[rgba(147,197,253,0.72)]" aria-hidden="true" />
+                <span>{sentence(data.whatMattersNow.suggestedFocus, "Add a core filing with court dates or filing obligations.")}</span>
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
