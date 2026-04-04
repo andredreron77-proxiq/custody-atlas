@@ -160,6 +160,13 @@ function normalizeFileNameStem(name: string): string {
     .trim();
 }
 
+function getFileExtension(name: string): string {
+  const trimmed = String(name || "").trim();
+  const idx = trimmed.lastIndexOf(".");
+  if (idx <= 0 || idx === trimmed.length - 1) return "";
+  return trimmed.slice(idx + 1).toLowerCase();
+}
+
 function findSimilarWorkspaceDocument(
   docs: SavedDocument[],
   uploadFileName: string,
@@ -1691,13 +1698,35 @@ The user is asking what they should do or how to take a specific action. Focus y
     const allowDuplicateUpload = String(req.body?.allowDuplicate ?? "").toLowerCase() === "true";
     const uploadMimeType = req.file?.mimetype ?? "unknown";
     const uploadFileName = req.file?.originalname || "document";
+    const uploadExtension = getFileExtension(uploadFileName);
+    const requestStartedAt = Date.now();
+    res.on("finish", () => {
+      console.info("[analyze-document] request-finished", {
+        uploadFileName,
+        uploadMimeType,
+        uploadExtension,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - requestStartedAt,
+      });
+    });
     const conflictDiagnostics = {
       uploadFileName,
       uploadMimeType,
+      uploadExtension,
       similarDetectionRan: false,
+      similarDocumentFound: false,
       structured409Returned: false,
       parserFailedBeforeConflictHandling: false,
+      parserCalled: false,
     };
+    console.info("[analyze-document] request-start", {
+      uploadFileName,
+      uploadMimeType,
+      uploadExtension,
+      allowDuplicateUpload,
+      hasUser: Boolean(docUserId),
+      requestedCaseId: requestedCaseId ?? null,
+    });
     try {
       const hasAI = Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
       const isDocx = req.file?.mimetype === DOCX_MIME;
@@ -1717,6 +1746,12 @@ The user is asking what they should do or how to take a specific action. Focus y
       });
 
       if (!guard.ok) {
+        console.warn("[analyze-document] guard-failed", {
+          ...conflictDiagnostics,
+          guardStatus: guard.status ?? 400,
+          guardError: guard.error,
+          isDocx,
+        });
         return res.status(guard.status ?? 400).json({
           error: guard.error,
           code: "DOCUMENT_ANALYSIS_PRECONDITION_FAILED",
@@ -1739,11 +1774,23 @@ The user is asking what they should do or how to take a specific action. Focus y
 
       if (docUserId && req.file && !allowDuplicateUpload) {
         conflictDiagnostics.similarDetectionRan = true;
-        const similarExisting = findSimilarWorkspaceDocument(
-          await getDocuments(docUserId),
-          uploadFileName,
-        );
+        console.info("[analyze-document] similar-doc-detection-start", conflictDiagnostics);
+        let similarExisting: SavedDocument | null = null;
+        try {
+          similarExisting = findSimilarWorkspaceDocument(
+            await getDocuments(docUserId),
+            uploadFileName,
+          );
+        } catch (similarErr: any) {
+          console.error("[analyze-document] similar-doc-detection-error", {
+            ...conflictDiagnostics,
+            error: similarErr?.message ?? "unknown",
+            stack: similarErr?.stack,
+          });
+          throw similarErr;
+        }
         if (similarExisting) {
+          conflictDiagnostics.similarDocumentFound = true;
           conflictDiagnostics.structured409Returned = true;
           console.info("[analyze-document] similar-document conflict intercepted before extraction", {
             ...conflictDiagnostics,
@@ -1766,17 +1813,28 @@ The user is asking what they should do or how to take a specific action. Focus y
             uploadRecorded: false,
           });
         }
+        console.info("[analyze-document] similar-doc-detection-complete", conflictDiagnostics);
       }
 
       const fileBuffer = readFileSync(filePath!);
       let extractedText: string;
       try {
+        conflictDiagnostics.parserCalled = true;
+        console.info("[analyze-document] parser-start", {
+          ...conflictDiagnostics,
+          parserType: req.file.mimetype === DOCX_MIME ? "mammoth-docx" : "document-ai",
+        });
         extractedText = await extractText(fileBuffer, req.file.mimetype);
+        console.info("[analyze-document] parser-success", {
+          ...conflictDiagnostics,
+          extractedChars: extractedText.length,
+        });
       } catch (extractErr: any) {
         conflictDiagnostics.parserFailedBeforeConflictHandling = true;
         console.warn("[analyze-document] extraction failed", {
           ...conflictDiagnostics,
           extractionError: extractErr?.message || "unknown",
+          stack: extractErr?.stack,
         });
         console.error("Document extraction error:", extractErr);
         return res.status(422).json({
@@ -2135,7 +2193,22 @@ CRITICAL RULES:
       if (docUserId && req.file) {
         console.error("[analyze-document] unhandled error after conflict pre-check", conflictDiagnostics);
       }
+      const isDocxUpload = req.file?.mimetype === DOCX_MIME;
+      if (isDocxUpload) {
+        console.error("[analyze-document] docx-unhandled-error", {
+          ...conflictDiagnostics,
+          error: err?.message ?? "unknown",
+          stack: err?.stack,
+        });
+      }
       console.error("Document analysis error:", err);
+      if (isDocxUpload) {
+        return res.status(422).json({
+          error: "DOCX analysis is not available yet. Please upload PDF.",
+          code: "DOCUMENT_DOCX_NOT_AVAILABLE",
+          uploadRecorded: false,
+        });
+      }
       return res.status(500).json({
         error: "We couldn't analyze that document right now. Please try again.",
         details: getSafeErrorMessage(err, "Failed to analyze document. Please try again."),
