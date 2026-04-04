@@ -24,7 +24,6 @@ import { planUploadAssociation } from "./lib/documentIdentity";
 import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
 import { decideCaseAssignment, type AssignmentCandidate } from "./lib/documentCaseAssignment";
 import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
-import { CASE_STAGE_EXAMPLES, CASE_STAGE_RULES_EXPLANATION, type CaseStageId, computeCaseStage } from "./lib/caseStageEngine";
 import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRiskScoring";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
@@ -755,6 +754,11 @@ const ALLOWED_TTS_VOICES = new Set(Object.keys(TTS_VOICE_MAP));
 
 type DashboardAlertKind = AlertType;
 type DashboardAlertSeverity = "high" | "medium" | "info";
+type DashboardStageKey =
+  | "approaching_hearing"
+  | "between_pretrial_and_final"
+  | "preparing_for_deadlines"
+  | "early_intake";
 type DashboardTimelineType = "hearing" | "filing" | "deadline" | "order" | "mediation" | "allegation" | "context";
 type DashboardTimelineStatus = "past" | "upcoming" | "overdue" | "future";
 type DashboardTimelineBucket = "primary" | "secondary";
@@ -854,6 +858,33 @@ function normalizeDashboardTimeline(events: CaseTimelineEvent[]): NormalizedDash
     const bMs = b.dateParsed?.getTime() ?? Number.MAX_SAFE_INTEGER;
     return aMs - bMs;
   });
+}
+
+function classifyDashboardStage(events: NormalizedDashboardTimelineEvent[], documentCount: number): { key: DashboardStageKey; label: string } {
+  const upcoming = events.filter((event) => event.status === "upcoming" || event.status === "future");
+  const hearing = upcoming.find((event) => event.normalizedType === "hearing" && event.dateParsed);
+  if (hearing?.dateParsed) {
+    const daysUntil = Math.ceil((hearing.dateParsed.getTime() - Date.now()) / 86400000);
+    if (daysUntil <= 21) {
+      return { key: "approaching_hearing", label: "Hearing preparation is active." };
+    }
+  }
+
+  const pretrialPast = events.some((event) => event.normalizedLabel === "Pretrial hearing" && (event.status === "past" || event.status === "overdue"));
+  const finalUpcoming = upcoming.some((event) => event.normalizedLabel === "Final custody hearing");
+  if (pretrialPast && finalUpcoming) {
+    return { key: "between_pretrial_and_final", label: "Between pretrial and final hearing." };
+  }
+
+  const hasUpcomingDeadlines = upcoming.some((event) => event.normalizedType === "deadline" || event.normalizedType === "filing");
+  if (hasUpcomingDeadlines) {
+    return { key: "preparing_for_deadlines", label: "Preparing for upcoming filings and deadlines." };
+  }
+
+  if (documentCount === 0 || events.length < 2) {
+    return { key: "early_intake", label: "Early case setup is still in progress." };
+  }
+  return { key: "preparing_for_deadlines", label: "Focused on the next case milestone." };
 }
 
 function normalizeDashboardText(input: unknown, fallback: string): string {
@@ -3408,16 +3439,7 @@ Do not add facts not present in the provided evidence.`,
       const openActions = actions
         .filter((action) => action.status === "open")
         .slice(0, 4);
-      const hasOrderDocument = documents.some((doc) => /\border\b|\bjudgment\b|\bdecree\b/i.test(doc.fileName));
-      const caseStage = computeCaseStage({
-        events: primaryTimeline.map((event) => ({
-          normalizedType: event.normalizedType,
-          dateParsed: event.dateParsed,
-        })),
-        documentCount: documents.length,
-        hasOrderDocument,
-        hasIncompleteDocumentAnalysis: documents.some((doc) => !getDocumentIntegrity(doc).isAnalysisAvailable),
-      });
+      const stage = classifyDashboardStage(primaryTimeline, documents.length);
 
       const watchouts: string[] = [];
       if (overdueEvents.length > 0) watchouts.push(`${overdueEvents.length} past-due court item${overdueEvents.length > 1 ? "s require" : " requires"} attention`);
@@ -3425,16 +3447,13 @@ Do not add facts not present in the provided evidence.`,
       const missingSummaryDocs = documents.filter((doc) => !getDocumentIntegrity(doc).isAnalysisAvailable);
       if (missingSummaryDocs.length > 0) watchouts.push(`${missingSummaryDocs.length} document${missingSummaryDocs.length > 1 ? "s need" : " needs"} analysis review`);
 
-      const suggestedFocusByStage: Record<CaseStageId, string> = {
-        hearing_imminent: "Confirm hearing readiness and close immediate preparation items.",
-        awaiting_outcome: "Capture recent hearing outcomes and verify whether a court order has been entered.",
-        pre_hearing: "Prepare upcoming hearing materials and verify related filings are complete.",
-        order_entered: "Review the entered order and organize any required follow-up items.",
-        follow_up: "Track upcoming obligations and update timeline progress as tasks are completed.",
-        organizing: "Strengthen case organization by filling timeline and document coverage gaps.",
-        intake: "Add foundational filings and key dates to establish reliable case visibility.",
+      const suggestedFocusByStage: Record<DashboardStageKey, string> = {
+        approaching_hearing: "Confirm hearing readiness and close outstanding preparation items.",
+        between_pretrial_and_final: "Review unresolved motions, pending orders, and final-hearing preparation.",
+        preparing_for_deadlines: "Prioritize the next filing deadline and confirm supporting documents are complete.",
+        early_intake: "Add core filings and key dates to establish reliable case visibility.",
       };
-      const suggestedFocus = suggestedFocusByStage[caseStage.id];
+      const suggestedFocus = suggestedFocusByStage[stage.key];
 
       const nextKeyItems = (() => {
         const ranked: NormalizedDashboardTimelineEvent[] = [];
@@ -3454,14 +3473,11 @@ Do not add facts not present in the provided evidence.`,
         }));
       })();
 
-      const postureByStage: Record<CaseStageId, string> = {
-        hearing_imminent: "This case is in active hearing preparation.",
-        awaiting_outcome: "This case is in post-hearing review while outcome details are pending.",
-        pre_hearing: "This case is preparing for a future hearing milestone.",
-        order_entered: "This case has an entered order and may require procedural follow-up.",
-        follow_up: "This case is being monitored for next-step obligations.",
-        organizing: "This case is in active organization with no urgent milestone pressure.",
-        intake: "This case is in early setup with limited information available.",
+      const postureByStage: Record<DashboardStageKey, string> = {
+        approaching_hearing: "This case is active and approaching a hearing.",
+        between_pretrial_and_final: "This case is active between major court milestones.",
+        preparing_for_deadlines: "This case is active and focused on upcoming deadlines.",
+        early_intake: "This case is in early intake and still being organized.",
       };
 
       const keyDocSignals = [
@@ -3694,8 +3710,8 @@ Do not add facts not present in the provided evidence.`,
           countyName: caseRecord.jurisdictionCounty ?? null,
         },
         whatMattersNow: {
-          currentStage: normalizeDashboardText(caseStage.label, "Case stage is not yet clear."),
-          stageKey: caseStage.id,
+          currentStage: normalizeDashboardText(stage.label, "Case stage is not yet clear."),
+          stageKey: stage.key,
           nextKeyItems,
           watchouts: watchouts.slice(0, 2),
           suggestedFocus: normalizeDashboardText(
@@ -3704,11 +3720,6 @@ Do not add facts not present in the provided evidence.`,
               : suggestedFocus,
             "Focus on the next filing-critical item.",
           ),
-        },
-        caseStage: {
-          id: caseStage.id,
-          label: caseStage.label,
-          reason: caseStage.reason,
         },
         timeline: primaryTimeline.map((event) => ({
           id: event.id,
@@ -3738,7 +3749,7 @@ Do not add facts not present in the provided evidence.`,
           tags: extractDashboardDocumentTags(doc.analysisJson ?? {}),
         })),
         caseHealth: {
-          currentPosture: postureByStage[caseStage.id],
+          currentPosture: postureByStage[stage.key],
           urgency: finalUrgency,
           riskScore: finalRiskScore,
           riskLevel: finalRiskLevel,
@@ -3755,8 +3766,6 @@ Do not add facts not present in the provided evidence.`,
             `Upcoming timeline events (30 days): ${upcomingEvents.length}.`,
             `Overdue timeline events: ${overdueEvents.length}.`,
             `Documents requiring analysis attention: ${missingSummaryDocs.length}.`,
-            `Stage rules: ${CASE_STAGE_RULES_EXPLANATION[0]}`,
-            `Stage examples tracked: ${CASE_STAGE_EXAMPLES.length}.`,
           ],
         },
         alerts: lifecycleAlerts.map((alert) => ({

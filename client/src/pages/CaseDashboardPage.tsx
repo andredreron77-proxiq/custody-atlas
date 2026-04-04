@@ -13,11 +13,6 @@ import { apiRequest, apiRequestRaw, queryClient } from "@/lib/queryClient";
 import { generateSuggestedFocus } from "@/lib/suggestedFocus";
 
 type CaseDashboardPayload = {
-  caseStage?: {
-    id: "intake" | "organizing" | "pre_hearing" | "hearing_imminent" | "awaiting_outcome" | "order_entered" | "follow_up";
-    label: string;
-    reason: string;
-  };
   case: {
     id: string;
     title: string;
@@ -28,7 +23,7 @@ type CaseDashboardPayload = {
   };
   whatMattersNow: {
     currentStage: string;
-    stageKey?: "intake" | "organizing" | "pre_hearing" | "hearing_imminent" | "awaiting_outcome" | "order_entered" | "follow_up";
+    stageKey?: "approaching_hearing" | "between_pretrial_and_final" | "preparing_for_deadlines" | "early_intake";
     nextKeyItems: Array<{ date: string; label: string; whyThisMatters?: string }>;
     watchouts: string[];
     suggestedFocus: string;
@@ -217,7 +212,6 @@ export default function CaseDashboardPage() {
       .sort((a, b) => a - b)[0] ?? null;
 
     return generateSuggestedFocus({
-      caseStageId: data.caseStage?.id,
       alerts: data.alerts,
       riskScore: data.caseHealth.riskScore,
       immediateConcern: data.caseHealth.immediateConcern,
@@ -314,9 +308,6 @@ export default function CaseDashboardPage() {
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Stage</p>
             <p>{sentence(data.whatMattersNow.currentStage, "Case stage is still being established.")}</p>
-            {data.caseStage?.reason ? (
-              <p className="mt-1 text-xs text-muted-foreground">{data.caseStage.reason}</p>
-            ) : null}
           </div>
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Next Key Items</p>
