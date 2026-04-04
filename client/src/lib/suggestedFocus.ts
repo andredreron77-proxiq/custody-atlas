@@ -104,6 +104,17 @@ function getNextDaysUntil(timeline: FocusTimelineItem[], type: "hearing" | "dead
 }
 
 export function generateSuggestedFocus(input: FocusEngineInput): SuggestedFocusItem {
+  const hasOverdueItems = input.timeline.some((item) => item.status === "overdue");
+  if (hasOverdueItems) {
+    return {
+      title: "Resolve overdue court item",
+      description: "A past-due court item requires immediate attention. Review and update this item before proceeding.",
+      actionType: "review_alert",
+      actionTarget: "overdue_item",
+      priority: "high",
+    };
+  }
+
   const activeHighAlerts = input.alerts.filter((alert) => alert.state === "active" && alert.severity === "high");
   if (activeHighAlerts.length > 0) {
     return mapAlertToFocus(activeHighAlerts[0]);
