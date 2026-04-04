@@ -32,6 +32,8 @@ type CaseDashboardPayload = {
   caseHealth: {
     currentPosture: string;
     urgency: "Low" | "Medium" | "High";
+    riskScore: number;
+    riskLevel: "Low" | "Moderate" | "Elevated" | "High";
     documentCompleteness: "Strong" | "Partial" | "Needs review";
     immediateConcern: string;
   };
@@ -106,6 +108,20 @@ function completenessBadgeClass(value: "Strong" | "Partial" | "Needs review"): s
   if (value === "Needs review") return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
   if (value === "Partial") return "bg-[hsl(var(--semantic-amber)/0.16)] text-[hsl(var(--semantic-amber))] border-[hsl(var(--semantic-amber)/0.5)]";
   return "bg-[hsl(var(--semantic-green)/0.16)] text-[hsl(var(--semantic-green))] border-[hsl(var(--semantic-green)/0.5)]";
+}
+
+function riskBadgeClass(value: "Low" | "Moderate" | "Elevated" | "High"): string {
+  if (value === "High") return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
+  if (value === "Elevated") return "bg-[hsl(var(--semantic-amber)/0.16)] text-[hsl(var(--semantic-amber))] border-[hsl(var(--semantic-amber)/0.5)]";
+  if (value === "Moderate") return "bg-[hsl(var(--semantic-blue)/0.16)] text-[hsl(var(--semantic-blue))] border-[hsl(var(--semantic-blue)/0.5)]";
+  return "bg-[hsl(var(--semantic-green)/0.16)] text-[hsl(var(--semantic-green))] border-[hsl(var(--semantic-green)/0.5)]";
+}
+
+function riskProgressClass(value: "Low" | "Moderate" | "Elevated" | "High"): string {
+  if (value === "High") return "bg-[hsl(var(--semantic-red))]";
+  if (value === "Elevated") return "bg-[hsl(var(--semantic-amber))]";
+  if (value === "Moderate") return "bg-[hsl(var(--semantic-blue))]";
+  return "bg-[hsl(var(--semantic-green))]";
 }
 
 function alertToneClass(severity: "high" | "medium" | "info"): string {
@@ -305,6 +321,20 @@ export default function CaseDashboardPage() {
                 <Badge variant="outline" className={urgencyBadgeClass(data.caseHealth.urgency)}>
                   {data.caseHealth.urgency}
                 </Badge>
+              </section>
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Risk level</p>
+                <div className="space-y-2">
+                  <Badge variant="outline" className={riskBadgeClass(data.caseHealth.riskLevel)}>
+                    {data.caseHealth.riskLevel} ({data.caseHealth.riskScore}/100)
+                  </Badge>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full transition-all ${riskProgressClass(data.caseHealth.riskLevel)}`}
+                      style={{ width: `${Math.max(0, Math.min(100, data.caseHealth.riskScore))}%` }}
+                    />
+                  </div>
+                </div>
               </section>
               <section>
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Document completeness</p>

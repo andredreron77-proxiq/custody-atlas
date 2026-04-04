@@ -24,6 +24,7 @@ import { planUploadAssociation } from "./lib/documentIdentity";
 import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
 import { decideCaseAssignment, type AssignmentCandidate } from "./lib/documentCaseAssignment";
 import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
+import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRiskScoring";
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
@@ -3504,6 +3505,37 @@ Do not add facts not present in the provided evidence.`,
         if (closest === null) return daysAway;
         return Math.min(closest, daysAway);
       }, null);
+      const upcomingHearingDays = primaryTimeline.reduce<number | null>((closest, event) => {
+        if (event.normalizedType !== "hearing" || !event.dateParsed) return closest;
+        const daysAway = Math.ceil((event.dateParsed.getTime() - now) / (1000 * 60 * 60 * 24));
+        if (daysAway < 0) return closest;
+        if (closest === null) return daysAway;
+        return Math.min(closest, daysAway);
+      }, null);
+      const upcomingDeadlineDays = primaryTimeline.reduce<number | null>((closest, event) => {
+        if (event.normalizedType !== "deadline" || !event.dateParsed) return closest;
+        const daysAway = Math.ceil((event.dateParsed.getTime() - now) / (1000 * 60 * 60 * 24));
+        if (daysAway < 0) return closest;
+        if (closest === null) return daysAway;
+        return Math.min(closest, daysAway);
+      }, null);
+      const conflictingTimelineEvents = hasConflictingTimelineEvents(primaryTimeline);
+      const activityTimestamps = [
+        ...documents.map((doc) => Date.parse(doc.createdAt)),
+        ...actions.map((action) => Date.parse(action.createdAt)),
+      ].filter((value) => Number.isFinite(value));
+      const lastActivityTimestamp = activityTimestamps.length > 0 ? Math.max(...activityTimestamps) : null;
+      const daysSinceLastActivity = lastActivityTimestamp !== null
+        ? Math.floor((now - lastActivityTimestamp) / (1000 * 60 * 60 * 24))
+        : null;
+      const { riskScore, riskLevel } = computeCaseRiskScore({
+        hasOverdueItems: overdueEvents.length > 0,
+        upcomingHearingDays,
+        upcomingDeadlineDays,
+        hasMissingKeyDocuments: missingKeyDocs.length > 0,
+        hasConflictingTimelineEvents: conflictingTimelineEvents,
+        daysSinceLastActivity,
+      });
 
       const urgency: "Low" | "Medium" | "High" = (() => {
         if (overdueEvents.length > 0) return "High";
@@ -3677,6 +3709,8 @@ Do not add facts not present in the provided evidence.`,
         caseHealth: {
           currentPosture: postureByStage[stage.key],
           urgency,
+          riskScore,
+          riskLevel,
           documentCompleteness,
           immediateConcern,
         },
