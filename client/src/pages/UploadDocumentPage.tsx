@@ -45,6 +45,7 @@ interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
   };
   code?: string;
   duplicate?: {
+    type?: "exact" | "similar";
     documentId: string;
     fileName: string;
     analysisStatus?: "uploaded" | "analyzing" | "analyzed" | "failed";
@@ -1081,7 +1082,7 @@ export default function UploadDocumentPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [similarDocConflict, setSimilarDocConflict] = useState<AnalyzeDocumentResponse["duplicate"] | null>(null);
+  const [duplicateConflict, setDuplicateConflict] = useState<AnalyzeDocumentResponse["duplicate"] | null>(null);
   const [docLimitReached, setDocLimitReached] = useState(false);
   // Stored after a successful analysis — used for re-analysis without creating a duplicate record
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -1308,7 +1309,7 @@ export default function UploadDocumentPage() {
     setSourceType("images");
     setResult(null);
     setError(null);
-    setSimilarDocConflict(null);
+    setDuplicateConflict(null);
     setDocumentId(null);
     setCaseAssignment(null);
     setPendingCaseSelection("unassigned");
@@ -1363,7 +1364,7 @@ export default function UploadDocumentPage() {
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
-    setSimilarDocConflict(null);
+    setDuplicateConflict(null);
 
     try {
       let fileToSubmit: File;
@@ -1413,7 +1414,7 @@ export default function UploadDocumentPage() {
         } catch {
           data = {
             error: res.ok ? "Unexpected server response format." : `Server error (${res.status})`,
-            code: res.status === 409 ? "DOCUMENT_SIMILAR_EXISTS" : undefined,
+            code: res.status === 409 ? "DOCUMENT_DUPLICATE_EXISTS" : undefined,
           } as unknown as AnalyzeDocumentResponse;
         }
       }
@@ -1428,20 +1429,20 @@ export default function UploadDocumentPage() {
       setCaseAssignment(data.caseAssignment ?? null);
       setPendingCaseSelection(data.caseAssignment?.assignedCaseId ?? data.caseAssignment?.suggestedCaseId ?? "unassigned");
       if (data.documentId) setDocumentId(data.documentId as string);
-      if (data.dedupe?.isDuplicate) {
-        toast({
-          title: "Already uploaded",
-          description: data.dedupe.message || "This file is already in your workspace. We refreshed its analysis.",
-        });
-      }
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
     } catch (err: any) {
-      if (err?.code === "DOCUMENT_SIMILAR_EXISTS") {
-        const message = "A similar document already exists in your workspace. No new upload row was created.";
-        setSimilarDocConflict(err?.duplicate ?? null);
+      if (err?.code === "DOCUMENT_SIMILAR_EXISTS" || err?.code === "DOCUMENT_EXACT_DUPLICATE_EXISTS") {
+        const duplicateType = err?.duplicate?.type === "exact" ? "exact" : "similar";
+        const message = duplicateType === "exact"
+          ? "This document already exists in your workspace."
+          : "A similar document already exists in your workspace. No new upload row was created.";
+        setDuplicateConflict(err?.duplicate ?? null);
         setError(message);
-        toast({ title: "Similar document found", description: message });
+        toast({
+          title: duplicateType === "exact" ? "Exact duplicate found" : "Similar document found",
+          description: message,
+        });
       } else {
         const message = err?.message || "Failed to analyze document. Please try again.";
         setError(message);
@@ -1675,15 +1676,19 @@ export default function UploadDocumentPage() {
               <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
-          {similarDocConflict && (
+          {duplicateConflict && (
             <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-3 space-y-2" data-testid="card-similar-document">
-              <p className="text-sm font-medium text-foreground">A similar document already exists in your workspace.</p>
+              <p className="text-sm font-medium text-foreground">
+                {duplicateConflict.type === "exact"
+                  ? "This document already exists in your workspace."
+                  : "A similar document already exists in your workspace."}
+              </p>
               <p className="text-xs text-muted-foreground">
-                Existing document: <span className="font-medium text-foreground">{similarDocConflict.fileName}</span>
+                Existing document: <span className="font-medium text-foreground">{duplicateConflict.fileName}</span>
               </p>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => window.location.assign(`/document/${similarDocConflict.documentId}`)}>
-                  Use existing document
+                <Button size="sm" onClick={() => window.location.assign(`/document/${duplicateConflict.documentId}`)}>
+                  View existing document
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => analyzeDocument(true)}>
                   Upload anyway

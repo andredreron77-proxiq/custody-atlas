@@ -141,6 +141,8 @@ interface RetroactiveDocReviewItem {
   };
 }
 
+type DocumentDuplicateKind = "exact" | "similar";
+
 function normalizeText(v: unknown): string {
   return typeof v === "string" ? v.trim().toLowerCase() : "";
 }
@@ -1772,7 +1774,36 @@ The user is asking what they should do or how to take a specific action. Focus y
         });
       }
 
+      const fileBuffer = readFileSync(filePath!);
+      const sourceFileSha256 = createHash("sha256")
+        .update(fileBuffer)
+        .digest("hex");
+
       if (docUserId && req.file && !allowDuplicateUpload) {
+        const exactDuplicate = await findDuplicateDocument(docUserId, {
+          fileHash: sourceFileSha256,
+        });
+        if (exactDuplicate) {
+          conflictDiagnostics.structured409Returned = true;
+          return res.status(409).json({
+            error: "This document already exists in your workspace.",
+            details: "Open the existing document, or choose Upload anyway to keep a separate copy.",
+            code: "DOCUMENT_EXACT_DUPLICATE_EXISTS",
+            duplicate: {
+              type: "exact" satisfies DocumentDuplicateKind,
+              documentId: exactDuplicate.id,
+              fileName: exactDuplicate.fileName,
+              analysisStatus: getDocumentIntegrity(exactDuplicate).analysisStatus,
+            },
+            options: {
+              canUseExisting: true,
+              canUploadAnyway: true,
+              canReplaceExisting: false,
+            },
+            uploadRecorded: false,
+          });
+        }
+
         conflictDiagnostics.similarDetectionRan = true;
         console.info("[analyze-document] similar-doc-detection-start", conflictDiagnostics);
         let similarExisting: SavedDocument | null = null;
@@ -1801,6 +1832,7 @@ The user is asking what they should do or how to take a specific action. Focus y
             details: "Use the existing document, or upload anyway if you need to keep this as a separate copy.",
             code: "DOCUMENT_SIMILAR_EXISTS",
             duplicate: {
+              type: "similar" satisfies DocumentDuplicateKind,
               documentId: similarExisting.id,
               fileName: similarExisting.fileName,
               analysisStatus: getDocumentIntegrity(similarExisting).analysisStatus,
@@ -1816,7 +1848,6 @@ The user is asking what they should do or how to take a specific action. Focus y
         console.info("[analyze-document] similar-doc-detection-complete", conflictDiagnostics);
       }
 
-      const fileBuffer = readFileSync(filePath!);
       let extractedText: string;
       try {
         conflictDiagnostics.parserCalled = true;
@@ -2027,9 +2058,6 @@ CRITICAL RULES:
         const documentName = req.file.originalname || "document";
         const retentionTier = resolveRetentionTierFromRequest(req);
         const retentionWindow = buildRetentionWindow(retentionTier);
-        const sourceFileSha256 = createHash("sha256")
-          .update(readFileSync(req.file.path))
-          .digest("hex");
         const analysisWithSourceHash = {
           ...(validated.data as Record<string, unknown>),
           analysis_status: "analyzed",
