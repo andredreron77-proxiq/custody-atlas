@@ -58,6 +58,7 @@ export interface DocumentCaseAssignmentView {
 
 export interface DuplicateDocumentLookup {
   fileHash: string;
+  fallbackSignature?: string | null;
 }
 
 export interface DocumentIntegrity {
@@ -374,31 +375,57 @@ export async function findDuplicateDocument(
   if (!supabaseAdmin) return null;
 
   const normalizedHash = lookup.fileHash.trim().toLowerCase();
-  if (!normalizedHash) return null;
+  const normalizedFallbackSignature = typeof lookup.fallbackSignature === "string"
+    ? lookup.fallbackSignature.trim().toLowerCase()
+    : "";
+  if (!normalizedHash && !normalizedFallbackSignature) return null;
 
   try {
-    let query = supabaseAdmin
-      .from("documents")
-      .select("*")
-      .eq("user_id", userId)
-      .or(`source_file_sha256.eq.${normalizedHash},analysis_json.cs.${JSON.stringify({ source_file_sha256: normalizedHash })}`)
-      .order("created_at", { ascending: true })
-      .limit(1);
-    let { data, error } = await query;
-
-    // Backward compatibility for pre-migration DBs without source_file_sha256.
-    if (error?.message?.includes("source_file_sha256")) {
-      query = supabaseAdmin
+    if (normalizedHash) {
+      let { data, error } = await supabaseAdmin
         .from("documents")
         .select("*")
         .eq("user_id", userId)
-        .contains("analysis_json", { source_file_sha256: normalizedHash })
+        .eq("source_file_sha256", normalizedHash)
         .order("created_at", { ascending: true })
         .limit(1);
-      ({ data, error } = await query);
+
+      // Backward compatibility for pre-migration DBs without source_file_sha256.
+      if (!error && data?.length) return mapRow(data[0]);
+
+      const hashColumnMissing = Boolean(error?.message?.includes("source_file_sha256"));
+      if (!hashColumnMissing) {
+        ({ data, error } = await supabaseAdmin
+          .from("documents")
+          .select("*")
+          .eq("user_id", userId)
+          .contains("analysis_json", { source_file_sha256: normalizedHash })
+          .order("created_at", { ascending: true })
+          .limit(1));
+        if (!error && data?.length) return mapRow(data[0]);
+      } else {
+        ({ data, error } = await supabaseAdmin
+          .from("documents")
+          .select("*")
+          .eq("user_id", userId)
+          .contains("analysis_json", { source_file_sha256: normalizedHash })
+          .order("created_at", { ascending: true })
+          .limit(1));
+        if (!error && data?.length) return mapRow(data[0]);
+      }
     }
-    if (error || !data?.length) return null;
-    return mapRow(data[0]);
+
+    if (!normalizedFallbackSignature) return null;
+
+    const { data: fallbackData, error: fallbackError } = await supabaseAdmin
+      .from("documents")
+      .select("*")
+      .eq("user_id", userId)
+      .contains("analysis_json", { duplicate_signature_v1: normalizedFallbackSignature })
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (fallbackError || !fallbackData?.length) return null;
+    return mapRow(fallbackData[0]);
   } catch (err) {
     console.error("[documents] findDuplicateDocument exception:", err);
     return null;

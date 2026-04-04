@@ -1778,10 +1778,18 @@ The user is asking what they should do or how to take a specific action. Focus y
       const sourceFileSha256 = createHash("sha256")
         .update(fileBuffer)
         .digest("hex");
+      const duplicateSignatureV1 = createHash("sha256")
+        .update(req.file.mimetype ?? "application/octet-stream")
+        .update(":")
+        .update(String(req.file.size ?? fileBuffer.length))
+        .update(":")
+        .update(fileBuffer.subarray(0, Math.min(fileBuffer.length, 65536)))
+        .digest("hex");
 
       if (docUserId && req.file && !allowDuplicateUpload) {
         const exactDuplicate = await findDuplicateDocument(docUserId, {
           fileHash: sourceFileSha256,
+          fallbackSignature: duplicateSignatureV1,
         });
         if (exactDuplicate) {
           conflictDiagnostics.structured409Returned = true;
@@ -2062,6 +2070,7 @@ CRITICAL RULES:
           ...(validated.data as Record<string, unknown>),
           analysis_status: "analyzed",
           source_file_sha256: sourceFileSha256,
+          duplicate_signature_v1: duplicateSignatureV1,
           case_assignment: assignmentDecision
             ? {
               status: assignmentDecision.status,
@@ -2078,6 +2087,7 @@ CRITICAL RULES:
           ? null
           : await findDuplicateDocument(docUserId, {
             fileHash: sourceFileSha256,
+            fallbackSignature: duplicateSignatureV1,
           });
 
         const savedDoc = duplicateDoc ?? await saveDocument(docUserId, {
