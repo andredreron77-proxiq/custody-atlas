@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Lightbulb, Scale, TriangleAlert } from "lucide-react";
@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiRequest, apiRequestRaw, queryClient } from "@/lib/queryClient";
+import { generateSuggestedFocus } from "@/lib/suggestedFocus";
 
 type CaseDashboardPayload = {
   case: {
@@ -155,6 +157,12 @@ export default function CaseDashboardPage() {
   const [expanded, setExpanded] = useState(false);
   const [showFullTimeline, setShowFullTimeline] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+  const [showAskAtlasPanel, setShowAskAtlasPanel] = useState(false);
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventDate, setNewEventDate] = useState("");
+  const alertRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const dashboardQuery = useQuery<CaseDashboardPayload>({
     queryKey: ["/api/cases", caseId, "dashboard"],
@@ -185,6 +193,77 @@ export default function CaseDashboardPage() {
     "Which deadline needs attention first?",
     "What document should I upload next?",
   ], []);
+
+  const suggestedFocus = useMemo(() => {
+    if (!data) return null;
+    const upcomingHearingDays = data.timeline
+      .filter((item) => item.type === "hearing")
+      .map((item) => new Date(item.date))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .map((date) => Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+      .filter((days) => days >= 0)
+      .sort((a, b) => a - b)[0] ?? null;
+    const upcomingDeadlineDays = data.timeline
+      .filter((item) => item.type === "deadline")
+      .map((item) => new Date(item.date))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .map((date) => Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+      .filter((days) => days >= 0)
+      .sort((a, b) => a - b)[0] ?? null;
+
+    return generateSuggestedFocus({
+      alerts: data.alerts,
+      riskScore: data.caseHealth.riskScore,
+      immediateConcern: data.caseHealth.immediateConcern,
+      hearingDaysUntil: upcomingHearingDays,
+      deadlineDaysUntil: upcomingDeadlineDays,
+      documentCompleteness: data.caseHealth.documentCompleteness,
+      timeline: data.timeline,
+    });
+  }, [data]);
+
+  const handleSuggestedAction = () => {
+    if (!suggestedFocus) return;
+    if (suggestedFocus.actionType === "navigate") {
+      document.getElementById(suggestedFocus.actionTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (suggestedFocus.actionType === "upload") {
+      setShowUploadModal(true);
+      return;
+    }
+    if (suggestedFocus.actionType === "create_event") {
+      setShowCreateEventModal(true);
+      return;
+    }
+    if (suggestedFocus.actionType === "ask_atlas") {
+      setShowAskAtlasPanel(true);
+      return;
+    }
+    if (suggestedFocus.actionType === "review_alert") {
+      const node = alertRefs.current[suggestedFocus.actionTarget];
+      if (node) {
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+        node.focus();
+      }
+    }
+  };
+
+  const suggestedFocusLabel = useMemo(() => {
+    if (!suggestedFocus) return "Open";
+    if (suggestedFocus.actionType === "navigate") return "Go to section";
+    if (suggestedFocus.actionType === "upload") return "Upload document";
+    if (suggestedFocus.actionType === "create_event") return "Create event";
+    if (suggestedFocus.actionType === "ask_atlas") return "Ask Atlas";
+    return "Review alert";
+  }, [suggestedFocus]);
+
+  const handleCreateEventSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    setShowCreateEventModal(false);
+    setNewEventTitle("");
+    setNewEventDate("");
+  };
 
   if (dashboardQuery.isLoading) {
     return (
@@ -256,8 +335,10 @@ export default function CaseDashboardPage() {
             <div className="rounded-md border border-[rgba(59,130,246,0.20)] bg-[rgba(59,130,246,0.06)] px-2 py-1.5 text-foreground dark:border-[rgba(59,130,246,0.25)] dark:bg-[rgba(59,130,246,0.08)] dark:shadow-[inset_0_1px_0_rgba(147,197,253,0.08)]">
               <p className="flex items-start gap-1.5 font-medium">
                 <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[rgba(59,130,246,0.7)] dark:text-[rgba(147,197,253,0.72)]" aria-hidden="true" />
-                <span>{sentence(data.whatMattersNow.suggestedFocus, "Add a core filing with court dates or filing obligations.")}</span>
+                <span className="font-semibold">{suggestedFocus?.title ?? sentence(data.whatMattersNow.suggestedFocus, "Add a core filing with court dates or filing obligations.")}</span>
               </p>
+              <p className="pl-5 text-sm text-muted-foreground">{suggestedFocus?.description ?? "Review your current case signals to prioritize your next action."}</p>
+              <Button size="sm" className="mt-2 h-7" onClick={handleSuggestedAction}>{suggestedFocusLabel}</Button>
             </div>
           </div>
         </CardContent>
@@ -389,9 +470,15 @@ export default function CaseDashboardPage() {
 
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-base">Alerts</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
+            <CardContent id="alerts" className="space-y-2 text-sm">
               {data.alerts.length > 0 ? data.alerts.map((alert) => (
-                <div key={alert.id} className={`flex items-start gap-2 rounded border border-l-4 px-2 py-1.5 ${alertToneClass(alert.severity)}`}>
+                <div
+                  key={alert.id}
+                  id={`alert-${alert.id}`}
+                  ref={(node) => { alertRefs.current[alert.id] = node; }}
+                  tabIndex={-1}
+                  className={`flex items-start gap-2 rounded border border-l-4 px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${alertToneClass(alert.severity)}`}
+                >
                   {alertIcon(alert.kind)}
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -511,6 +598,46 @@ export default function CaseDashboardPage() {
           </CollapsibleContent>
         </Card>
       </Collapsible>
+
+      <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload document</DialogTitle>
+            <DialogDescription>Add a case file to resolve document-related risk.</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Link href="/upload-document"><Button onClick={() => setShowUploadModal(false)}>Open upload flow</Button></Link>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCreateEventModal} onOpenChange={setShowCreateEventModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create event</DialogTitle>
+            <DialogDescription>Log an event outcome to keep the timeline accurate.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-3" onSubmit={handleCreateEventSubmit}>
+            <Input value={newEventTitle} onChange={(event) => setNewEventTitle(event.target.value)} placeholder="Event title" required />
+            <Input value={newEventDate} onChange={(event) => setNewEventDate(event.target.value)} type="date" required />
+            <DialogFooter>
+              <Button type="submit">Save event</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAskAtlasPanel} onOpenChange={setShowAskAtlasPanel}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ask Atlas</DialogTitle>
+            <DialogDescription>Open Ask Atlas with this case preselected.</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Link href={`/ask?case=${data.case.id}`}><Button onClick={() => setShowAskAtlasPanel(false)}>Open Ask Atlas</Button></Link>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
