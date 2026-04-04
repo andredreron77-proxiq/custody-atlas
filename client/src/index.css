@@ -87,6 +87,12 @@
   /* Fallback for older browsers */
   --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Case dashboard semantic accents */
+  --semantic-blue: 221 83% 53%;
+  --semantic-amber: 38 92% 50%;
+  --semantic-red: 0 84% 60%;
+  --semantic-green: 142 71% 45%;
 }
 
 .dark {
@@ -99,7 +105,7 @@
 
   /* ── Page canvas ─────────────────────────────────────────── */
   /* Deepened slightly to widen contrast gap vs card surface    */
-  --background: 222 44% 10%;
+  --background: 222 47% 11%;
   /* Near-white foreground — easy to read on dark surfaces      */
   --foreground: 214 32% 95%;
 
@@ -109,7 +115,7 @@
 
   /* ── Card / panel surfaces (elevation 1) ─────────────────── */
   /* 9% lightness gap vs background = clearly elevated panels   */
-  --card: 222 36% 19%;
+  --card: 217 33% 17%;
   --card-foreground: 214 32% 95%;
   --card-border: 220 24% 28%;
 
@@ -135,12 +141,12 @@
 
   /* ── Secondary — chips, tags, tinted surfaces ─────────────── */
   /* 28% lightness = clearly visible above background (10%)     */
-  --secondary: 220 28% 28%;
+  --secondary: 215 28% 22%;
   --secondary-foreground: 214 28% 93%;
 
   /* ── Muted — surfaces and text at lowest priority tier ────── */
   /* KEY: 27% base means bg-muted/40 ≈ 18% — visibly above bg  */
-  --muted: 220 26% 27%;
+  --muted: 215 28% 18%;
   /* 72% lightness = clearly readable secondary text            */
   --muted-foreground: 215 20% 72%;
 
@@ -153,12 +159,18 @@
   --gold-foreground: 0 0% 100%;
 
   /* ── Destructive — MUST be bright in dark mode ───────────── */
-  --destructive: 0 72% 65%;
+  --destructive: 0 80% 62%;
   --destructive-foreground: 0 0% 100%;
 
   /* ── Input — must stand out from card surface ─────────────── */
   --input: 220 24% 33%;
   --ring: 217 88% 62%;
+
+  /* Case dashboard semantic accents */
+  --semantic-blue: 217 88% 62%;
+  --semantic-amber: 43 92% 58%;
+  --semantic-red: 0 84% 66%;
+  --semantic-green: 142 70% 56%;
 
   /* ── Charts ──────────────────────────────────────────────── */
   --chart-1: 217 88% 68%;

@@ -69,38 +69,45 @@ function formatDate(value: string): string {
 }
 
 function alertIcon(kind: CaseDashboardPayload["alerts"][number]["kind"]) {
-  if (kind === "missing_document") return <FileWarning className="h-4 w-4 text-amber-600" />;
-  if (kind === "overdue") return <TriangleAlert className="h-4 w-4 text-red-600" />;
-  if (kind === "analysis_missing") return <FileText className="h-4 w-4 text-indigo-600" />;
-  if (kind === "timeline_gap") return <Clock3 className="h-4 w-4 text-blue-600" />;
+  if (kind === "missing_document") return <FileWarning className="h-4 w-4 text-amber-300" />;
+  if (kind === "overdue") return <TriangleAlert className="h-4 w-4 text-red-300" />;
+  if (kind === "analysis_missing") return <FileText className="h-4 w-4 text-blue-300" />;
+  if (kind === "timeline_gap") return <Clock3 className="h-4 w-4 text-blue-300" />;
   return <Info className="h-4 w-4 text-muted-foreground" />;
 }
 
-function timelineTypeIcon(type: "hearing" | "filing" | "deadline" | "order" | "mediation" | "allegation" | "context") {
-  if (type === "hearing") return <Gavel className="h-4 w-4" />;
-  if (type === "deadline") return <CalendarClock className="h-4 w-4" />;
-  if (type === "order") return <Scale className="h-4 w-4" />;
-  if (type === "mediation") return <Clock3 className="h-4 w-4" />;
-  return <FileText className="h-4 w-4" />;
+function timelineTypeIcon(type: "hearing" | "filing" | "deadline" | "order" | "mediation" | "allegation" | "context", status: "past" | "upcoming" | "overdue" | "future") {
+  const tone = status === "overdue" ? "text-red-300" : status === "upcoming" ? "text-amber-300" : "text-slate-400";
+  if (type === "hearing") return <Gavel className={`h-4 w-4 ${tone}`} />;
+  if (type === "deadline") return <CalendarClock className={`h-4 w-4 ${tone}`} />;
+  if (type === "order") return <Scale className={`h-4 w-4 ${tone}`} />;
+  if (type === "mediation") return <Clock3 className={`h-4 w-4 ${tone}`} />;
+  return <FileText className={`h-4 w-4 ${tone}`} />;
 }
 
 function timelineStatusClass(status: "past" | "upcoming" | "overdue" | "future"): string {
-  if (status === "overdue") return "border-red-300 bg-red-50 text-red-800";
-  if (status === "upcoming") return "border-primary/40 bg-primary/5 text-foreground";
-  if (status === "past") return "border-border bg-muted/40 text-muted-foreground";
-  return "border-border bg-background text-foreground";
+  if (status === "overdue") return "border-red-500/50 bg-red-500/10 text-red-100";
+  if (status === "upcoming") return "border-amber-400/45 bg-amber-400/10 text-amber-100";
+  if (status === "past") return "border-slate-600/60 bg-slate-900/40 text-slate-300";
+  return "border-slate-600/60 bg-slate-800/40 text-slate-200";
 }
 
 function urgencyBadgeClass(value: "Low" | "Medium" | "High"): string {
-  if (value === "High") return "bg-red-100 text-red-800 border-red-300";
-  if (value === "Medium") return "bg-amber-100 text-amber-800 border-amber-300";
-  return "bg-emerald-100 text-emerald-800 border-emerald-300";
+  if (value === "High") return "bg-red-500/20 text-red-100 border-red-400/60";
+  if (value === "Medium") return "bg-amber-500/20 text-amber-100 border-amber-400/60";
+  return "bg-emerald-500/20 text-emerald-100 border-emerald-400/60";
 }
 
 function completenessBadgeClass(value: "Strong" | "Partial" | "Needs review"): string {
-  if (value === "Needs review") return "bg-red-100 text-red-800 border-red-300";
-  if (value === "Partial") return "bg-amber-100 text-amber-800 border-amber-300";
-  return "bg-emerald-100 text-emerald-800 border-emerald-300";
+  if (value === "Needs review") return "bg-red-500/20 text-red-100 border-red-400/60";
+  if (value === "Partial") return "bg-amber-500/20 text-amber-100 border-amber-400/60";
+  return "bg-emerald-500/20 text-emerald-100 border-emerald-400/60";
+}
+
+function alertToneClass(severity: "high" | "medium" | "info"): string {
+  if (severity === "high") return "border-l-red-400 border-red-500/35 bg-red-500/10";
+  if (severity === "medium") return "border-l-amber-400 border-amber-500/35 bg-amber-500/10";
+  return "border-l-blue-400 border-blue-500/35 bg-blue-500/10";
 }
 
 export default function CaseDashboardPage() {
@@ -143,64 +150,64 @@ export default function CaseDashboardPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-3 px-3 py-3 md:px-4" data-testid="page-case-dashboard">
-      <header className="sticky top-14 z-20 rounded-md border bg-background/95 px-3 py-2 backdrop-blur">
+    <div className="mx-auto w-full max-w-6xl space-y-3 bg-[#0F172A] px-3 py-3 text-slate-50 md:px-4" data-testid="page-case-dashboard">
+      <header className="sticky top-14 z-20 rounded-md border border-slate-700 bg-[#111827]/95 px-3 py-2 backdrop-blur">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <h1 className="truncate text-xl font-bold leading-tight">{data.case.title}</h1>
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
               <span>{data.case.caseType || "Case type not set"}</span>
-              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{data.case.status}</Badge>
+              <Badge variant="secondary" className="h-5 border-slate-600 bg-slate-700 px-1.5 text-[10px] text-slate-100">{data.case.status}</Badge>
               <span>{data.case.stateCode || "State unknown"}{data.case.countyName ? ` • ${data.case.countyName}` : ""}</span>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <Link href="/upload-document"><Button size="sm" className="h-8">Add Document</Button></Link>
-            <Link href={`/ask?case=${data.case.id}`}><Button size="sm" variant="secondary" className="h-8">Ask Atlas</Button></Link>
+            <Link href="/upload-document"><Button size="sm" className="h-8 bg-blue-600 text-white hover:bg-blue-500">Add Document</Button></Link>
+            <Link href={`/ask?case=${data.case.id}`}><Button size="sm" variant="secondary" className="h-8 border-slate-600 bg-slate-700 text-slate-100 hover:bg-slate-600">Ask Atlas</Button></Link>
           </div>
         </div>
       </header>
 
-      <Card className="border-2 border-primary/20">
+      <Card className="border border-blue-500/40 bg-gradient-to-br from-[#111827] via-[#111827] to-[#1F2937] shadow-lg shadow-blue-950/20">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">What Matters Now</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm md:grid-cols-2">
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Stage</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Current Stage</p>
             <p>{sentence(data.whatMattersNow.currentStage, "Case stage is still being established.")}</p>
           </div>
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Next Key Items</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Next Key Items</p>
             {data.whatMattersNow.nextKeyItems.length > 0 ? (
               <ul className="space-y-1">
                 {data.whatMattersNow.nextKeyItems.slice(0, 3).map((item) => (
                   <li key={`${item.date}-${item.label}`} className="text-sm">
                     <p>{formatDate(item.date)} — {item.label}</p>
-                    {item.whyThisMatters ? <p className="text-xs text-muted-foreground">{item.whyThisMatters}</p> : null}
+                    {item.whyThisMatters ? <p className="text-xs text-slate-400">{item.whyThisMatters}</p> : null}
                   </li>
                 ))}
               </ul>
-            ) : <p className="text-muted-foreground">No upcoming key items.</p>}
+            ) : <p className="text-slate-400">No upcoming key items.</p>}
           </div>
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Watchouts</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Watchouts</p>
             {data.whatMattersNow.watchouts.length > 0 ? (
               <ul className="list-disc space-y-1 pl-5">
                 {data.whatMattersNow.watchouts.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
               </ul>
-            ) : <p className="text-muted-foreground">No active watchouts.</p>}
+            ) : <p className="text-slate-400">No active watchouts.</p>}
           </div>
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suggested Focus</p>
-            <p className="rounded-md bg-primary/10 px-2 py-1.5 font-medium">{sentence(data.whatMattersNow.suggestedFocus, "Add a core filing with court dates or filing obligations.")}</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Suggested Focus</p>
+            <p className="rounded-md border border-blue-500/40 bg-blue-500/15 px-2 py-1.5 font-medium text-blue-100">{sentence(data.whatMattersNow.suggestedFocus, "Add a core filing with court dates or filing obligations.")}</p>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-3 lg:grid-cols-5">
         <div className="space-y-3 lg:col-span-3">
-          <Card>
+          <Card className="border-slate-700 bg-[#111827]">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Legal Timeline</CardTitle>
             </CardHeader>
@@ -214,12 +221,12 @@ export default function CaseDashboardPage() {
                     <li key={event.id} className={`rounded border px-2 py-1.5 ${timelineStatusClass(event.status)}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex items-center gap-1.5">
-                          {timelineTypeIcon(event.type)}
+                          {timelineTypeIcon(event.type, event.status)}
                           {formatDate(event.date)}
                         </span>
                         <span className="truncate pl-2 text-right">{event.label}</span>
                       </div>
-                      {event.whyThisMatters ? <p className="pl-6 pt-0.5 text-xs text-muted-foreground">{event.whyThisMatters}</p> : null}
+                      {event.whyThisMatters ? <p className="pl-6 pt-0.5 text-xs text-slate-400">{event.whyThisMatters}</p> : null}
                     </li>
                   ))}
                 </ol>
@@ -233,7 +240,7 @@ export default function CaseDashboardPage() {
                 {data.timelineSecondary && data.timelineSecondary.length > 0 ? (
                   <Collapsible className="mt-3">
                     <CollapsibleTrigger asChild>
-                      <Button size="sm" variant="ghost" className="h-7 px-0 text-xs text-muted-foreground">
+                      <Button size="sm" variant="ghost" className="h-7 px-0 text-xs text-slate-400">
                         Context & allegations ({data.timelineMeta?.secondaryCount ?? data.timelineSecondary.length})
                       </Button>
                     </CollapsibleTrigger>
@@ -241,7 +248,7 @@ export default function CaseDashboardPage() {
                       {data.timelineSecondary.map((event) => (
                         <div key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 text-xs ${timelineStatusClass(event.status)}`}>
                           <span className="flex items-center gap-1.5">
-                            {timelineTypeIcon(event.type)}
+                            {timelineTypeIcon(event.type, event.status)}
                             {formatDate(event.date)}
                           </span>
                           <span className="truncate pl-2 text-right">{event.label}</span>
@@ -255,7 +262,7 @@ export default function CaseDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-slate-700 bg-[#111827]">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Documents</CardTitle>
             </CardHeader>
@@ -267,64 +274,64 @@ export default function CaseDashboardPage() {
                   <div className="min-w-0 space-y-1">
                     <p className="truncate text-sm font-medium">{doc.title}</p>
                     <div className="flex flex-wrap gap-1">
-                      <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{doc.status}</Badge>
-                      {doc.tags.slice(0, 3).map((tag) => <Badge key={tag} variant="outline" className="h-5 px-1.5 text-[10px]">{tag}</Badge>)}
+                      <Badge variant="secondary" className="h-5 border-slate-600 bg-slate-700 px-1.5 text-[10px] text-slate-100">{doc.status}</Badge>
+                      {doc.tags.slice(0, 3).map((tag) => <Badge key={tag} variant="outline" className="h-5 border-slate-600 px-1.5 text-[10px] text-slate-300">{tag}</Badge>)}
                     </div>
                   </div>
-                  <Link href={`/document/${doc.id}`}><Button size="sm" variant="ghost" className="h-7 px-2">View</Button></Link>
+                  <Link href={`/document/${doc.id}`}><Button size="sm" variant="ghost" className="h-7 px-2 text-slate-200 hover:bg-slate-700/60">View</Button></Link>
                 </div>
               ))}
               <div className="pt-1">
-                <Link href="/upload-document"><Button size="sm" variant="outline" className="h-7">+ Add Document</Button></Link>
+                <Link href="/upload-document"><Button size="sm" variant="outline" className="h-7 border-slate-600 bg-slate-700/30 text-slate-100 hover:bg-slate-700">+ Add Document</Button></Link>
               </div>
             </CardContent>
           </Card>
         </div>
 
         <div className="space-y-3 lg:col-span-2">
-          <Card>
+          <Card className="border-slate-700 bg-[#111827]">
             <CardHeader className="pb-2"><CardTitle className="text-base">Case Health</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current posture</p>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Current posture</p>
                 <p>{sentence(data.caseHealth.currentPosture, "Case posture is still being assessed.")}</p>
               </section>
               <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Urgency</p>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Urgency</p>
                 <Badge variant="outline" className={urgencyBadgeClass(data.caseHealth.urgency)}>
                   {data.caseHealth.urgency}
                 </Badge>
               </section>
               <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Document completeness</p>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Document completeness</p>
                 <Badge variant="outline" className={completenessBadgeClass(data.caseHealth.documentCompleteness)}>
                   {data.caseHealth.documentCompleteness}
                 </Badge>
               </section>
               <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Immediate concern</p>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Immediate concern</p>
                 <p>{sentence(data.caseHealth.immediateConcern, "No immediate concern identified.")}</p>
               </section>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-slate-700 bg-[#111827]">
             <CardHeader className="pb-2"><CardTitle className="text-base">Alerts</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               {data.alerts.length > 0 ? data.alerts.map((alert) => (
-                <div key={alert.id} className="flex items-start gap-2 rounded border px-2 py-1.5">
+                <div key={alert.id} className={`flex items-start gap-2 rounded border border-l-4 px-2 py-1.5 ${alertToneClass(alert.severity)}`}>
                   {alertIcon(alert.kind)}
                   <div className="space-y-1">
                     <p className="font-medium">{alert.title}</p>
                     <p>{alert.message}</p>
-                    <p className="text-xs text-muted-foreground">{alert.impact}</p>
-                    <p className="text-xs text-muted-foreground">Related: {alert.relatedItem}</p>
+                    <p className="text-xs text-slate-300">{alert.impact}</p>
+                    <p className="text-xs text-slate-400">Related: {alert.relatedItem}</p>
                     <p className="text-xs">{alert.recommendedAction}</p>
-                    <Link href={alert.target.href}><Button size="sm" variant="outline" className="h-7">{alert.target.label}</Button></Link>
+                    <Link href={alert.target.href}><Button size="sm" variant="outline" className="h-7 border-slate-500 bg-slate-800/40 text-slate-100 hover:bg-slate-700">{alert.target.label}</Button></Link>
                   </div>
                 </div>
               )) : (
-                <div className="flex items-start gap-2 rounded border px-2 py-1.5 text-muted-foreground">
+                <div className="flex items-start gap-2 rounded border border-slate-600 px-2 py-1.5 text-slate-400">
                   <AlertTriangle className="h-4 w-4" />
                   <p>No alerts require attention right now.</p>
                 </div>
@@ -334,14 +341,14 @@ export default function CaseDashboardPage() {
         </div>
       </div>
 
-      <Card>
+      <Card className="border-slate-700 bg-[#111827]">
         <CardHeader className="pb-2"><CardTitle className="text-base">Ask Atlas</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           <Input placeholder="Ask about this case…" aria-label="Ask about this case" />
           <div className="flex flex-wrap gap-1.5">
             {suggestedPrompts.map((prompt) => (
               <Link key={prompt} href={`/ask?case=${data.case.id}&q=${encodeURIComponent(prompt)}`}>
-                <Button variant="outline" size="sm" className="h-7 text-xs">{prompt}</Button>
+                <Button variant="outline" size="sm" className="h-7 border-slate-600 bg-slate-800/30 text-xs text-slate-100 hover:bg-slate-700">{prompt}</Button>
               </Link>
             ))}
           </div>
@@ -349,7 +356,7 @@ export default function CaseDashboardPage() {
       </Card>
 
       <Collapsible open={expanded} onOpenChange={setExpanded}>
-        <Card>
+        <Card className="border-slate-700 bg-[#111827]">
           <CardHeader className="pb-2">
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="h-8 justify-between px-0 text-base font-semibold">
