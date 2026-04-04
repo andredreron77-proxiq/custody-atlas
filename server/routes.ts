@@ -1688,6 +1688,16 @@ The user is asking what they should do or how to take a specific action. Focus y
     const filePath = req.file?.path;
     const docUserId = (req as any).user?.id as string | undefined;
     const requestedCaseId: string | undefined = req.body?.caseId || undefined;
+    const allowDuplicateUpload = String(req.body?.allowDuplicate ?? "").toLowerCase() === "true";
+    const uploadMimeType = req.file?.mimetype ?? "unknown";
+    const uploadFileName = req.file?.originalname || "document";
+    const conflictDiagnostics = {
+      uploadFileName,
+      uploadMimeType,
+      similarDetectionRan: false,
+      structured409Returned: false,
+      parserFailedBeforeConflictHandling: false,
+    };
     try {
       const hasAI = Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
       const isDocx = req.file?.mimetype === DOCX_MIME;
@@ -1727,11 +1737,47 @@ The user is asking what they should do or how to take a specific action. Focus y
         });
       }
 
+      if (docUserId && req.file && !allowDuplicateUpload) {
+        conflictDiagnostics.similarDetectionRan = true;
+        const similarExisting = findSimilarWorkspaceDocument(
+          await getDocuments(docUserId),
+          uploadFileName,
+        );
+        if (similarExisting) {
+          conflictDiagnostics.structured409Returned = true;
+          console.info("[analyze-document] similar-document conflict intercepted before extraction", {
+            ...conflictDiagnostics,
+            conflictDocumentId: similarExisting.id,
+          });
+          return res.status(409).json({
+            error: "A similar document already exists in your workspace.",
+            details: "Use the existing document, or upload anyway if you need to keep this as a separate copy.",
+            code: "DOCUMENT_SIMILAR_EXISTS",
+            duplicate: {
+              documentId: similarExisting.id,
+              fileName: similarExisting.fileName,
+              analysisStatus: getDocumentIntegrity(similarExisting).analysisStatus,
+            },
+            options: {
+              canUseExisting: true,
+              canUploadAnyway: true,
+              canReplaceExisting: false,
+            },
+            uploadRecorded: false,
+          });
+        }
+      }
+
       const fileBuffer = readFileSync(filePath!);
       let extractedText: string;
       try {
         extractedText = await extractText(fileBuffer, req.file.mimetype);
       } catch (extractErr: any) {
+        conflictDiagnostics.parserFailedBeforeConflictHandling = true;
+        console.warn("[analyze-document] extraction failed", {
+          ...conflictDiagnostics,
+          extractionError: extractErr?.message || "unknown",
+        });
         console.error("Document extraction error:", extractErr);
         return res.status(422).json({
           error: extractErr.message || "Could not extract text from this document. Please ensure the file is readable and not password-protected.",
@@ -1921,7 +1967,6 @@ CRITICAL RULES:
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
         const documentName = req.file.originalname || "document";
-        const allowDuplicateUpload = String(req.body?.allowDuplicate ?? "").toLowerCase() === "true";
         const retentionTier = resolveRetentionTierFromRequest(req);
         const retentionWindow = buildRetentionWindow(retentionTier);
         const sourceFileSha256 = createHash("sha256")
@@ -2088,28 +2133,7 @@ CRITICAL RULES:
       });
     } catch (err: any) {
       if (docUserId && req.file) {
-        const similarExisting = findSimilarWorkspaceDocument(
-          await getDocuments(docUserId),
-          req.file.originalname || "document",
-        );
-        if (similarExisting) {
-          return res.status(409).json({
-            error: "A similar document already exists in your workspace.",
-            details: "Use the existing document, or upload anyway if you need to keep this as a separate copy.",
-            code: "DOCUMENT_SIMILAR_EXISTS",
-            duplicate: {
-              documentId: similarExisting.id,
-              fileName: similarExisting.fileName,
-              analysisStatus: getDocumentIntegrity(similarExisting).analysisStatus,
-            },
-            options: {
-              canUseExisting: true,
-              canUploadAnyway: true,
-              canReplaceExisting: false,
-            },
-            uploadRecorded: false,
-          });
-        }
+        console.error("[analyze-document] unhandled error after conflict pre-check", conflictDiagnostics);
       }
       console.error("Document analysis error:", err);
       return res.status(500).json({

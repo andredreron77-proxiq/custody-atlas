@@ -1405,7 +1405,18 @@ export default function UploadDocumentPage() {
         return;
       }
 
-      const data = await res.json() as AnalyzeDocumentResponse;
+      const rawBody = await res.text();
+      let data = {} as AnalyzeDocumentResponse;
+      if (rawBody.trim().length > 0) {
+        try {
+          data = JSON.parse(rawBody) as AnalyzeDocumentResponse;
+        } catch {
+          data = {
+            error: res.ok ? "Unexpected server response format." : `Server error (${res.status})`,
+            code: res.status === 409 ? "DOCUMENT_SIMILAR_EXISTS" : undefined,
+          } as unknown as AnalyzeDocumentResponse;
+        }
+      }
       if (!res.ok) {
         const apiError = new Error((data as any).error || `Server error (${res.status})`);
         (apiError as any).code = data.code;
