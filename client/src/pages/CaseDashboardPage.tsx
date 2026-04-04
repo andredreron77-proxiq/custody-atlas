@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Lightbulb, Scale, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { apiRequestRaw } from "@/lib/queryClient";
+import { apiRequest, apiRequestRaw, queryClient } from "@/lib/queryClient";
 
 type CaseDashboardPayload = {
   case: {
@@ -47,13 +48,23 @@ type CaseDashboardPayload = {
   };
   alerts: Array<{
     id: string;
-    kind: "missing_document" | "no_recent_activity" | "timeline_gap" | "overdue" | "analysis_missing";
+    kind: "missing_document" | "overdue_event" | "upcoming_deadline" | "conflict_detected" | "incomplete_case";
     title: string;
     message: string;
     impact: string;
     severity: "high" | "medium" | "info";
+    state: "active" | "reviewed" | "resolved" | "dismissed" | "reopened";
     relatedItem: string;
     recommendedAction: string;
+    allowedActions: Array<{ id: string; label: string }>;
+    suggestedResolution?: { confidence: "medium"; prompt: string } | null;
+    resolution?: {
+      resolvedByDocumentId?: string | null;
+      resolvedByEventId?: string | null;
+      resolvedByUserId?: string | null;
+      resolutionMethod?: "document" | "event" | "user" | "inferred" | null;
+      resolutionNote?: string | null;
+    } | null;
     target: { label: string; href: string; section: "timeline" | "document" | "add_document" | "ask_atlas" };
   }>;
 };
@@ -72,9 +83,10 @@ function formatDate(value: string): string {
 
 function alertIcon(kind: CaseDashboardPayload["alerts"][number]["kind"]) {
   if (kind === "missing_document") return <FileWarning className="h-4 w-4 text-[hsl(var(--semantic-amber))]" />;
-  if (kind === "overdue") return <TriangleAlert className="h-4 w-4 text-[hsl(var(--semantic-red))]" />;
-  if (kind === "analysis_missing") return <FileText className="h-4 w-4 text-[hsl(var(--semantic-blue))]" />;
-  if (kind === "timeline_gap") return <Clock3 className="h-4 w-4 text-[hsl(var(--semantic-blue))]" />;
+  if (kind === "overdue_event") return <TriangleAlert className="h-4 w-4 text-[hsl(var(--semantic-red))]" />;
+  if (kind === "upcoming_deadline") return <Clock3 className="h-4 w-4 text-[hsl(var(--semantic-blue))]" />;
+  if (kind === "conflict_detected") return <AlertTriangle className="h-4 w-4 text-[hsl(var(--semantic-red))]" />;
+  if (kind === "incomplete_case") return <FileText className="h-4 w-4 text-[hsl(var(--semantic-blue))]" />;
   return <Info className="h-4 w-4 text-muted-foreground" />;
 }
 
@@ -130,10 +142,19 @@ function alertToneClass(severity: "high" | "medium" | "info"): string {
   return "border-l-[hsl(var(--semantic-blue))] border-[hsl(var(--semantic-blue)/0.4)] bg-[hsl(var(--semantic-blue)/0.1)]";
 }
 
+function alertStateBadgeClass(state: "active" | "reviewed" | "resolved" | "dismissed" | "reopened"): string {
+  if (state === "resolved") return "bg-[hsl(var(--semantic-green)/0.16)] text-[hsl(var(--semantic-green))] border-[hsl(var(--semantic-green)/0.5)]";
+  if (state === "reviewed") return "bg-[hsl(var(--semantic-blue)/0.16)] text-[hsl(var(--semantic-blue))] border-[hsl(var(--semantic-blue)/0.5)]";
+  if (state === "reopened") return "bg-[hsl(var(--semantic-amber)/0.16)] text-[hsl(var(--semantic-amber))] border-[hsl(var(--semantic-amber)/0.5)]";
+  if (state === "dismissed") return "bg-muted text-muted-foreground border-border";
+  return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
+}
+
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const [expanded, setExpanded] = useState(false);
   const [showFullTimeline, setShowFullTimeline] = useState(false);
+  const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
 
   const dashboardQuery = useQuery<CaseDashboardPayload>({
     queryKey: ["/api/cases", caseId, "dashboard"],
@@ -146,6 +167,18 @@ export default function CaseDashboardPage() {
   });
 
   const data = dashboardQuery.data;
+  const alertActionMutation = useMutation({
+    mutationFn: async (payload: { alertId: string; actionId: string; confirmSuggested?: boolean }) => {
+      await apiRequest("POST", `/api/cases/${caseId}/alerts/${payload.alertId}/actions`, {
+        actionId: payload.actionId,
+        confirmSuggested: payload.confirmSuggested ?? false,
+        resolutionNote: resolutionNotes[payload.alertId]?.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/cases", caseId, "dashboard"] });
+    },
+  });
 
   const suggestedPrompts = useMemo(() => [
     "What should I handle next?",
@@ -361,12 +394,60 @@ export default function CaseDashboardPage() {
                 <div key={alert.id} className={`flex items-start gap-2 rounded border border-l-4 px-2 py-1.5 ${alertToneClass(alert.severity)}`}>
                   {alertIcon(alert.kind)}
                   <div className="space-y-1">
-                    <p className="font-medium">{alert.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{alert.title}</p>
+                      <Badge variant="outline" className={alertStateBadgeClass(alert.state)}>{alert.state.replace("_", " ")}</Badge>
+                    </div>
                     <p>{alert.message}</p>
                     <p className="text-xs text-muted-foreground">{alert.impact}</p>
                     <p className="text-xs text-muted-foreground">Related: {alert.relatedItem}</p>
                     <p className="text-xs">{alert.recommendedAction}</p>
-                    <Link href={alert.target.href}><Button size="sm" variant="outline" className="h-7">{alert.target.label}</Button></Link>
+                    {alert.suggestedResolution?.confidence === "medium" ? (
+                      <div className="rounded border border-[hsl(var(--semantic-amber)/0.5)] bg-[hsl(var(--semantic-amber)/0.1)] p-2 text-xs">
+                        <p className="mb-1">{alert.suggestedResolution.prompt}</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          disabled={alertActionMutation.isPending}
+                          onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: "mark_resolved", confirmSuggested: true })}
+                        >
+                          Confirm resolution
+                        </Button>
+                      </div>
+                    ) : null}
+                    <Textarea
+                      placeholder="Optional resolution note…"
+                      value={resolutionNotes[alert.id] ?? ""}
+                      onChange={(event) => setResolutionNotes((prev) => ({ ...prev, [alert.id]: event.target.value }))}
+                      className="min-h-[64px] text-xs"
+                    />
+                    <div className="flex flex-wrap gap-1.5">
+                      {alert.allowedActions.map((action) => (
+                        <Button
+                          key={action.id}
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          disabled={alertActionMutation.isPending}
+                          onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: action.id })}
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                      {alert.state !== "active" && alert.state !== "reopened" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7"
+                          disabled={alertActionMutation.isPending}
+                          onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: "reopen" })}
+                        >
+                          Reopen
+                        </Button>
+                      ) : null}
+                      <Link href={alert.target.href}><Button size="sm" variant="secondary" className="h-7">{alert.target.label}</Button></Link>
+                    </div>
                   </div>
                 </div>
               )) : (

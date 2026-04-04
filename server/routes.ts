@@ -55,6 +55,13 @@ import {
   deleteTimelineEvent,
 } from "./services/timeline";
 import {
+  ALLOWED_ACTIONS,
+  applyAlertAction,
+  reconcileCaseAlerts,
+  type AlertDraft,
+  type AlertType,
+} from "./services/caseAlerts";
+import {
   createCase,
   createCaseWithDiagnostics,
   listCases,
@@ -745,12 +752,7 @@ const TTS_VOICE_MAP: Record<string, string> = {
 };
 const ALLOWED_TTS_VOICES = new Set(Object.keys(TTS_VOICE_MAP));
 
-type DashboardAlertKind =
-  | "missing_document"
-  | "no_recent_activity"
-  | "timeline_gap"
-  | "overdue"
-  | "analysis_missing";
+type DashboardAlertKind = AlertType;
 type DashboardAlertSeverity = "high" | "medium" | "info";
 type DashboardStageKey =
   | "approaching_hearing"
@@ -3522,13 +3524,13 @@ Do not add facts not present in the provided evidence.`,
       const conflictingTimelineEvents = hasConflictingTimelineEvents(primaryTimeline);
       const activityTimestamps = [
         ...documents.map((doc) => Date.parse(doc.createdAt)),
-        ...actions.map((action) => Date.parse(action.createdAt)),
+        ...actions.map((action) => Date.parse(String(action.createdAt))),
       ].filter((value) => Number.isFinite(value));
       const lastActivityTimestamp = activityTimestamps.length > 0 ? Math.max(...activityTimestamps) : null;
       const daysSinceLastActivity = lastActivityTimestamp !== null
         ? Math.floor((now - lastActivityTimestamp) / (1000 * 60 * 60 * 24))
         : null;
-      const { riskScore, riskLevel } = computeCaseRiskScore({
+      const { riskScore: baseRiskScore, riskLevel: baseRiskLevel } = computeCaseRiskScore({
         hasOverdueItems: overdueEvents.length > 0,
         upcomingHearingDays,
         upcomingDeadlineDays,
@@ -3536,6 +3538,8 @@ Do not add facts not present in the provided evidence.`,
         hasConflictingTimelineEvents: conflictingTimelineEvents,
         daysSinceLastActivity,
       });
+      const riskScore = baseRiskScore;
+      const riskLevel = baseRiskLevel;
 
       const urgency: "Low" | "Medium" | "High" = (() => {
         if (overdueEvents.length > 0) return "High";
@@ -3584,84 +3588,117 @@ Do not add facts not present in the provided evidence.`,
         return facts.slice(0, 3);
       }).slice(0, 8);
 
-      const alerts: Array<{
-        id: string;
-        kind: DashboardAlertKind;
-        title: string;
-        message: string;
-        impact: string;
-        severity: DashboardAlertSeverity;
-        relatedItem: string;
-        recommendedAction: string;
-        target: { label: string; href: string; section: "timeline" | "document" | "add_document" | "ask_atlas" };
-      }> = [];
-      if (documents.length === 0) {
-        alerts.push({
-          id: "missing-document",
-          kind: "missing_document",
-          title: "Add foundational case documents",
-          message: "No case filings are on file, so deadlines and hearing context are incomplete.",
+      const upcomingDeadlineEvent = upcomingEvents.find((event) => event.normalizedType === "deadline" || event.normalizedType === "hearing");
+      const alertDrafts: AlertDraft[] = [
+        {
+          alertKey: "missing_document",
+          type: "missing_document",
+          title: "Missing document coverage",
+          message: documents.length === 0
+            ? "No case filings are on file, so deadlines and hearing context are incomplete."
+            : "Some key filing coverage appears incomplete for this case.",
           impact: alertImpactWhyThisMatters("missing_document"),
-          severity: "high",
+          severity: documents.length === 0 ? "high" : "medium",
           relatedItem: "Case document set",
-          recommendedAction: "Upload your most recent petition, order, or notice of hearing.",
+          recommendedAction: "Upload or link the latest petition, order, or hearing notice.",
           target: { label: "Add document", href: `/upload-document?case=${caseId}`, section: "add_document" },
-        });
-      }
-      if (primaryTimeline.length < 2) {
-        alerts.push({
-          id: "timeline-gap",
-          kind: "timeline_gap",
-          title: "Timeline may be missing key dates",
-          message: "Only a few dated events are listed, which can hide upcoming obligations.",
-          impact: alertImpactWhyThisMatters("timeline_gap"),
-          severity: "medium",
-          relatedItem: "Case timeline coverage",
-          recommendedAction: "Review the timeline and add missing hearing, filing, or deadline dates.",
-          target: { label: "Open timeline", href: `/cases/${caseId}/dashboard#timeline`, section: "timeline" },
-        });
-      }
-      if (overdueEvents.length > 0) {
-        const overdue = overdueEvents[0];
-        alerts.push({
-          id: "overdue",
-          kind: "overdue",
-          title: "Past-due court item",
-          message: `${overdue.normalizedLabel} dated ${overdue.dateRaw} requires immediate review.`,
-          impact: alertImpactWhyThisMatters("overdue"),
+          shouldBeActive: documents.length === 0 || missingKeyDocs.length > 0,
+          autoResolveHighConfidence: (documents.length > 0 && missingKeyDocs.length === 0)
+            ? { method: "document", note: "Core filing coverage detected after document upload." }
+            : null,
+          suggestedResolution: (documents.length > 0 && missingKeyDocs.length > 0)
+            ? { confidence: "medium", prompt: "This may resolve your alert. Confirm?", method: "document" }
+            : null,
+        },
+        {
+          alertKey: "overdue_event",
+          type: "overdue_event",
+          title: "Overdue event needs outcome",
+          message: overdueEvents[0]
+            ? `${overdueEvents[0].normalizedLabel} dated ${overdueEvents[0].dateRaw} requires immediate review.`
+            : "No overdue event detected.",
+          impact: alertImpactWhyThisMatters("overdue_event"),
           severity: "high",
-          relatedItem: `${overdue.normalizedLabel} (${overdue.dateRaw})`,
-          recommendedAction: "Confirm whether this item was completed or if a late filing/update is needed.",
-          target: { label: "Review timeline item", href: `/cases/${caseId}/dashboard#timeline`, section: "timeline" },
-        });
-      }
-      if (missingSummaryDocs.length > 0) {
-        const doc = missingSummaryDocs[0];
-        alerts.push({
-          id: "analysis-missing",
-          kind: "analysis_missing",
-          title: "Document needs analysis",
-          message: `${doc.fileName} is on file but not fully analyzed yet.`,
-          impact: alertImpactWhyThisMatters("analysis_missing"),
+          relatedItem: overdueEvents[0] ? `${overdueEvents[0].normalizedLabel} (${overdueEvents[0].dateRaw})` : "Timeline",
+          recommendedAction: "Add a timeline outcome or upload the related filing.",
+          target: { label: "Review timeline", href: `/cases/${caseId}/dashboard#timeline`, section: "timeline" },
+          shouldBeActive: overdueEvents.length > 0,
+          autoResolveHighConfidence: overdueEvents.length === 0 ? { method: "event", note: "No overdue events remain in the timeline." } : null,
+        },
+        {
+          alertKey: "upcoming_deadline",
+          type: "upcoming_deadline",
+          title: "Upcoming deadline approaching",
+          message: upcomingDeadlineEvent
+            ? `${upcomingDeadlineEvent.normalizedLabel} on ${upcomingDeadlineEvent.dateRaw} is approaching.`
+            : "No imminent deadline detected.",
+          impact: alertImpactWhyThisMatters("upcoming_deadline"),
           severity: "medium",
-          relatedItem: doc.fileName,
-          recommendedAction: "Open the document detail and verify extracted dates and obligations.",
-          target: { label: "Open related document", href: `/document/${doc.id}`, section: "document" },
-        });
-      }
-      if (openActions.length === 0 && primaryTimeline.length === 0) {
-        alerts.push({
-          id: "no-activity",
-          kind: "no_recent_activity",
-          title: "Ask Atlas to map next steps",
-          message: "Case activity is limited, so priorities are not yet clear.",
-          impact: alertImpactWhyThisMatters("no_recent_activity"),
-          severity: "info",
-          relatedItem: "Case strategy guidance",
-          recommendedAction: "Ask Atlas what to upload or verify next to improve case visibility.",
+          relatedItem: upcomingDeadlineEvent ? `${upcomingDeadlineEvent.normalizedLabel} (${upcomingDeadlineEvent.dateRaw})` : "Timeline",
+          recommendedAction: "Upload the filing package or add a submission event.",
+          target: { label: "Open timeline", href: `/cases/${caseId}/dashboard#timeline`, section: "timeline" },
+          shouldBeActive: nextCriticalDaysAway !== null && nextCriticalDaysAway <= 30,
+        },
+        {
+          alertKey: "conflict_detected",
+          type: "conflict_detected",
+          title: "Conflicting case data detected",
+          message: conflictingTimelineEvents
+            ? "Timeline events appear to conflict and should be reconciled."
+            : "No active conflicts detected.",
+          impact: alertImpactWhyThisMatters("conflict_detected"),
+          severity: "high",
+          relatedItem: "Timeline consistency",
+          recommendedAction: "Select the correct event or upload the latest notice.",
+          target: { label: "Review timeline", href: `/cases/${caseId}/dashboard#timeline`, section: "timeline" },
+          shouldBeActive: conflictingTimelineEvents,
+          autoResolveHighConfidence: !conflictingTimelineEvents ? { method: "inferred", note: "Conflicting timeline signals are no longer present." } : null,
+        },
+        {
+          alertKey: "incomplete_case",
+          type: "incomplete_case",
+          title: "Case profile is incomplete",
+          message: "Case record still needs stronger timeline/document coverage for reliable tracking.",
+          impact: alertImpactWhyThisMatters("incomplete_case"),
+          severity: "medium",
+          relatedItem: "Case readiness",
+          recommendedAction: "Upload missing documents or ask Atlas for next best evidence.",
           target: { label: "Ask Atlas", href: `/ask?case=${caseId}`, section: "ask_atlas" },
-        });
+          shouldBeActive: documents.length < 2 || primaryTimeline.length < 2 || missingSummaryDocs.length > 0,
+          autoResolveHighConfidence: (documents.length >= 2 && primaryTimeline.length >= 2 && missingSummaryDocs.length === 0)
+            ? { method: "inferred", note: "Case coverage appears complete based on current records." }
+            : null,
+          suggestedResolution: (documents.length >= 1 && primaryTimeline.length >= 1 && (documents.length < 2 || primaryTimeline.length < 2))
+            ? { confidence: "medium", prompt: "This may resolve your alert. Confirm?", method: "inferred" }
+            : null,
+        },
+      ];
+
+      const reconciled = await reconcileCaseAlerts(caseId, user.id, alertDrafts);
+      for (const transition of reconciled.transitions) {
+        if (transition.to === "resolved") {
+          await createTimelineEventIfNotRecentDuplicate(user.id, {
+            eventDate: new Date().toISOString().slice(0, 10),
+            description: `Alert resolved: ${transition.alert.title}`,
+          });
+        }
+        if (transition.to === "reviewed") {
+          await createTimelineEventIfNotRecentDuplicate(user.id, {
+            eventDate: new Date().toISOString().slice(0, 10),
+            description: `Alert reviewed: ${transition.alert.title}`,
+          });
+        }
       }
+
+      const lifecycleAlerts = reconciled.alerts.filter((alert) => alert.state !== "dismissed");
+      const activeLifecycleCount = lifecycleAlerts.filter((alert) => alert.state === "active" || alert.state === "reopened").length;
+      const finalRiskScore = Math.min(100, riskScore + (activeLifecycleCount * 7));
+      const finalRiskLevel = finalRiskScore >= 80 ? "High" : finalRiskScore >= 60 ? "Elevated" : finalRiskScore >= 35 ? "Moderate" : "Low";
+      const finalUrgency: "Low" | "Medium" | "High" = activeLifecycleCount >= 2
+        ? "High"
+        : activeLifecycleCount > 0 && urgency === "Low"
+          ? "Medium"
+          : urgency;
 
       return res.json({
         case: {
@@ -3677,7 +3714,12 @@ Do not add facts not present in the provided evidence.`,
           stageKey: stage.key,
           nextKeyItems,
           watchouts: watchouts.slice(0, 2),
-          suggestedFocus: normalizeDashboardText(suggestedFocus, "Focus on the next filing-critical item."),
+          suggestedFocus: normalizeDashboardText(
+            activeLifecycleCount > 0
+              ? `${suggestedFocus} Resolve active alerts to improve case health clarity.`
+              : suggestedFocus,
+            "Focus on the next filing-critical item.",
+          ),
         },
         timeline: primaryTimeline.map((event) => ({
           id: event.id,
@@ -3708,9 +3750,9 @@ Do not add facts not present in the provided evidence.`,
         })),
         caseHealth: {
           currentPosture: postureByStage[stage.key],
-          urgency,
-          riskScore,
-          riskLevel,
+          urgency: finalUrgency,
+          riskScore: finalRiskScore,
+          riskLevel: finalRiskLevel,
           documentCompleteness,
           immediateConcern,
         },
@@ -3726,11 +3768,94 @@ Do not add facts not present in the provided evidence.`,
             `Documents requiring analysis attention: ${missingSummaryDocs.length}.`,
           ],
         },
-        alerts,
+        alerts: lifecycleAlerts.map((alert) => ({
+          id: alert.id,
+          kind: alert.type,
+          title: alert.title,
+          message: alert.message,
+          impact: alert.impact,
+          severity: alert.severity,
+          relatedItem: alert.relatedItem,
+          recommendedAction: alert.recommendedAction,
+          target: alert.target,
+          state: alert.state,
+          allowedActions: ALLOWED_ACTIONS[alert.type],
+          suggestedResolution: alert.suggestedResolution,
+          resolution: {
+            resolvedByDocumentId: alert.resolvedByDocumentId,
+            resolvedByEventId: alert.resolvedByEventId,
+            resolvedByUserId: alert.resolvedByUserId,
+            resolutionMethod: alert.resolutionMethod,
+            resolutionNote: alert.resolutionNote,
+          },
+        })),
       });
     } catch (err) {
       console.error("[cases] GET dashboard error:", err);
       return res.status(500).json({ error: "Failed to load case dashboard." });
+    }
+  });
+
+  app.get("/api/cases/:caseId/alerts", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+      const { alerts } = await reconcileCaseAlerts(caseId, user.id, []);
+      return res.json({ alerts });
+    } catch (err) {
+      console.error("[cases] GET alerts error:", err);
+      return res.status(500).json({ error: "Failed to load case alerts." });
+    }
+  });
+
+  app.post("/api/cases/:caseId/alerts/:alertId/actions", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId, alertId } = req.params;
+    const schema = z.object({
+      actionId: z.string(),
+      resolutionNote: z.string().max(1000).optional(),
+      documentId: z.string().uuid().optional(),
+      eventId: z.string().optional(),
+      confirmSuggested: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid alert action payload." });
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+      const result = await applyAlertAction({
+        caseId,
+        userId: user.id,
+        alertId,
+        actionId: parsed.data.actionId as any,
+        resolutionNote: parsed.data.resolutionNote,
+        documentId: parsed.data.documentId,
+        eventId: parsed.data.eventId,
+        confirmSuggested: parsed.data.confirmSuggested,
+      });
+      if (!result) return res.status(404).json({ error: "Alert not found or action not allowed." });
+
+      if (result.before.state !== result.after.state) {
+        if (result.after.state === "resolved") {
+          await createTimelineEventIfNotRecentDuplicate(user.id, {
+            eventDate: new Date().toISOString().slice(0, 10),
+            description: `Alert resolved: ${result.after.title}`,
+          });
+        }
+        if (result.after.state === "reviewed") {
+          await createTimelineEventIfNotRecentDuplicate(user.id, {
+            eventDate: new Date().toISOString().slice(0, 10),
+            description: `Alert reviewed: ${result.after.title}`,
+          });
+        }
+      }
+
+      return res.json({ alert: result.after });
+    } catch (err) {
+      console.error("[cases] POST alert action error:", err);
+      return res.status(500).json({ error: "Failed to update alert." });
     }
   });
 

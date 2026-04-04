@@ -1,6 +1,11 @@
 export type InterpretableEventType = "hearing" | "filing" | "deadline" | "order" | "mediation" | "allegation" | "context";
 
-export type InterpretableAlertKind = "missing_document" | "no_recent_activity" | "timeline_gap" | "overdue" | "analysis_missing";
+export type InterpretableAlertKind =
+  | "missing_document"
+  | "overdue_event"
+  | "upcoming_deadline"
+  | "conflict_detected"
+  | "incomplete_case";
 
 function normalized(input: string): string {
   return input.trim().toLowerCase();
@@ -36,8 +41,8 @@ export function eventWhyThisMatters(type: InterpretableEventType, label: string)
  */
 export function alertImpactWhyThisMatters(kind: InterpretableAlertKind): string {
   if (kind === "missing_document") return "Missing core filings can limit visibility into deadlines and hearing context.";
-  if (kind === "timeline_gap") return "Timeline gaps can hide upcoming obligations or unresolved milestones.";
-  if (kind === "overdue") return "Missed or unclear outcomes can slow progress and create follow-up risk.";
-  if (kind === "analysis_missing") return "Unanalyzed documents may contain dates or obligations that are easy to miss.";
-  return "Limited activity can make near-term priorities harder to confirm.";
+  if (kind === "overdue_event") return "Missed or unclear outcomes can slow progress and create follow-up risk.";
+  if (kind === "upcoming_deadline") return "Near-term deadlines need preparation to avoid avoidable risk.";
+  if (kind === "conflict_detected") return "Conflicting timeline signals can misdirect priorities until clarified.";
+  return "Incomplete case coverage can hide risk and reduce planning accuracy.";
 }
