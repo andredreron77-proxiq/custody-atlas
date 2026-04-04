@@ -764,6 +764,12 @@ const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
   "camera-scan": "Camera Scan",
 };
 
+function getSourceTypeLabel(sourceType: SourceType, pages: File[]): string {
+  const isDocxUpload = pages.length === 1 && pages[0]?.type === DOCX_MIME;
+  if (isDocxUpload) return "Word Document";
+  return SOURCE_TYPE_LABELS[sourceType];
+}
+
 function PagesReviewView({
   pages,
   previews,
@@ -805,6 +811,7 @@ function PagesReviewView({
 }) {
   const canAddMore = !isPDF && pages.length < MAX_PAGES && !hasResult;
   const isDocx = pages.length === 1 && pages[0].type === DOCX_MIME;
+  const sourceTypeLabel = getSourceTypeLabel(sourceType, pages);
 
   return (
     <div className="space-y-4" data-testid="pages-review">
@@ -818,7 +825,7 @@ function PagesReviewView({
               : `${pages.length} page${pages.length !== 1 ? "s" : ""} ready`}
           </p>
           <Badge variant="secondary" className="text-xs font-normal" data-testid="text-source-type">
-            {SOURCE_TYPE_LABELS[sourceType]}
+            {sourceTypeLabel}
           </Badge>
         </div>
         <button

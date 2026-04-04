@@ -722,14 +722,36 @@ const upload = multer({
   dest: UPLOADS_DIR,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
-    if (allowed.includes(file.mimetype)) {
+    if (SUPPORTED_MIME_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("Unsupported file type. Please upload a PDF, JPG, or PNG."));
+      cb(new Error("Unsupported file type. Please upload a PDF, Word document (.docx), JPG, or PNG."));
     }
   },
 });
+
+const analyzeUploadMiddleware = (req: any, res: any, next: any) => {
+  upload.single("file")(req, res, (err?: any) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        error: "File is too large. Maximum size is 10MB.",
+        code: "DOCUMENT_ANALYSIS_PRECONDITION_FAILED",
+      });
+    }
+
+    const message =
+      typeof err?.message === "string" && err.message.trim().length > 0
+        ? err.message
+        : "Unsupported file type. Please upload a PDF, Word document (.docx), JPG, or PNG.";
+
+    return res.status(400).json({
+      error: message,
+      code: "DOCUMENT_ANALYSIS_PRECONDITION_FAILED",
+    });
+  });
+};
 
 function resolveRetentionTierFromRequest(req: any): "free" | "pro" | "attorney_firm" {
   const tier = String(req?.user?.tier ?? "free").toLowerCase();
@@ -1631,7 +1653,7 @@ The user is asking what they should do or how to take a specific action. Focus y
     }
   });
 
-  app.post("/api/analyze-document", requireAuth, checkDocumentLimit, upload.single("file"), async (req, res) => {
+  app.post("/api/analyze-document", requireAuth, checkDocumentLimit, analyzeUploadMiddleware, async (req, res) => {
     const filePath = req.file?.path;
     try {
       const hasAI = Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
