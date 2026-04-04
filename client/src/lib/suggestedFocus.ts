@@ -26,7 +26,6 @@ export type FocusTimelineItem = {
 };
 
 export type FocusEngineInput = {
-  caseStageId?: "intake" | "organizing" | "pre_hearing" | "hearing_imminent" | "awaiting_outcome" | "order_entered" | "follow_up";
   alerts: FocusAlert[];
   riskScore: number;
   immediateConcern?: string;
@@ -110,26 +109,6 @@ export function generateSuggestedFocus(input: FocusEngineInput): SuggestedFocusI
     return mapAlertToFocus(activeHighAlerts[0]);
   }
 
-  if (input.caseStageId === "hearing_imminent") {
-    return {
-      title: "Finalize hearing readiness",
-      description: "Hearing preparation is active. Confirm exhibits, notes, and timeline accuracy.",
-      actionType: "navigate",
-      actionTarget: "timeline",
-      priority: "high",
-    };
-  }
-
-  if (input.caseStageId === "awaiting_outcome") {
-    return {
-      title: "Capture recent hearing outcome",
-      description: "Document recent court activity and watch for newly entered orders.",
-      actionType: "create_event",
-      actionTarget: "timeline",
-      priority: "high",
-    };
-  }
-
   if (input.riskScore >= 70) {
     const factor = normalizeRiskFactor(input.immediateConcern);
     return {
@@ -158,16 +137,6 @@ export function generateSuggestedFocus(input: FocusEngineInput): SuggestedFocusI
       description: "Your document set is incomplete. Upload missing records to strengthen your position.",
       actionType: "upload",
       actionTarget: "documents",
-      priority: "medium",
-    };
-  }
-
-  if (input.caseStageId === "order_entered" || input.caseStageId === "follow_up") {
-    return {
-      title: "Track follow-up obligations",
-      description: "Review order-related obligations and upcoming milestones to keep the case current.",
-      actionType: "navigate",
-      actionTarget: "timeline",
       priority: "medium",
     };
   }
