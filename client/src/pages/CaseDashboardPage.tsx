@@ -241,6 +241,10 @@ export default function CaseDashboardPage() {
       return;
     }
     if (suggestedFocus.actionType === "review_alert") {
+      if (suggestedFocus.actionTarget === "overdue_item") {
+        document.getElementById("timeline")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const node = alertRefs.current[suggestedFocus.actionTarget];
       if (node) {
         node.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -255,6 +259,7 @@ export default function CaseDashboardPage() {
     if (suggestedFocus.actionType === "upload") return "Upload document";
     if (suggestedFocus.actionType === "create_event") return "Create event";
     if (suggestedFocus.actionType === "ask_atlas") return "Ask Atlas";
+    if (suggestedFocus.actionTarget === "overdue_item") return "Review overdue item";
     return "Review alert";
   }, [suggestedFocus]);
 
