@@ -25,6 +25,8 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const [draft, setDraft] = useState(() => firstNameFromDisplayName(user?.displayName));
+  const [dismissed, setDismissed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!draft && user?.displayName) {
@@ -33,8 +35,8 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   }, [draft, user?.displayName]);
 
   const needsPrompt = useMemo(
-    () => Boolean(user) && !isLoading && shouldPrompt(profile?.displayName),
-    [user, isLoading, profile?.displayName],
+    () => Boolean(user) && !isLoading && !dismissed && shouldPrompt(profile?.displayName),
+    [user, isLoading, dismissed, profile?.displayName],
   );
 
   const saveMutation = useMutation({
@@ -45,14 +47,43 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
         throw new Error(body.error ?? "Could not save your name.");
       }
     },
+    onMutate: () => {
+      setErrorMessage(null);
+    },
     onSuccess: async () => {
+      setDismissed(true);
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(DISPLAY_NAME_SKIP_SESSION_KEY);
       }
       navigate("/workspace", { replace: true });
     },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Could not save your name.";
+      console.error("[DisplayNamePromptGate] Failed to save display name:", message, error);
+      setErrorMessage(message);
+    },
   });
+
+  const handleSkip = async () => {
+    setErrorMessage(null);
+    setDismissed(true);
+
+    try {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(DISPLAY_NAME_SKIP_SESSION_KEY, "1");
+      }
+      skipDisplayNamePromptForAWhile();
+      await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
+      navigate("/workspace", { replace: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not complete onboarding.";
+      console.error("[DisplayNamePromptGate] Failed to skip display name prompt:", message, error);
+      setErrorMessage(message);
+      // Keep users unblocked even if persistence fails.
+      navigate("/workspace", { replace: true });
+    }
+  };
 
   if (user && isLoading) {
     return (
@@ -84,11 +115,7 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => {
-              window.sessionStorage.setItem(DISPLAY_NAME_SKIP_SESSION_KEY, "1");
-              skipDisplayNamePromptForAWhile();
-              navigate("/workspace", { replace: true });
-            }}
+            onClick={handleSkip}
             data-testid="button-skip-display-name"
           >
             Skip for now
@@ -102,6 +129,11 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
             Continue
           </Button>
         </div>
+        {errorMessage ? (
+          <p className="mt-3 text-sm text-red-600" role="alert" data-testid="display-name-error">
+            {errorMessage}
+          </p>
+        ) : null}
       </div>
     </div>
   );
