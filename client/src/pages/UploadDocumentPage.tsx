@@ -43,6 +43,18 @@ interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
     isDuplicate: boolean;
     message: string | null;
   };
+  code?: string;
+  duplicate?: {
+    documentId: string;
+    fileName: string;
+    analysisStatus?: "uploaded" | "analyzing" | "analyzed" | "failed";
+  };
+  options?: {
+    canUseExisting: boolean;
+    canUploadAnyway: boolean;
+    canReplaceExisting: boolean;
+  };
+  uploadRecorded?: boolean;
 }
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -1069,6 +1081,7 @@ export default function UploadDocumentPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [similarDocConflict, setSimilarDocConflict] = useState<AnalyzeDocumentResponse["duplicate"] | null>(null);
   const [docLimitReached, setDocLimitReached] = useState(false);
   // Stored after a successful analysis — used for re-analysis without creating a duplicate record
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -1295,6 +1308,7 @@ export default function UploadDocumentPage() {
     setSourceType("images");
     setResult(null);
     setError(null);
+    setSimilarDocConflict(null);
     setDocumentId(null);
     setCaseAssignment(null);
     setPendingCaseSelection("unassigned");
@@ -1341,7 +1355,7 @@ export default function UploadDocumentPage() {
 
   /* ── Analysis ────────────────────────────────────────────────────────── */
 
-  const analyzeDocument = async () => {
+  const analyzeDocument = async (forceUploadDuplicate = false) => {
     if (pages.length === 0) {
       setError("Please add at least one page before analyzing.");
       return;
@@ -1349,6 +1363,7 @@ export default function UploadDocumentPage() {
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
+    setSimilarDocConflict(null);
 
     try {
       let fileToSubmit: File;
@@ -1372,6 +1387,7 @@ export default function UploadDocumentPage() {
       // If a case is active (via ?case= URL param), tie this document to it
       // so extracted facts are upserted into case_facts automatically.
       if (activeCaseId) formData.append("caseId", activeCaseId);
+      if (forceUploadDuplicate) formData.append("allowDuplicate", "true");
 
       const headers: Record<string, string> = {};
       const token = getAccessToken();
@@ -1391,7 +1407,10 @@ export default function UploadDocumentPage() {
 
       const data = await res.json() as AnalyzeDocumentResponse;
       if (!res.ok) {
-        throw new Error((data as any).error || `Server error (${res.status})`);
+        const apiError = new Error((data as any).error || `Server error (${res.status})`);
+        (apiError as any).code = data.code;
+        (apiError as any).duplicate = data.duplicate;
+        throw apiError;
       }
 
       setResult(data as DocumentAnalysisResult);
@@ -1407,9 +1426,16 @@ export default function UploadDocumentPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
     } catch (err: any) {
-      const message = err?.message || "Failed to analyze document. Please try again.";
-      setError(message);
-      toast({ title: "Analysis Failed", description: message, variant: "destructive" });
+      if (err?.code === "DOCUMENT_SIMILAR_EXISTS") {
+        const message = "A similar document already exists in your workspace. No new upload row was created.";
+        setSimilarDocConflict(err?.duplicate ?? null);
+        setError(message);
+        toast({ title: "Similar document found", description: message });
+      } else {
+        const message = err?.message || "Failed to analyze document. Please try again.";
+        setError(message);
+        toast({ title: "Analysis Failed", description: message, variant: "destructive" });
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -1636,6 +1662,25 @@ export default function UploadDocumentPage() {
             >
               <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
               <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+          {similarDocConflict && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-3 space-y-2" data-testid="card-similar-document">
+              <p className="text-sm font-medium text-foreground">A similar document already exists in your workspace.</p>
+              <p className="text-xs text-muted-foreground">
+                Existing document: <span className="font-medium text-foreground">{similarDocConflict.fileName}</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => window.location.assign(`/document/${similarDocConflict.documentId}`)}>
+                  Use existing document
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => analyzeDocument(true)}>
+                  Upload anyway
+                </Button>
+                <Button size="sm" variant="ghost" disabled>
+                  Replace existing (not supported)
+                </Button>
+              </div>
             </div>
           )}
 

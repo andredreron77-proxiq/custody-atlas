@@ -152,6 +152,37 @@ function hasOverlap(a: unknown, b: unknown): boolean {
   return left.includes(right) || right.includes(left);
 }
 
+function normalizeFileNameStem(name: string): string {
+  return name
+    .replace(/\.[^.]+$/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function findSimilarWorkspaceDocument(
+  docs: SavedDocument[],
+  uploadFileName: string,
+): SavedDocument | null {
+  const stem = normalizeFileNameStem(uploadFileName);
+  if (!stem) return null;
+
+  const scored = docs
+    .map((doc) => {
+      const candidate = normalizeFileNameStem(doc.fileName);
+      const exact = candidate === stem;
+      const overlap = Boolean(candidate) && (candidate.includes(stem) || stem.includes(candidate));
+      const status = getDocumentIntegrity(doc).analysisStatus;
+      const analyzedWeight = status === "analyzed" ? 2 : 1;
+      const score = (exact ? 4 : overlap ? 2 : 0) + analyzedWeight;
+      return { doc, score };
+    })
+    .filter((entry) => entry.score >= 3)
+    .sort((a, b) => b.score - a.score || (a.doc.createdAt < b.doc.createdAt ? 1 : -1));
+
+  return scored[0]?.doc ?? null;
+}
+
 function buildRetroactiveDocReviewItem(
   doc: SavedDocument,
   createdCase: { id: string; title: string; description: string | null; jurisdictionState: string | null },
@@ -1655,6 +1686,8 @@ The user is asking what they should do or how to take a specific action. Focus y
 
   app.post("/api/analyze-document", requireAuth, checkDocumentLimit, analyzeUploadMiddleware, async (req, res) => {
     const filePath = req.file?.path;
+    const docUserId = (req as any).user?.id as string | undefined;
+    const requestedCaseId: string | undefined = req.body?.caseId || undefined;
     try {
       const hasAI = Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
       const isDocx = req.file?.mimetype === DOCX_MIME;
@@ -1800,8 +1833,6 @@ CRITICAL RULES:
       }
 
       // Save document + optionally populate case_facts if a caseId was provided.
-      const docUserId = (req as any).user?.id as string | undefined;
-      const requestedCaseId: string | undefined = req.body?.caseId || undefined;
       let docCaseId: string | undefined = requestedCaseId;
       let assignmentDecision: {
         status: "assigned" | "suggested" | "unassigned";
@@ -1890,6 +1921,7 @@ CRITICAL RULES:
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
         const documentName = req.file.originalname || "document";
+        const allowDuplicateUpload = String(req.body?.allowDuplicate ?? "").toLowerCase() === "true";
         const retentionTier = resolveRetentionTierFromRequest(req);
         const retentionWindow = buildRetentionWindow(retentionTier);
         const sourceFileSha256 = createHash("sha256")
@@ -1911,9 +1943,11 @@ CRITICAL RULES:
         };
 
         // Await the save so we can return the document ID and use it for case_facts population.
-        const duplicateDoc = await findDuplicateDocument(docUserId, {
-          fileHash: sourceFileSha256,
-        });
+        const duplicateDoc = allowDuplicateUpload
+          ? null
+          : await findDuplicateDocument(docUserId, {
+            fileHash: sourceFileSha256,
+          });
 
         const savedDoc = duplicateDoc ?? await saveDocument(docUserId, {
           fileName: documentName,
@@ -2053,36 +2087,36 @@ CRITICAL RULES:
         },
       });
     } catch (err: any) {
-      const docUserId = (req as any).user?.id as string | undefined;
-      const docCaseId: string | undefined = req.body?.caseId || undefined;
       if (docUserId && req.file) {
-        const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
-        const retentionTier = resolveRetentionTierFromRequest(req);
-        const retentionWindow = buildRetentionWindow(retentionTier);
-        await saveDocument(docUserId, {
-          fileName: req.file.originalname || "document",
-          storagePath: null,
-          caseId: docCaseId ?? null,
-          sourceFileSha256: null,
-          retentionTier,
-          originalExpiresAt: retentionWindow.originalExpiresAt,
-          intelligenceExpiresAt: retentionWindow.intelligenceExpiresAt,
-          lifecycleState: "active",
-          mimeType: req.file.mimetype,
-          pageCount,
-          analysisJson: {
-            analysis_status: "failed",
-            error: getSafeErrorMessage(err, "Document analysis failed"),
-          },
-          extractedText: "",
-          docType: "other",
-        }).catch(() => null);
+        const similarExisting = findSimilarWorkspaceDocument(
+          await getDocuments(docUserId),
+          req.file.originalname || "document",
+        );
+        if (similarExisting) {
+          return res.status(409).json({
+            error: "A similar document already exists in your workspace.",
+            details: "Use the existing document, or upload anyway if you need to keep this as a separate copy.",
+            code: "DOCUMENT_SIMILAR_EXISTS",
+            duplicate: {
+              documentId: similarExisting.id,
+              fileName: similarExisting.fileName,
+              analysisStatus: getDocumentIntegrity(similarExisting).analysisStatus,
+            },
+            options: {
+              canUseExisting: true,
+              canUploadAnyway: true,
+              canReplaceExisting: false,
+            },
+            uploadRecorded: false,
+          });
+        }
       }
       console.error("Document analysis error:", err);
       return res.status(500).json({
         error: "We couldn't analyze that document right now. Please try again.",
         details: getSafeErrorMessage(err, "Failed to analyze document. Please try again."),
         code: "DOCUMENT_ANALYSIS_FAILED",
+        uploadRecorded: false,
       });
     } finally {
       if (filePath) {
