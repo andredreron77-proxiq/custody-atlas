@@ -46,6 +46,7 @@ import {
   fetchDocumentDetail,
   type DocumentDetail,
   type DocumentMissingAnalysisError,
+  type DocumentSupersededError,
 } from "@/lib/documentDetailApi";
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
@@ -663,7 +664,9 @@ function DocumentNotFoundState({ documentId }: { documentId: string }) {
 
 export default function DocumentDetailPage() {
   const { documentId } = useParams<{ documentId: string }>();
+  const [, navigate] = useLocation();
   const [missingAnalysis, setMissingAnalysis] = useState<DocumentMissingAnalysisError | null>(null);
+  const [superseded, setSuperseded] = useState<DocumentSupersededError | null>(null);
 
   const { data: doc, isLoading, isError } = useQuery<DocumentDetail>({
     queryKey: ["/api/documents", documentId],
@@ -674,10 +677,15 @@ export default function DocumentDetailPage() {
         routeDocumentId: documentId,
         responseDocumentId: result.document?.id,
         code: result.missingAnalysis?.code,
+        supersededCode: result.superseded?.code,
       });
       if (result.missingAnalysis) {
         setMissingAnalysis(result.missingAnalysis);
         throw new Error("Document analysis unavailable");
+      }
+      if (result.superseded) {
+        setSuperseded(result.superseded);
+        throw new Error("Document has been superseded");
       }
       return result.document;
     },
@@ -695,6 +703,37 @@ export default function DocumentDetailPage() {
   /* ── Error state — document not found or inaccessible ── */
   if (missingAnalysis?.code === "DOCUMENT_ANALYSIS_MISSING") {
     return <DocumentNotFoundState documentId={documentId ?? ""} />;
+  }
+  if (superseded?.code === "DOCUMENT_SUPERSEDED") {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-5">
+        <AlertCircle className="w-10 h-10 text-muted-foreground/40 mx-auto" />
+        <div className="space-y-1.5">
+          <p className="text-sm font-semibold">This document was merged into another record</p>
+          <p className="text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
+            We removed this duplicate from normal workspace views. Continue with the canonical document instead.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          {superseded.canonicalDocument?.id ? (
+            <Link href={`/document/${superseded.canonicalDocument.id}`}>
+              <Button variant="default" size="sm" data-testid="btn-open-canonical-document">
+                Open canonical document
+              </Button>
+            </Link>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/workspace")}
+            data-testid="btn-back-to-workspace-superseded"
+          >
+            <ArrowLeft className="w-3 h-3 mr-1" />
+            Back to Workspace
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (isError) {

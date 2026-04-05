@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   dropUnsupportedInsertColumn,
   extractMissingInsertColumn,
+  isCanonicalDocument,
   isSourceHashUniqueConflict,
   mergeCaseScopedDocumentIds,
 } from "./documents";
@@ -79,4 +80,11 @@ test("isSourceHashUniqueConflict detects unique index violations on source hash"
     ),
     false,
   );
+});
+
+test("isCanonicalDocument returns true only for non-duplicate rows", () => {
+  assert.equal(isCanonicalDocument({ duplicateOfDocumentId: null }), true);
+  assert.equal(isCanonicalDocument({ duplicateOfDocumentId: "doc-1" }), false);
+  assert.equal(isCanonicalDocument({ duplicate_of_document_id: null }), true);
+  assert.equal(isCanonicalDocument({ duplicate_of_document_id: "doc-1" }), false);
 });
