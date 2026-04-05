@@ -2650,9 +2650,20 @@ ${userQuestion}`;
         getDocuments(user.id),
         listTimelineEvents(user.id),
       ]);
+      const canonicalDocuments = rawDocuments.filter((doc) => !doc.duplicateOfDocumentId);
+      if (canonicalDocuments.length !== rawDocuments.length) {
+        console.warn("[trace][workspace-api] filtered duplicate-marked rows from live response", {
+          userId: user.id,
+          before: rawDocuments.length,
+          after: canonicalDocuments.length,
+          removedDocumentIds: rawDocuments
+            .filter((doc) => !!doc.duplicateOfDocumentId)
+            .map((doc) => doc.id),
+        });
+      }
       // Strip internal fields (storagePath, extractedText) from workspace response;
       // expose hasStoragePath flag so the UI can show a broken-file indicator.
-      const documents = rawDocuments.map(({ storagePath, extractedText, ...safe }) => {
+      const documents = canonicalDocuments.map(({ storagePath, extractedText, ...safe }) => {
         const integrity = getDocumentIntegrity(safe);
         const caseAssignment = getDocumentCaseAssignmentView(safe);
         return {
@@ -2666,6 +2677,8 @@ ${userQuestion}`;
       });
       console.info("[trace][workspace-api] documents", documents.map((d) => ({
         id: d.id,
+        duplicateOfDocumentId: d.duplicateOfDocumentId ?? null,
+        canonical: !d.duplicateOfDocumentId,
         isAnalysisAvailable: d.isAnalysisAvailable,
         analysisStatus: d.analysisStatus,
       })));
