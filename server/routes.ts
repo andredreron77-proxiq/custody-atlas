@@ -43,7 +43,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { saveDocument, getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, type DocumentType, type SavedDocument } from "./services/documents";
+import { getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, saveDocumentWithDuplicateOutcome, type DocumentType, type SavedDocument } from "./services/documents";
 import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
@@ -1817,7 +1817,10 @@ The user is asking what they should do or how to take a specific action. Focus y
             duplicate: {
               type: "exact" satisfies DocumentDuplicateKind,
               documentId: exactDuplicate.id,
+              existingDocumentId: exactDuplicate.id,
               fileName: exactDuplicate.fileName,
+              existingDocumentName: exactDuplicate.fileName,
+              fileType: exactDuplicate.mimeType,
               analysisStatus: getDocumentIntegrity(exactDuplicate).analysisStatus,
             },
             options: {
@@ -1864,7 +1867,10 @@ The user is asking what they should do or how to take a specific action. Focus y
             duplicate: {
               type: "similar" satisfies DocumentDuplicateKind,
               documentId: similarExisting.id,
+              existingDocumentId: similarExisting.id,
               fileName: similarExisting.fileName,
+              existingDocumentName: similarExisting.fileName,
+              fileType: similarExisting.mimeType,
               analysisStatus: getDocumentIntegrity(similarExisting).analysisStatus,
             },
             options: {
@@ -2125,7 +2131,10 @@ CRITICAL RULES:
             duplicate: {
               type: "exact" satisfies DocumentDuplicateKind,
               documentId: duplicateDoc.id,
+              existingDocumentId: duplicateDoc.id,
               fileName: duplicateDoc.fileName,
+              existingDocumentName: duplicateDoc.fileName,
+              fileType: duplicateDoc.mimeType,
               analysisStatus: getDocumentIntegrity(duplicateDoc).analysisStatus,
             },
             options: {
@@ -2137,24 +2146,27 @@ CRITICAL RULES:
           });
         }
 
-        const savedDoc = duplicateDoc ?? await saveDocument(docUserId, {
-          fileName: documentName,
-          storagePath: null,
-          caseId: docCaseId ?? null,
-          sourceFileSha256,
-          retentionTier,
-          originalExpiresAt: retentionWindow.originalExpiresAt,
-          intelligenceExpiresAt: retentionWindow.intelligenceExpiresAt,
-          lifecycleState: "active",
-          mimeType: req.file.mimetype,
-          pageCount,
-          analysisJson: analysisWithSourceHash,
-          extractedText: truncatedText,
-          docType: "other",
-        }).catch(() => null);
+        const saveOutcome = duplicateDoc
+          ? { status: "duplicate" as const, document: duplicateDoc }
+          : await saveDocumentWithDuplicateOutcome(docUserId, {
+            fileName: documentName,
+            storagePath: null,
+            caseId: docCaseId ?? null,
+            sourceFileSha256,
+            retentionTier,
+            originalExpiresAt: retentionWindow.originalExpiresAt,
+            intelligenceExpiresAt: retentionWindow.intelligenceExpiresAt,
+            lifecycleState: "active",
+            mimeType: req.file.mimetype,
+            pageCount,
+            analysisJson: analysisWithSourceHash,
+            extractedText: truncatedText,
+            docType: "other",
+          }).catch(() => ({ status: "error" as const }));
+        const savedDoc = saveOutcome.status === "error" ? null : saveOutcome.document;
 
         if (savedDoc) {
-          const isDuplicateUpload = Boolean(duplicateDoc);
+          const isDuplicateUpload = saveOutcome.status === "duplicate";
           duplicateUpload = isDuplicateUpload;
           const uploadOutcome = buildDocumentUploadOutcome({
             fileName: documentName,
@@ -2163,9 +2175,9 @@ CRITICAL RULES:
           duplicateMessage = uploadOutcome.userMessage;
 
           const associationPlan = planUploadAssociation({
-            canonicalDocumentId: duplicateDoc?.id ?? null,
-            existingCaseIds: duplicateDoc
-              ? await getDocumentCaseIds(duplicateDoc.id, docUserId)
+            canonicalDocumentId: isDuplicateUpload ? savedDoc.id : null,
+            existingCaseIds: isDuplicateUpload
+              ? await getDocumentCaseIds(savedDoc.id, docUserId)
               : [],
             requestedCaseId: docCaseId ?? null,
           });
@@ -2173,7 +2185,7 @@ CRITICAL RULES:
           if (docCaseId && associationPlan.linkToRequestedCase) {
             await ensureDocumentCaseAssociation(savedDoc.id, docCaseId, docUserId).catch(() => false);
           }
-          if (duplicateDoc) {
+          if (isDuplicateUpload) {
             const updated = await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
             if (!updated) {
               console.error("[analyze-document] duplicate analysis update failed");
@@ -2245,6 +2257,40 @@ CRITICAL RULES:
               if (docType) merged.document_type = docType;
               return generateActionsFromFacts(docCaseId, docUserId!, merged);
             }).catch((err) => console.error("[analyze-document] post-upsert action generation error:", err));
+          }
+        }
+        if (!savedDoc && saveOutcome.status === "error") {
+          const existingDuplicate = await findDuplicateDocument(docUserId, {
+            fileHash: sourceFileSha256,
+            fallbackSignature: duplicateSignatureV1,
+          });
+          if (existingDuplicate && !allowDuplicateUpload) {
+            console.info("[analyze-document] duplicate-check-insert-conflict", {
+              ...conflictDiagnostics,
+              duplicateFound: true,
+              preventedRowCreation: true,
+              matchedDocumentId: existingDuplicate.id,
+            });
+            return res.status(409).json({
+              error: "This document already exists in your workspace.",
+              details: "Open the existing document, or choose Upload anyway to keep a separate copy.",
+              code: "DOCUMENT_EXACT_DUPLICATE_EXISTS",
+              duplicate: {
+                type: "exact" satisfies DocumentDuplicateKind,
+                documentId: existingDuplicate.id,
+                existingDocumentId: existingDuplicate.id,
+                fileName: existingDuplicate.fileName,
+                existingDocumentName: existingDuplicate.fileName,
+                fileType: existingDuplicate.mimeType,
+                analysisStatus: getDocumentIntegrity(existingDuplicate).analysisStatus,
+              },
+              options: {
+                canUseExisting: true,
+                canUploadAnyway: true,
+                canReplaceExisting: false,
+              },
+              uploadRecorded: false,
+            });
           }
         }
       }

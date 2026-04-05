@@ -61,6 +61,11 @@ export interface DuplicateDocumentLookup {
   fallbackSignature?: string | null;
 }
 
+export type SaveDocumentOutcome =
+  | { status: "created"; document: SavedDocument }
+  | { status: "duplicate"; document: SavedDocument }
+  | { status: "error" };
+
 export interface DocumentIntegrity {
   isAnalysisAvailable: boolean;
   analysisStatus: "uploaded" | "analyzing" | "analyzed" | "failed";
@@ -104,6 +109,14 @@ export function dropUnsupportedInsertColumn(
 
   const { [missingColumn]: _removed, ...nextPayload } = payload;
   return { nextPayload, removedColumn: missingColumn };
+}
+
+export function isSourceHashUniqueConflict(errorMessage: string): boolean {
+  if (!errorMessage) return false;
+  const normalized = errorMessage.toLowerCase();
+  return normalized.includes("documents_user_source_hash_unique")
+    || (normalized.includes("duplicate key value violates unique constraint")
+      && normalized.includes("source_file_sha256"));
 }
 
 function mapRow(r: any): SavedDocument {
@@ -299,7 +312,16 @@ export async function saveDocument(
   userId: string,
   fields: Omit<SavedDocument, "id" | "userId" | "createdAt">,
 ): Promise<SavedDocument | null> {
-  if (!supabaseAdmin) return null;
+  const result = await saveDocumentWithDuplicateOutcome(userId, fields);
+  if (result.status === "created" || result.status === "duplicate") return result.document;
+  return null;
+}
+
+export async function saveDocumentWithDuplicateOutcome(
+  userId: string,
+  fields: Omit<SavedDocument, "id" | "userId" | "createdAt">,
+): Promise<SaveDocumentOutcome> {
+  if (!supabaseAdmin) return { status: "error" };
   try {
     const insertPayload: Record<string, unknown> = {
       user_id:        userId,
@@ -323,16 +345,74 @@ export async function saveDocument(
     let data: any = null;
     let error: any = null;
 
-    for (let attempt = 0; attempt <= OPTIONAL_DOCUMENT_INSERT_COLUMNS.size; attempt += 1) {
-      ({ data, error } = await supabaseAdmin
-        .from("documents")
-        .insert(payload)
-        .select()
-        .single());
+    const normalizedSourceHash = fields.sourceFileSha256?.trim().toLowerCase() ?? "";
+    const fallbackDuplicateSignature =
+      typeof fields.analysisJson?.duplicate_signature_v1 === "string"
+        ? fields.analysisJson.duplicate_signature_v1
+        : null;
 
-      if (!error) break;
+    for (let attempt = 0; attempt <= OPTIONAL_DOCUMENT_INSERT_COLUMNS.size + 1; attempt += 1) {
+      if (normalizedSourceHash) {
+        ({ data, error } = await supabaseAdmin
+          .from("documents")
+          .upsert(payload, {
+            onConflict: "user_id,source_file_sha256",
+            ignoreDuplicates: true,
+          })
+          .select()
+          .maybeSingle());
 
-      const { nextPayload, removedColumn } = dropUnsupportedInsertColumn(payload, error.message ?? "");
+        if (!error && data) break;
+        if (!error && !data) {
+          const existing = await findDuplicateDocument(userId, {
+            fileHash: normalizedSourceHash,
+            fallbackSignature: fallbackDuplicateSignature,
+          });
+          if (existing) {
+            return { status: "duplicate", document: existing };
+          }
+          // Defensive fallback when upsert ignored insert but immediate lookup races.
+          error = { message: "Duplicate conflict detected but existing row could not be loaded." };
+          break;
+        }
+      } else {
+        ({ data, error } = await supabaseAdmin
+          .from("documents")
+          .insert(payload)
+          .select()
+          .single());
+        if (!error) break;
+      }
+
+      const message = error?.message ?? "";
+      if (isSourceHashUniqueConflict(message) && normalizedSourceHash) {
+        const existing = await findDuplicateDocument(userId, {
+          fileHash: normalizedSourceHash,
+          fallbackSignature: fallbackDuplicateSignature,
+        });
+        if (existing) {
+          return { status: "duplicate", document: existing };
+        }
+      }
+
+      const missingOnConflictSupport = message.toLowerCase().includes("there is no unique or exclusion constraint matching the on conflict specification");
+      if (missingOnConflictSupport && normalizedSourceHash) {
+        ({ data, error } = await supabaseAdmin
+          .from("documents")
+          .insert(payload)
+          .select()
+          .single());
+        if (!error) break;
+        if (isSourceHashUniqueConflict(error?.message ?? "")) {
+          const existing = await findDuplicateDocument(userId, {
+            fileHash: normalizedSourceHash,
+            fallbackSignature: fallbackDuplicateSignature,
+          });
+          if (existing) return { status: "duplicate", document: existing };
+        }
+      }
+
+      const { nextPayload, removedColumn } = dropUnsupportedInsertColumn(payload, message);
       if (!removedColumn) {
         break;
       }
@@ -343,10 +423,10 @@ export async function saveDocument(
 
     if (error) {
       console.error("[documents] saveDocument error:", error.message);
-      return null;
+      return { status: "error" };
     }
 
-    if (!data) return null;
+    if (!data) return { status: "error" };
 
     const saved = mapRow(data);
 
@@ -356,10 +436,10 @@ export async function saveDocument(
       );
     }
 
-    return saved;
+    return { status: "created", document: saved };
   } catch (err) {
     console.error("[documents] saveDocument exception:", err);
-    return null;
+    return { status: "error" };
   }
 }
 
