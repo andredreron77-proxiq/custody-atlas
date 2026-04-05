@@ -2971,6 +2971,24 @@ CRITICAL RULES:
       console.info(`[documents] detail request user=${user.id} documentId=${documentId}`);
       const doc = await getDocumentById(documentId, user.id);
       if (!doc) return res.status(404).json({ error: "Document not found." });
+      if (doc.duplicateOfDocumentId) {
+        const canonicalDoc = await getDocumentById(doc.duplicateOfDocumentId, user.id);
+        return res.status(409).json({
+          code: "DOCUMENT_SUPERSEDED",
+          error: "This document was merged into another record.",
+          document: {
+            id: doc.id,
+            fileName: doc.fileName,
+            duplicateOfDocumentId: doc.duplicateOfDocumentId,
+          },
+          canonicalDocument: canonicalDoc
+            ? {
+              id: canonicalDoc.id,
+              fileName: canonicalDoc.fileName,
+            }
+            : null,
+        });
+      }
       const integrity = getDocumentIntegrity(doc);
       if (!integrity.isAnalysisAvailable) {
         console.warn("[documents] detail missing-analysis", {

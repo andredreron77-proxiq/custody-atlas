@@ -152,6 +152,12 @@ export function isSourceHashUniqueConflict(errorMessage: string): boolean {
       && normalized.includes("source_file_sha256"));
 }
 
+export function isCanonicalDocument(
+  doc: { duplicateOfDocumentId?: string | null; duplicate_of_document_id?: string | null },
+): boolean {
+  return !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id);
+}
+
 function mapRow(r: any): SavedDocument {
   return {
     id:            r.id,
@@ -235,15 +241,20 @@ export function getDocumentIntegrity(doc: Pick<SavedDocument, "analysisJson">): 
   return { isAnalysisAvailable: false, analysisStatus: "failed", integrityIssue: "missing_analysis" };
 }
 
+function applyCanonicalOnlyFilter<T extends { is: Function }>(query: T): T {
+  return query.is("duplicate_of_document_id", null) as T;
+}
+
 export async function getDocuments(userId: string): Promise<SavedDocument[]> {
   if (!supabaseAdmin) return [];
   try {
-    const { data, error } = await supabaseAdmin
+    const baseQuery = supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(50);
+    const { data, error } = await applyCanonicalOnlyFilter(baseQuery);
     if (error || !data) return [];
     return data.map(mapRow);
   } catch {
@@ -283,12 +294,13 @@ export async function getAllDocumentsForUser(userId: string): Promise<SavedDocum
   const pageSize = 500;
   try {
     for (let offset = 0; offset < 5000; offset += pageSize) {
-      const { data, error } = await supabaseAdmin
+      const baseQuery = supabaseAdmin
         .from("documents")
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .range(offset, offset + pageSize - 1);
+      const { data, error } = await applyCanonicalOnlyFilter(baseQuery);
       if (error || !data?.length) break;
       rows.push(...data);
       if (data.length < pageSize) break;
@@ -327,12 +339,13 @@ export async function getDocumentsByCase(
     }
 
     // Legacy compatibility: include legacy case_id matches so pre-link rows remain visible.
-    const { data: legacyRows, error: legacyError } = await supabaseAdmin
+    const legacyBaseQuery = supabaseAdmin
       .from("documents")
       .select("id")
       .eq("user_id", userId)
       .eq("case_id", caseId)
       .limit(100);
+    const { data: legacyRows, error: legacyError } = await applyCanonicalOnlyFilter(legacyBaseQuery);
 
     if (legacyError) {
       console.error("[documents] getDocumentsByCase legacy fetch error:", legacyError.message);
@@ -349,13 +362,14 @@ export async function getDocumentsByCase(
       return [];
     }
 
-    const { data, error } = await supabaseAdmin
+    const baseDocumentsQuery = supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
       .in("id", caseScopedDocumentIds)
       .order("created_at", { ascending: false })
       .limit(50);
+    const { data, error } = await applyCanonicalOnlyFilter(baseDocumentsQuery);
 
     if (error) {
       console.error("[documents] getDocumentsByCase documents fetch error:", error.message);
@@ -568,48 +582,52 @@ export async function findDuplicateDocument(
 
   try {
     if (normalizedHash) {
-      let { data, error } = await supabaseAdmin
+      let baseQuery = supabaseAdmin
         .from("documents")
         .select("*")
         .eq("user_id", userId)
         .eq("source_file_sha256", normalizedHash)
         .order("created_at", { ascending: true })
         .limit(1);
+      let { data, error } = await applyCanonicalOnlyFilter(baseQuery);
 
       // Backward compatibility for pre-migration DBs without source_file_sha256.
       if (!error && data?.length) return mapRow(data[0]);
 
       const hashColumnMissing = Boolean(error?.message?.includes("source_file_sha256"));
       if (!hashColumnMissing) {
-        ({ data, error } = await supabaseAdmin
+        baseQuery = supabaseAdmin
           .from("documents")
           .select("*")
           .eq("user_id", userId)
           .contains("analysis_json", { source_file_sha256: normalizedHash })
           .order("created_at", { ascending: true })
-          .limit(1));
+          .limit(1);
+        ({ data, error } = await applyCanonicalOnlyFilter(baseQuery));
         if (!error && data?.length) return mapRow(data[0]);
       } else {
-        ({ data, error } = await supabaseAdmin
+        baseQuery = supabaseAdmin
           .from("documents")
           .select("*")
           .eq("user_id", userId)
           .contains("analysis_json", { source_file_sha256: normalizedHash })
           .order("created_at", { ascending: true })
-          .limit(1));
+          .limit(1);
+        ({ data, error } = await applyCanonicalOnlyFilter(baseQuery));
         if (!error && data?.length) return mapRow(data[0]);
       }
     }
 
     if (!normalizedFallbackSignature) return null;
 
-    const { data: fallbackData, error: fallbackError } = await supabaseAdmin
+    const fallbackBaseQuery = supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
       .contains("analysis_json", { duplicate_signature_v1: normalizedFallbackSignature })
       .order("created_at", { ascending: true })
       .limit(1);
+    const { data: fallbackData, error: fallbackError } = await applyCanonicalOnlyFilter(fallbackBaseQuery);
     if (fallbackError || !fallbackData?.length) return null;
     return mapRow(fallbackData[0]);
   } catch (err) {
@@ -626,22 +644,24 @@ export async function findDocumentByIntakeTextHash(
   const normalizedHash = intakeTextHash.trim().toLowerCase();
   if (!normalizedHash) return null;
   try {
-    let { data, error } = await supabaseAdmin
+    let baseQuery = supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
       .eq("intake_text_hash", normalizedHash)
       .order("created_at", { ascending: true })
       .limit(1);
+    let { data, error } = await applyCanonicalOnlyFilter(baseQuery);
     if (!error && data?.length) return mapRow(data[0]);
 
-    ({ data, error } = await supabaseAdmin
+    baseQuery = supabaseAdmin
       .from("documents")
       .select("*")
       .eq("user_id", userId)
       .contains("analysis_json", { intake_text_hash: normalizedHash })
       .order("created_at", { ascending: true })
-      .limit(1));
+      .limit(1);
+    ({ data, error } = await applyCanonicalOnlyFilter(baseQuery));
     if (error || !data?.length) return null;
     return mapRow(data[0]);
   } catch (err) {
