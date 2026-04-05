@@ -45,15 +45,17 @@ interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
   };
   code?: string;
   duplicate?: {
-    type?: "exact" | "similar";
+    type?: "exact" | "semantic" | "likely" | "new";
     documentId: string;
     fileName: string;
+    confidence?: number;
     analysisStatus?: "uploaded" | "analyzing" | "analyzed" | "failed";
   };
   options?: {
     canUseExisting: boolean;
     canUploadAnyway: boolean;
     canReplaceExisting: boolean;
+    canContinueUpload?: boolean;
   };
   uploadRecorded?: boolean;
 }
@@ -1432,15 +1434,17 @@ export default function UploadDocumentPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
     } catch (err: any) {
-      if (err?.code === "DOCUMENT_SIMILAR_EXISTS" || err?.code === "DOCUMENT_EXACT_DUPLICATE_EXISTS") {
-        const duplicateType = err?.duplicate?.type === "exact" ? "exact" : "similar";
+      if (err?.code === "EXACT_DUPLICATE" || err?.code === "SEMANTIC_DUPLICATE" || err?.code === "LIKELY_DUPLICATE" || err?.code === "DOCUMENT_SIMILAR_EXISTS" || err?.code === "DOCUMENT_EXACT_DUPLICATE_EXISTS") {
+        const duplicateType = err?.duplicate?.type ?? "likely";
         const message = duplicateType === "exact"
           ? "This document already exists in your workspace."
-          : "A similar document already exists in your workspace. No new upload row was created.";
+          : duplicateType === "semantic"
+            ? "This appears to be the same document already in your workspace, even though the file itself is different."
+            : "A similar document may already exist in your workspace.";
         setDuplicateConflict(err?.duplicate ?? null);
         setError(message);
         toast({
-          title: duplicateType === "exact" ? "Exact duplicate found" : "Similar document found",
+          title: duplicateType === "exact" ? "Exact duplicate found" : duplicateType === "semantic" ? "Semantic duplicate found" : "Likely duplicate found",
           description: message,
         });
       } else {
@@ -1681,17 +1685,21 @@ export default function UploadDocumentPage() {
               <p className="text-sm font-medium text-foreground">
                 {duplicateConflict.type === "exact"
                   ? "This document already exists in your workspace."
-                  : "A similar document already exists in your workspace."}
+                  : duplicateConflict.type === "semantic"
+                    ? "This appears to be the same document already in your workspace, even though the file itself is different."
+                    : "A similar document may already exist in your workspace."}
               </p>
               <p className="text-xs text-muted-foreground">
                 Existing document: <span className="font-medium text-foreground">{duplicateConflict.fileName}</span>
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => window.location.assign(`/document/${duplicateConflict.documentId}`)}>
-                  View existing document
+                  {duplicateConflict.type === "semantic" || duplicateConflict.type === "likely"
+                    ? "Review existing"
+                    : "View existing"}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => analyzeDocument(true)}>
-                  Upload anyway
+                  {duplicateConflict.type === "likely" ? "Continue upload" : "Upload anyway"}
                 </Button>
                 <Button size="sm" variant="ghost" disabled>
                   Replace existing (not supported)

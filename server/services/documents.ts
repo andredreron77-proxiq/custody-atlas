@@ -31,6 +31,14 @@ export interface SavedDocument {
   userId: string;
   caseId: string | null;
   sourceFileSha256: string | null;
+  fileHash?: string | null;
+  normalizedFileName?: string | null;
+  fileSizeBytes?: number | null;
+  sourceKind?: string | null;
+  intakeTextHash?: string | null;
+  intakeTextPreview?: string | null;
+  duplicateOfDocumentId?: string | null;
+  duplicateConfidence?: number | null;
   retentionTier: "free" | "pro" | "attorney_firm";
   originalExpiresAt: string | null;
   intelligenceExpiresAt: string | null;
@@ -61,6 +69,23 @@ export interface DuplicateDocumentLookup {
   fallbackSignature?: string | null;
 }
 
+export interface UploadIntakeAttemptInput {
+  userId: string;
+  fileName: string;
+  normalizedFileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  sourceKind: string;
+  fileHash: string;
+  intakeTextHash: string;
+  intakeTextPreview: string;
+  duplicateDecision: string;
+  duplicateConfidence: number | null;
+  duplicateOfDocumentId: string | null;
+  allowedActions: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
 export type SaveDocumentOutcome =
   | { status: "created"; document: SavedDocument }
   | { status: "duplicate"; document: SavedDocument }
@@ -84,6 +109,14 @@ const OPTIONAL_DOCUMENT_INSERT_COLUMNS = new Set([
   "original_expires_at",
   "intelligence_expires_at",
   "lifecycle_state",
+  "file_hash",
+  "normalized_filename",
+  "file_size_bytes",
+  "source_kind",
+  "intake_text_hash",
+  "intake_text_preview",
+  "duplicate_of_document_id",
+  "duplicate_confidence",
 ]);
 
 export function extractMissingInsertColumn(errorMessage: string): string | null {
@@ -126,8 +159,26 @@ function mapRow(r: any): SavedDocument {
     caseId:        r.case_id ?? null,
     sourceFileSha256:
       (typeof r.source_file_sha256 === "string" && r.source_file_sha256.trim()) ||
+      (typeof r.file_hash === "string" && r.file_hash.trim()) ||
       (typeof r.analysis_json?.source_file_sha256 === "string" && r.analysis_json.source_file_sha256.trim()) ||
       null,
+    fileHash:
+      (typeof r.file_hash === "string" && r.file_hash.trim()) ||
+      (typeof r.source_file_sha256 === "string" && r.source_file_sha256.trim()) ||
+      null,
+    normalizedFileName: typeof r.normalized_filename === "string" ? r.normalized_filename : null,
+    fileSizeBytes: typeof r.file_size_bytes === "number" ? r.file_size_bytes : null,
+    sourceKind: typeof r.source_kind === "string" ? r.source_kind : null,
+    intakeTextHash:
+      (typeof r.intake_text_hash === "string" && r.intake_text_hash.trim()) ||
+      (typeof r.analysis_json?.intake_text_hash === "string" && r.analysis_json.intake_text_hash.trim()) ||
+      null,
+    intakeTextPreview:
+      (typeof r.intake_text_preview === "string" && r.intake_text_preview.trim()) ||
+      (typeof r.analysis_json?.intake_text_preview === "string" && r.analysis_json.intake_text_preview.trim()) ||
+      null,
+    duplicateOfDocumentId: typeof r.duplicate_of_document_id === "string" ? r.duplicate_of_document_id : null,
+    duplicateConfidence: typeof r.duplicate_confidence === "number" ? r.duplicate_confidence : null,
     retentionTier: (r.retention_tier ?? "free") as "free" | "pro" | "attorney_firm",
     originalExpiresAt: r.original_expires_at ?? null,
     intelligenceExpiresAt: r.intelligence_expires_at ?? null,
@@ -195,6 +246,54 @@ export async function getDocuments(userId: string): Promise<SavedDocument[]> {
       .limit(50);
     if (error || !data) return [];
     return data.map(mapRow);
+  } catch {
+    return [];
+  }
+}
+
+export async function recordUploadIntakeAttempt(input: UploadIntakeAttemptInput): Promise<void> {
+  if (!supabaseAdmin) return;
+  try {
+    await supabaseAdmin
+      .from("upload_intake_attempts")
+      .insert({
+        user_id: input.userId,
+        file_name: input.fileName,
+        normalized_filename: input.normalizedFileName,
+        mime_type: input.mimeType,
+        file_size_bytes: input.fileSizeBytes,
+        source_kind: input.sourceKind,
+        file_hash: input.fileHash,
+        intake_text_hash: input.intakeTextHash,
+        intake_text_preview: input.intakeTextPreview,
+        duplicate_decision: input.duplicateDecision,
+        duplicate_confidence: input.duplicateConfidence,
+        duplicate_of_document_id: input.duplicateOfDocumentId,
+        allowed_actions: input.allowedActions ?? {},
+        metadata: input.metadata ?? {},
+      });
+  } catch {
+    return;
+  }
+}
+
+export async function getAllDocumentsForUser(userId: string): Promise<SavedDocument[]> {
+  if (!supabaseAdmin) return [];
+  const rows: any[] = [];
+  const pageSize = 500;
+  try {
+    for (let offset = 0; offset < 5000; offset += pageSize) {
+      const { data, error } = await supabaseAdmin
+        .from("documents")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (error || !data?.length) break;
+      rows.push(...data);
+      if (data.length < pageSize) break;
+    }
+    return rows.map(mapRow);
   } catch {
     return [];
   }
@@ -333,6 +432,14 @@ export async function saveDocumentWithDuplicateOutcome(
       analysis_json:  fields.analysisJson,
       extracted_text: fields.extractedText,
       source_file_sha256: fields.sourceFileSha256,
+      file_hash: fields.fileHash ?? fields.sourceFileSha256,
+      normalized_filename: fields.normalizedFileName ?? null,
+      file_size_bytes: fields.fileSizeBytes ?? null,
+      source_kind: fields.sourceKind ?? null,
+      intake_text_hash: fields.intakeTextHash ?? null,
+      intake_text_preview: fields.intakeTextPreview ?? null,
+      duplicate_of_document_id: fields.duplicateOfDocumentId ?? null,
+      duplicate_confidence: fields.duplicateConfidence ?? null,
       retention_tier: fields.retentionTier ?? "free",
       original_expires_at: fields.originalExpiresAt,
       intelligence_expires_at: fields.intelligenceExpiresAt,
@@ -507,6 +614,38 @@ export async function findDuplicateDocument(
     return mapRow(fallbackData[0]);
   } catch (err) {
     console.error("[documents] findDuplicateDocument exception:", err);
+    return null;
+  }
+}
+
+export async function findDocumentByIntakeTextHash(
+  userId: string,
+  intakeTextHash: string,
+): Promise<SavedDocument | null> {
+  if (!supabaseAdmin) return null;
+  const normalizedHash = intakeTextHash.trim().toLowerCase();
+  if (!normalizedHash) return null;
+  try {
+    let { data, error } = await supabaseAdmin
+      .from("documents")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("intake_text_hash", normalizedHash)
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (!error && data?.length) return mapRow(data[0]);
+
+    ({ data, error } = await supabaseAdmin
+      .from("documents")
+      .select("*")
+      .eq("user_id", userId)
+      .contains("analysis_json", { intake_text_hash: normalizedHash })
+      .order("created_at", { ascending: true })
+      .limit(1));
+    if (error || !data?.length) return null;
+    return mapRow(data[0]);
+  } catch (err) {
+    console.error("[documents] findDocumentByIntakeTextHash exception:", err);
     return null;
   }
 }

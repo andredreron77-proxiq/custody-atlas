@@ -22,6 +22,7 @@ import {
 import { buildRetentionWindow } from "./lib/documentRetention";
 import { planUploadAssociation } from "./lib/documentIdentity";
 import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
+import { buildDuplicateFingerprints, classifyDuplicate, type DuplicateDecisionType } from "./lib/documentDuplicateIntake";
 import { decideCaseAssignment, type AssignmentCandidate } from "./lib/documentCaseAssignment";
 import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
 import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRiskScoring";
@@ -43,7 +44,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, saveDocumentWithDuplicateOutcome, type DocumentType, type SavedDocument } from "./services/documents";
+import { getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, saveDocumentWithDuplicateOutcome, getAllDocumentsForUser, findDocumentByIntakeTextHash, recordUploadIntakeAttempt, type DocumentType, type SavedDocument } from "./services/documents";
 import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
@@ -141,7 +142,7 @@ interface RetroactiveDocReviewItem {
   };
 }
 
-type DocumentDuplicateKind = "exact" | "similar";
+type DocumentDuplicateKind = "exact" | "semantic" | "likely" | "new";
 
 function normalizeText(v: unknown): string {
   return typeof v === "string" ? v.trim().toLowerCase() : "";
@@ -1790,100 +1791,6 @@ The user is asking what they should do or how to take a specific action. Focus y
       conflictDiagnostics.duplicateKey = sourceFileSha256;
       conflictDiagnostics.fallbackDuplicateKey = duplicateSignatureV1;
 
-      if (docUserId && req.file && !allowDuplicateUpload) {
-        console.info("[analyze-document] duplicate-check-start", {
-          ...conflictDiagnostics,
-          uploadMimeType,
-          duplicateKey: sourceFileSha256,
-          duplicateKeyType: "source_file_sha256",
-        });
-        const exactDuplicate = await findDuplicateDocument(docUserId, {
-          fileHash: sourceFileSha256,
-          fallbackSignature: duplicateSignatureV1,
-        });
-        if (exactDuplicate) {
-          console.info("[analyze-document] duplicate-check-match", {
-            ...conflictDiagnostics,
-            duplicateFound: true,
-            preventedRowCreation: true,
-            matchedDocumentId: exactDuplicate.id,
-            matchedDocumentFileName: exactDuplicate.fileName,
-          });
-          conflictDiagnostics.structured409Returned = true;
-          return res.status(409).json({
-            error: "This document already exists in your workspace.",
-            details: "Open the existing document, or choose Upload anyway to keep a separate copy.",
-            code: "DOCUMENT_EXACT_DUPLICATE_EXISTS",
-            duplicate: {
-              type: "exact" satisfies DocumentDuplicateKind,
-              documentId: exactDuplicate.id,
-              existingDocumentId: exactDuplicate.id,
-              fileName: exactDuplicate.fileName,
-              existingDocumentName: exactDuplicate.fileName,
-              fileType: exactDuplicate.mimeType,
-              analysisStatus: getDocumentIntegrity(exactDuplicate).analysisStatus,
-            },
-            options: {
-              canUseExisting: true,
-              canUploadAnyway: true,
-              canReplaceExisting: false,
-            },
-            uploadRecorded: false,
-          });
-        }
-        console.info("[analyze-document] duplicate-check-match", {
-          ...conflictDiagnostics,
-          duplicateFound: false,
-          preventedRowCreation: false,
-        });
-
-        conflictDiagnostics.similarDetectionRan = true;
-        console.info("[analyze-document] similar-doc-detection-start", conflictDiagnostics);
-        let similarExisting: SavedDocument | null = null;
-        try {
-          similarExisting = findSimilarWorkspaceDocument(
-            await getDocuments(docUserId),
-            uploadFileName,
-          );
-        } catch (similarErr: any) {
-          console.error("[analyze-document] similar-doc-detection-error", {
-            ...conflictDiagnostics,
-            error: similarErr?.message ?? "unknown",
-            stack: similarErr?.stack,
-          });
-          throw similarErr;
-        }
-        if (similarExisting) {
-          conflictDiagnostics.similarDocumentFound = true;
-          conflictDiagnostics.structured409Returned = true;
-          console.info("[analyze-document] similar-document conflict intercepted before extraction", {
-            ...conflictDiagnostics,
-            conflictDocumentId: similarExisting.id,
-          });
-          return res.status(409).json({
-            error: "A similar document already exists in your workspace.",
-            details: "Use the existing document, or upload anyway if you need to keep this as a separate copy.",
-            code: "DOCUMENT_SIMILAR_EXISTS",
-            duplicate: {
-              type: "similar" satisfies DocumentDuplicateKind,
-              documentId: similarExisting.id,
-              existingDocumentId: similarExisting.id,
-              fileName: similarExisting.fileName,
-              existingDocumentName: similarExisting.fileName,
-              fileType: similarExisting.mimeType,
-              analysisStatus: getDocumentIntegrity(similarExisting).analysisStatus,
-            },
-            options: {
-              canUseExisting: true,
-              canUploadAnyway: true,
-              canReplaceExisting: false,
-            },
-            uploadRecorded: false,
-          });
-        }
-        console.info("[analyze-document] similar-doc-detection-complete", conflictDiagnostics);
-      }
-
       let extractedText: string;
       try {
         conflictDiagnostics.parserCalled = true;
@@ -1918,6 +1825,108 @@ The user is asking what they should do or how to take a specific action. Focus y
       }
 
       const truncatedText = extractedText.slice(0, 14000);
+      let duplicateDecisionType: DuplicateDecisionType = "NEW_DOCUMENT";
+      let duplicateDecisionConfidence: number | null = null;
+      let duplicateOfDocumentId: string | null = null;
+
+      if (docUserId && req.file) {
+        const fingerprints = buildDuplicateFingerprints({
+          fileName: uploadFileName,
+          mimeType: req.file.mimetype,
+          fileSizeBytes: req.file.size ?? fileBuffer.length,
+          sourceKind: typeof req.body?.sourceType === "string" ? req.body.sourceType : "unknown",
+          sourceFileHash: sourceFileSha256,
+          extractedText: truncatedText,
+        });
+        const userDocs = await getAllDocumentsForUser(docUserId);
+        const intakeDecision = classifyDuplicate(fingerprints, userDocs);
+        duplicateDecisionType = intakeDecision.type;
+        duplicateDecisionConfidence = intakeDecision.confidence;
+        duplicateOfDocumentId = intakeDecision.matchedDocument?.id ?? null;
+
+        if (intakeDecision.type === "SEMANTIC_DUPLICATE" && !intakeDecision.matchedDocument) {
+          const semanticMatch = await findDocumentByIntakeTextHash(docUserId, fingerprints.intakeTextHash);
+          if (semanticMatch) {
+            duplicateOfDocumentId = semanticMatch.id;
+          }
+        }
+
+        const matched = intakeDecision.matchedDocument;
+        const duplicatePayload = matched
+          ? {
+            type: (
+              intakeDecision.type === "EXACT_DUPLICATE" ? "exact"
+                : intakeDecision.type === "SEMANTIC_DUPLICATE" ? "semantic"
+                  : intakeDecision.type === "LIKELY_DUPLICATE" ? "likely" : "new"
+            ) satisfies DocumentDuplicateKind,
+            documentId: matched.id,
+            existingDocumentId: matched.id,
+            fileName: matched.fileName,
+            existingDocumentName: matched.fileName,
+            fileType: matched.mimeType,
+            analysisStatus: getDocumentIntegrity(matched).analysisStatus,
+            confidence: intakeDecision.confidence,
+            reasons: intakeDecision.reasons,
+          }
+          : undefined;
+
+        await recordUploadIntakeAttempt({
+          userId: docUserId,
+          fileName: uploadFileName,
+          normalizedFileName: fingerprints.normalizedFilename,
+          mimeType: req.file.mimetype,
+          fileSizeBytes: req.file.size ?? fileBuffer.length,
+          sourceKind: typeof req.body?.sourceType === "string" ? req.body.sourceType : "unknown",
+          fileHash: fingerprints.fileHash,
+          intakeTextHash: fingerprints.intakeTextHash,
+          intakeTextPreview: fingerprints.intakeTextPreview,
+          duplicateDecision: intakeDecision.type,
+          duplicateConfidence: intakeDecision.confidence,
+          duplicateOfDocumentId,
+          allowedActions: {
+            canUseExisting: true,
+            canUploadAnyway: true,
+            canContinueUpload: intakeDecision.type === "LIKELY_DUPLICATE",
+          },
+          metadata: {
+            reasons: intakeDecision.reasons,
+          },
+        });
+
+        if (!allowDuplicateUpload && intakeDecision.type === "EXACT_DUPLICATE") {
+          return res.status(409).json({
+            error: "This document already exists in your workspace.",
+            details: "View existing or Upload anyway.",
+            code: "EXACT_DUPLICATE",
+            duplicateDecision: intakeDecision.type,
+            duplicate: duplicatePayload,
+            options: { canUseExisting: true, canUploadAnyway: true, canReplaceExisting: false, canContinueUpload: false },
+            uploadRecorded: false,
+          });
+        }
+        if (!allowDuplicateUpload && intakeDecision.type === "SEMANTIC_DUPLICATE") {
+          return res.status(409).json({
+            error: "This appears to be the same document already in your workspace, even though the file itself is different.",
+            details: "Review existing or Upload anyway.",
+            code: "SEMANTIC_DUPLICATE",
+            duplicateDecision: intakeDecision.type,
+            duplicate: duplicatePayload,
+            options: { canUseExisting: true, canUploadAnyway: true, canReplaceExisting: false, canContinueUpload: false },
+            uploadRecorded: false,
+          });
+        }
+        if (!allowDuplicateUpload && intakeDecision.type === "LIKELY_DUPLICATE") {
+          return res.status(409).json({
+            error: "A similar document may already exist in your workspace.",
+            details: "Review existing or Continue upload.",
+            code: "LIKELY_DUPLICATE",
+            duplicateDecision: intakeDecision.type,
+            duplicate: duplicatePayload,
+            options: { canUseExisting: true, canUploadAnyway: false, canReplaceExisting: false, canContinueUpload: true },
+            uploadRecorded: false,
+          });
+        }
+      }
 
       // Read optional metadata sent by the client
       const pageCount = parseInt(req.body?.pageCount ?? "1", 10) || 1;
@@ -2098,6 +2107,12 @@ CRITICAL RULES:
           ...(validated.data as Record<string, unknown>),
           analysis_status: "analyzed",
           source_file_sha256: sourceFileSha256,
+          file_hash: sourceFileSha256,
+          normalized_filename: normalizeFileNameStem(documentName),
+          file_size_bytes: req.file.size ?? fileBuffer.length,
+          source_kind: sourceType,
+          intake_text_hash: createHash("sha256").update(truncatedText.toLowerCase().replace(/\s+/g, " ").trim()).digest("hex"),
+          intake_text_preview: truncatedText.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 500),
           duplicate_signature_v1: duplicateSignatureV1,
           case_assignment: assignmentDecision
             ? {
@@ -2153,6 +2168,14 @@ CRITICAL RULES:
             storagePath: null,
             caseId: docCaseId ?? null,
             sourceFileSha256,
+            fileHash: sourceFileSha256,
+            normalizedFileName: normalizeFileNameStem(documentName),
+            fileSizeBytes: req.file.size ?? fileBuffer.length,
+            sourceKind: sourceType,
+            intakeTextHash: createHash("sha256").update(truncatedText.toLowerCase().replace(/\s+/g, " ").trim()).digest("hex"),
+            intakeTextPreview: truncatedText.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 500),
+            duplicateOfDocumentId: duplicateDecisionType === "NEW_DOCUMENT" ? null : duplicateOfDocumentId,
+            duplicateConfidence: duplicateDecisionConfidence,
             retentionTier,
             originalExpiresAt: retentionWindow.originalExpiresAt,
             intelligenceExpiresAt: retentionWindow.intelligenceExpiresAt,
@@ -2319,6 +2342,7 @@ CRITICAL RULES:
           isDuplicate: duplicateUpload,
           message: duplicateMessage,
         },
+        duplicateDecision: duplicateDecisionType,
       });
     } catch (err: any) {
       if (docUserId && req.file) {
