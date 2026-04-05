@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   dropUnsupportedInsertColumn,
   extractMissingInsertColumn,
+  isSourceHashUniqueConflict,
   mergeCaseScopedDocumentIds,
 } from "./documents";
 
@@ -63,4 +64,19 @@ test("dropUnsupportedInsertColumn does not remove source_file_sha256", () => {
   const result = dropUnsupportedInsertColumn(payload, "Could not find the 'source_file_sha256' column of 'documents' in the schema cache");
   assert.equal(result.removedColumn, null);
   assert.deepEqual(result.nextPayload, payload);
+});
+
+test("isSourceHashUniqueConflict detects unique index violations on source hash", () => {
+  assert.equal(
+    isSourceHashUniqueConflict(
+      "duplicate key value violates unique constraint \"documents_user_source_hash_unique\"",
+    ),
+    true,
+  );
+  assert.equal(
+    isSourceHashUniqueConflict(
+      "duplicate key value violates unique constraint \"documents_other_index\"",
+    ),
+    false,
+  );
 });
