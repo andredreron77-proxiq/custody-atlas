@@ -67,6 +67,8 @@ type DocType = "custody_order" | "communication" | "financial" | "other";
 interface WorkspaceDocument {
   id: string;
   caseId?: string | null;
+  duplicateOfDocumentId?: string | null;
+  duplicate_of_document_id?: string | null;
   fileName: string;
   mimeType: string;
   docType: DocType;
@@ -1465,16 +1467,34 @@ export default function WorkspacePage() {
     queryKey: ["/api/workspace"],
     enabled: !!user,
     staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
     retry: false,
     queryFn: async () => {
       const res = await apiRequestRaw("GET", "/api/workspace");
       if (!res.ok) return { threads: [], documents: [], timelineEvents: [] };
-      const payload = await res.json();
-      const documentIds = Array.isArray(payload?.documents)
-        ? payload.documents.map((doc: WorkspaceDocument) => doc.id)
-        : [];
-      console.info("[trace][workspace] rendered documentIds:", documentIds);
-      return payload;
+      const payload = await res.json() as WorkspaceData;
+      const rawDocuments = Array.isArray(payload?.documents) ? payload.documents : [];
+      const canonicalDocuments = rawDocuments.filter((doc) => !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id));
+      const documentDiagnostics = rawDocuments.map((doc) => ({
+        id: doc.id,
+        duplicateOfDocumentId: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
+        canonical: !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id),
+      }));
+      console.info("[trace][workspace] workspace payload documents:", documentDiagnostics);
+      if (canonicalDocuments.length !== rawDocuments.length) {
+        console.warn("[trace][workspace] client-side filtered duplicate-marked documents", {
+          before: rawDocuments.length,
+          after: canonicalDocuments.length,
+          removedDocumentIds: rawDocuments
+            .filter((doc) => !!(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id))
+            .map((doc) => doc.id),
+        });
+      }
+      return {
+        ...payload,
+        documents: canonicalDocuments,
+      };
     },
   });
   const { data: casesData } = useQuery<{ cases: CaseRecord[] }>({
