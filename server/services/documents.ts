@@ -75,7 +75,6 @@ export function mergeCaseScopedDocumentIds(
 }
 
 const OPTIONAL_DOCUMENT_INSERT_COLUMNS = new Set([
-  "source_file_sha256",
   "retention_tier",
   "original_expires_at",
   "intelligence_expires_at",
