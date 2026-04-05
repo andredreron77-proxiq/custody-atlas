@@ -52,3 +52,15 @@ test("dropUnsupportedInsertColumn keeps payload intact for non-optional columns"
   assert.equal(result.removedColumn, null);
   assert.deepEqual(result.nextPayload, payload);
 });
+
+test("dropUnsupportedInsertColumn does not remove source_file_sha256", () => {
+  const payload = {
+    user_id: "user-1",
+    file_name: "order.pdf",
+    source_file_sha256: "abc123",
+  };
+
+  const result = dropUnsupportedInsertColumn(payload, "Could not find the 'source_file_sha256' column of 'documents' in the schema cache");
+  assert.equal(result.removedColumn, null);
+  assert.deepEqual(result.nextPayload, payload);
+});

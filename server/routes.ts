@@ -1715,6 +1715,8 @@ The user is asking what they should do or how to take a specific action. Focus y
       uploadFileName,
       uploadMimeType,
       uploadExtension,
+      duplicateKey: null as string | null,
+      fallbackDuplicateKey: null as string | null,
       similarDetectionRan: false,
       similarDocumentFound: false,
       structured409Returned: false,
@@ -1785,13 +1787,28 @@ The user is asking what they should do or how to take a specific action. Focus y
         .update(":")
         .update(fileBuffer.subarray(0, Math.min(fileBuffer.length, 65536)))
         .digest("hex");
+      conflictDiagnostics.duplicateKey = sourceFileSha256;
+      conflictDiagnostics.fallbackDuplicateKey = duplicateSignatureV1;
 
       if (docUserId && req.file && !allowDuplicateUpload) {
+        console.info("[analyze-document] duplicate-check-start", {
+          ...conflictDiagnostics,
+          uploadMimeType,
+          duplicateKey: sourceFileSha256,
+          duplicateKeyType: "source_file_sha256",
+        });
         const exactDuplicate = await findDuplicateDocument(docUserId, {
           fileHash: sourceFileSha256,
           fallbackSignature: duplicateSignatureV1,
         });
         if (exactDuplicate) {
+          console.info("[analyze-document] duplicate-check-match", {
+            ...conflictDiagnostics,
+            duplicateFound: true,
+            preventedRowCreation: true,
+            matchedDocumentId: exactDuplicate.id,
+            matchedDocumentFileName: exactDuplicate.fileName,
+          });
           conflictDiagnostics.structured409Returned = true;
           return res.status(409).json({
             error: "This document already exists in your workspace.",
@@ -1811,6 +1828,11 @@ The user is asking what they should do or how to take a specific action. Focus y
             uploadRecorded: false,
           });
         }
+        console.info("[analyze-document] duplicate-check-match", {
+          ...conflictDiagnostics,
+          duplicateFound: false,
+          preventedRowCreation: false,
+        });
 
         conflictDiagnostics.similarDetectionRan = true;
         console.info("[analyze-document] similar-doc-detection-start", conflictDiagnostics);
@@ -2089,6 +2111,31 @@ CRITICAL RULES:
             fileHash: sourceFileSha256,
             fallbackSignature: duplicateSignatureV1,
           });
+        if (duplicateDoc && !allowDuplicateUpload) {
+          console.info("[analyze-document] duplicate-check-post-analysis-match", {
+            ...conflictDiagnostics,
+            duplicateFound: true,
+            preventedRowCreation: true,
+            matchedDocumentId: duplicateDoc.id,
+          });
+          return res.status(409).json({
+            error: "This document already exists in your workspace.",
+            details: "Open the existing document, or choose Upload anyway to keep a separate copy.",
+            code: "DOCUMENT_EXACT_DUPLICATE_EXISTS",
+            duplicate: {
+              type: "exact" satisfies DocumentDuplicateKind,
+              documentId: duplicateDoc.id,
+              fileName: duplicateDoc.fileName,
+              analysisStatus: getDocumentIntegrity(duplicateDoc).analysisStatus,
+            },
+            options: {
+              canUseExisting: true,
+              canUploadAnyway: true,
+              canReplaceExisting: false,
+            },
+            uploadRecorded: false,
+          });
+        }
 
         const savedDoc = duplicateDoc ?? await saveDocument(docUserId, {
           fileName: documentName,
