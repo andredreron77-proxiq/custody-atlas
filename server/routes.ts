@@ -2821,16 +2821,20 @@ ${userQuestion}`;
           integrityIssue: integrity.integrityIssue,
         };
       });
-      console.info("[trace][workspace-api] documents", documents.map((d) => ({
+      const responseRows = documents.map((d) => ({
         id: d.id,
         file_name: d.fileName,
-        user_id: d.userId,
-        duplicateOfDocumentId: d.duplicateOfDocumentId ?? null,
         duplicate_of_document_id: d.duplicateOfDocumentId ?? null,
-        canonical: !d.duplicateOfDocumentId,
-        isAnalysisAvailable: d.isAnalysisAvailable,
-        analysisStatus: d.analysisStatus,
-      })));
+      }));
+      console.info("[trace][workspace-api] response rows", responseRows);
+      const duplicateRowsInResponse = responseRows.filter((row) => !!row.duplicate_of_document_id);
+      if (duplicateRowsInResponse.length > 0) {
+        console.warn("[trace][workspace-api] duplicate-marked rows reached /api/workspace response", {
+          userId: user.id,
+          count: duplicateRowsInResponse.length,
+          rows: duplicateRowsInResponse,
+        });
+      }
       return res.json({ threads, documents, timelineEvents });
     } catch (err) {
       console.error("[workspace] GET error:", err);
