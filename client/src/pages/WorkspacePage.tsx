@@ -973,31 +973,13 @@ function DocumentsSection({
     );
   }, [documents]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-6">
-        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (documents.length === 0) {
-    return (
-      <EmptyState
-        icon={FileSearch}
-        message={uploadEmptyMessage ?? "Upload your first custody document"}
-        ctaLabel="Analyze a document"
-        ctaHref="/upload-document"
-        testId="empty-recent-documents"
-      />
-    );
-  }
-
   const orderedDocs = [...documents].sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a));
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
   const visibleDocs = orderedDocs.slice(0, MAX_VISIBLE);
 
   useEffect(() => {
+    if (isLoading || documents.length === 0) return;
+
     const normalizeVisibleFileName = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, " ");
     const summarySignature = (doc: WorkspaceDocument): string => {
       const summary = typeof (doc.analysisJson as Record<string, unknown>)?.summary === "string"
@@ -1037,7 +1019,27 @@ function DocumentsSection({
     if (duplicateVisible.length > 0) {
       console.warn("[trace][workspace] visible duplicate rows on render", duplicateVisible);
     }
-  }, [visibleDocs, currentUserId]);
+  }, [documents.length, isLoading, visibleDocs, currentUserId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (documents.length === 0) {
+    return (
+      <EmptyState
+        icon={FileSearch}
+        message={uploadEmptyMessage ?? "Upload your first custody document"}
+        ctaLabel="Analyze a document"
+        ctaHref="/upload-document"
+        testId="empty-recent-documents"
+      />
+    );
+  }
 
   return (
     <div className="space-y-3" data-testid="list-documents-grouped">
