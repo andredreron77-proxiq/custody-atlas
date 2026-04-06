@@ -2650,14 +2650,59 @@ ${userQuestion}`;
         getDocuments(user.id),
         listTimelineEvents(user.id),
       ]);
-      const canonicalDocuments = rawDocuments.filter((doc) => !doc.duplicateOfDocumentId);
-      if (canonicalDocuments.length !== rawDocuments.length) {
+      const canonicalMarkedDocuments = rawDocuments.filter((doc) => !doc.duplicateOfDocumentId);
+      if (canonicalMarkedDocuments.length !== rawDocuments.length) {
         console.warn("[trace][workspace-api] filtered duplicate-marked rows from live response", {
           userId: user.id,
           before: rawDocuments.length,
-          after: canonicalDocuments.length,
+          after: canonicalMarkedDocuments.length,
           removedDocumentIds: rawDocuments
             .filter((doc) => !!doc.duplicateOfDocumentId)
+            .map((doc) => doc.id),
+        });
+      }
+      const findIdentityKey = (doc: SavedDocument): string | null => {
+        const sourceHash = doc.sourceFileSha256?.trim().toLowerCase() || doc.fileHash?.trim().toLowerCase() || "";
+        if (sourceHash) return `source:${sourceHash}`;
+        const intakeTextHash = doc.intakeTextHash?.trim().toLowerCase() || "";
+        if (intakeTextHash) return `text:${intakeTextHash}`;
+        return null;
+      };
+      const pickPreferredDocument = (a: SavedDocument, b: SavedDocument): SavedDocument => {
+        const aIntegrity = getDocumentIntegrity(a);
+        const bIntegrity = getDocumentIntegrity(b);
+        const scoreA = (aIntegrity.isAnalysisAvailable ? 100 : 0) + (a.caseId ? 10 : 0);
+        const scoreB = (bIntegrity.isAnalysisAvailable ? 100 : 0) + (b.caseId ? 10 : 0);
+        if (scoreA !== scoreB) return scoreA > scoreB ? a : b;
+        return new Date(a.createdAt).getTime() <= new Date(b.createdAt).getTime() ? a : b;
+      };
+      const canonicalDocumentsByIdentity = new Map<string, SavedDocument>();
+      const canonicalDocumentsWithoutIdentity: SavedDocument[] = [];
+      for (const doc of canonicalMarkedDocuments) {
+        const identityKey = findIdentityKey(doc);
+        if (!identityKey) {
+          canonicalDocumentsWithoutIdentity.push(doc);
+          continue;
+        }
+        const existing = canonicalDocumentsByIdentity.get(identityKey);
+        if (!existing) {
+          canonicalDocumentsByIdentity.set(identityKey, doc);
+          continue;
+        }
+        canonicalDocumentsByIdentity.set(identityKey, pickPreferredDocument(existing, doc));
+      }
+      const canonicalDocuments = [
+        ...Array.from(canonicalDocumentsByIdentity.values()),
+        ...canonicalDocumentsWithoutIdentity,
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      if (canonicalDocuments.length !== canonicalMarkedDocuments.length) {
+        const keptIds = new Set(canonicalDocuments.map((doc) => doc.id));
+        console.warn("[trace][workspace-api] filtered identity-colliding canonical rows", {
+          userId: user.id,
+          before: canonicalMarkedDocuments.length,
+          after: canonicalDocuments.length,
+          removedDocumentIds: canonicalMarkedDocuments
+            .filter((doc) => !keptIds.has(doc.id))
             .map((doc) => doc.id),
         });
       }
@@ -2677,7 +2722,10 @@ ${userQuestion}`;
       });
       console.info("[trace][workspace-api] documents", documents.map((d) => ({
         id: d.id,
+        file_name: d.fileName,
+        user_id: d.userId,
         duplicateOfDocumentId: d.duplicateOfDocumentId ?? null,
+        duplicate_of_document_id: d.duplicateOfDocumentId ?? null,
         canonical: !d.duplicateOfDocumentId,
         isAnalysisAvailable: d.isAnalysisAvailable,
         analysisStatus: d.analysisStatus,
