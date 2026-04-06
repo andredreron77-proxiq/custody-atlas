@@ -908,7 +908,7 @@ function CaseBriefSection({
 /* ── Documents — compact dashboard preview ────────────────────────────────── */
 
 function DocumentsSection({
-  documents, isLoading, askAIPath, caseNameById, onOpenDocumentSafely, cases, uploadEmptyMessage,
+  documents, isLoading, askAIPath, caseNameById, onOpenDocumentSafely, cases, uploadEmptyMessage, currentUserId,
 }: {
   documents: WorkspaceDocument[];
   isLoading: boolean;
@@ -917,6 +917,7 @@ function DocumentsSection({
   onOpenDocumentSafely: (documentId: string) => Promise<void>;
   cases: CaseRecord[];
   uploadEmptyMessage?: string;
+  currentUserId?: string;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -995,6 +996,48 @@ function DocumentsSection({
   const orderedDocs = [...documents].sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a));
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
   const visibleDocs = orderedDocs.slice(0, MAX_VISIBLE);
+
+  useEffect(() => {
+    const normalizeVisibleFileName = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, " ");
+    const summarySignature = (doc: WorkspaceDocument): string => {
+      const summary = typeof (doc.analysisJson as Record<string, unknown>)?.summary === "string"
+        ? ((doc.analysisJson as Record<string, unknown>).summary as string)
+        : "";
+      return summary
+        .trim()
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 180);
+    };
+    const grouping = new Map<string, WorkspaceDocument[]>();
+    for (const doc of visibleDocs) {
+      const normalizedName = normalizeVisibleFileName(doc.fileName);
+      const groupKey = `${currentUserId ?? "unknown-user"}|${doc.caseId ?? "workspace"}|${normalizedName}`;
+      const rows = grouping.get(groupKey) ?? [];
+      rows.push(doc);
+      grouping.set(groupKey, rows);
+    }
+    const duplicateVisible = Array.from(grouping.entries())
+      .filter(([, rows]) => rows.length > 1)
+      .map(([groupKey, rows]) => ({
+        groupKey,
+        rows: rows.map((doc) => ({
+          id: doc.id,
+          file_name: doc.fileName,
+          user_id: currentUserId ?? null,
+          duplicate_of_document_id: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
+          case_workspace_grouping_key: `${currentUserId ?? "unknown-user"}|${doc.caseId ?? "workspace"}`,
+          normalized_filename: normalizeVisibleFileName(doc.fileName),
+          summary_signature: summarySignature(doc),
+        })),
+      }));
+    if (duplicateVisible.length > 0) {
+      console.warn("[trace][workspace] visible duplicate rows on render", duplicateVisible);
+    }
+  }, [visibleDocs, currentUserId]);
 
   return (
     <div className="space-y-3" data-testid="list-documents-grouped">
@@ -1925,6 +1968,7 @@ export default function WorkspacePage() {
               onOpenDocumentSafely={openDocumentSafely}
               cases={cases}
               uploadEmptyMessage={uploadEmptyMessage}
+              currentUserId={user?.id}
             />
           </DocumentsPanel>
         </div>
