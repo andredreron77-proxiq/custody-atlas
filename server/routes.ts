@@ -2106,7 +2106,7 @@ CRITICAL RULES:
         const retentionWindow = buildRetentionWindow(retentionTier);
         const analysisWithSourceHash = {
           ...(validated.data as Record<string, unknown>),
-          analysis_status: "analyzed",
+          analysis_status: "completed",
           source_file_sha256: sourceFileSha256,
           file_hash: sourceFileSha256,
           normalized_filename: normalizeFileNameStem(documentName),
@@ -3145,7 +3145,7 @@ CRITICAL RULES:
 
       const analysisPayload = {
         ...(validated.data as Record<string, unknown>),
-        analysis_status: "analyzed",
+        analysis_status: "completed",
       };
       // Update the existing document row — no new row created
       const updated = await updateDocumentAnalysis(documentId, user.id, analysisPayload).catch(() => false);
