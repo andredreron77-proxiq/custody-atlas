@@ -2704,7 +2704,29 @@ ${userQuestion}`;
         const summary = typeof (doc.analysisJson as Record<string, unknown>)?.summary === "string"
           ? ((doc.analysisJson as Record<string, unknown>).summary as string)
           : "";
-        return summary.trim().toLowerCase().slice(0, 180);
+        return summary
+          .trim()
+          .toLowerCase()
+          .normalize("NFKC")
+          .replace(/[^a-z0-9]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 180);
+      };
+      const findCaseWorkspaceGroupingKey = (doc: SavedDocument): string => `${doc.userId}|${doc.caseId ?? "workspace"}`;
+      const buildVisibleFallbackDiagnosticRow = (doc: SavedDocument) => {
+        const normalizedFileName = normalizeVisibleFileName(doc.fileName);
+        const summarySignature = findSummarySignature(doc);
+        return {
+          id: doc.id,
+          file_name: doc.fileName,
+          user_id: doc.userId,
+          duplicate_of_document_id: doc.duplicateOfDocumentId ?? null,
+          case_workspace_grouping_key: findCaseWorkspaceGroupingKey(doc),
+          normalized_filename: normalizedFileName,
+          summary_signature: summarySignature,
+          source_kind: doc.sourceKind ?? null,
+        };
       };
       const canonicalDocumentsByVisibleKey = new Map<string, SavedDocument>();
       const canonicalDocumentsWithoutVisibleKey: SavedDocument[] = [];
@@ -2715,7 +2737,7 @@ ${userQuestion}`;
           canonicalDocumentsWithoutVisibleKey.push(doc);
           continue;
         }
-        const visibleKey = `${doc.userId}|${doc.caseId ?? "workspace"}|${normalizedName}|${summarySignature}`;
+        const visibleKey = `${findCaseWorkspaceGroupingKey(doc)}|${normalizedName}|${summarySignature}`;
         const existing = canonicalDocumentsByVisibleKey.get(visibleKey);
         if (!existing) {
           canonicalDocumentsByVisibleKey.set(visibleKey, doc);
@@ -2749,6 +2771,40 @@ ${userQuestion}`;
           removedDocumentIds: canonicalMarkedDocuments
             .filter((doc) => !keptIds.has(doc.id))
             .map((doc) => doc.id),
+        });
+      }
+      const duplicateLookingGroups = new Map<string, SavedDocument[]>();
+      for (const doc of canonicalDocuments) {
+        const normalizedName = normalizeVisibleFileName(doc.fileName);
+        if (!normalizedName) continue;
+        const groupKey = `${findCaseWorkspaceGroupingKey(doc)}|${normalizedName}`;
+        const rows = duplicateLookingGroups.get(groupKey) ?? [];
+        rows.push(doc);
+        duplicateLookingGroups.set(groupKey, rows);
+      }
+      const duplicateLookingRows = Array.from(duplicateLookingGroups.entries())
+        .filter(([, rows]) => rows.length > 1)
+        .map(([groupKey, rows]) => {
+          const diagnostics = rows.map((row) => buildVisibleFallbackDiagnosticRow(row));
+          const summarySignatures = Array.from(new Set(diagnostics.map((row) => row.summary_signature)));
+          const sourceKinds = Array.from(new Set(diagnostics.map((row) => row.source_kind ?? "unknown")));
+          return {
+            group_key: groupKey,
+            summary_signatures: summarySignatures,
+            source_kinds: sourceKinds,
+            rows: diagnostics,
+            fallback_miss_reason: summarySignatures.length > 1
+              ? "summary_signatures_differ"
+              : sourceKinds.length > 1
+                ? "different_data_sources"
+                : "emitted_by_api_workspace",
+          };
+        });
+      if (duplicateLookingRows.length > 0) {
+        console.warn("[trace][workspace-api] visible duplicate-looking rows remained after fallback", {
+          userId: user.id,
+          endpoint: "/api/workspace",
+          groups: duplicateLookingRows,
         });
       }
       // Strip internal fields (storagePath, extractedText) from workspace response;
