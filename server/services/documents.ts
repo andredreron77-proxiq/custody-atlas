@@ -86,10 +86,23 @@ export interface UploadIntakeAttemptInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface PersistenceErrorDetail {
+  operation: string;
+  table: string;
+  writeMode: "insert" | "update" | "upsert";
+  code: string | null;
+  message: string;
+  details: string | null;
+  hint: string | null;
+  column: string | null;
+  constraint: string | null;
+  isRls: boolean;
+}
+
 export type SaveDocumentOutcome =
   | { status: "created"; document: SavedDocument }
   | { status: "duplicate"; document: SavedDocument }
-  | { status: "error" };
+  | { status: "error"; error: PersistenceErrorDetail };
 
 export interface DocumentIntegrity {
   isAnalysisAvailable: boolean;
@@ -305,7 +318,7 @@ export async function getDocuments(userId: string): Promise<SavedDocument[]> {
 export async function recordUploadIntakeAttempt(input: UploadIntakeAttemptInput): Promise<void> {
   if (!supabaseAdmin) return;
   try {
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from("upload_intake_attempts")
       .insert({
         user_id: input.userId,
@@ -323,6 +336,14 @@ export async function recordUploadIntakeAttempt(input: UploadIntakeAttemptInput)
         allowed_actions: input.allowedActions ?? {},
         metadata: input.metadata ?? {},
       });
+    if (error) {
+      const parsed = buildPersistenceErrorDetail(error, {
+        operation: "recordUploadIntakeAttempt",
+        table: "upload_intake_attempts",
+        writeMode: "insert",
+      });
+      console.error("[documents] recordUploadIntakeAttempt error:", parsed);
+    }
   } catch {
     return;
   }
@@ -474,7 +495,23 @@ export async function saveDocumentWithDuplicateOutcome(
   userId: string,
   fields: Omit<SavedDocument, "id" | "userId" | "createdAt">,
 ): Promise<SaveDocumentOutcome> {
-  if (!supabaseAdmin) return { status: "error" };
+  if (!supabaseAdmin) {
+    return {
+      status: "error",
+      error: {
+        operation: "saveDocumentWithDuplicateOutcome",
+        table: "documents",
+        writeMode: "insert",
+        code: null,
+        message: "Supabase admin client is not configured.",
+        details: null,
+        hint: null,
+        column: null,
+        constraint: null,
+        isRls: false,
+      },
+    };
+  }
   try {
     const lifecycle = getLifecycleStatusesFromAnalysis(fields.analysisJson, fields.extractedText ?? "");
     const insertPayload: Record<string, unknown> = {
@@ -549,6 +586,11 @@ export async function saveDocumentWithDuplicateOutcome(
       }
 
       const message = error?.message ?? "";
+      if (isCaseIdForeignKeyViolation(error) && payload.case_id) {
+        console.warn("[documents] saveDocument retry without invalid case_id foreign key");
+        payload = { ...payload, case_id: null };
+        continue;
+      }
       if (isSourceHashUniqueConflict(message) && normalizedSourceHash) {
         const existing = await findDuplicateDocument(userId, {
           fileHash: normalizedSourceHash,
@@ -586,11 +628,32 @@ export async function saveDocumentWithDuplicateOutcome(
     }
 
     if (error) {
-      console.error("[documents] saveDocument error:", error.message);
-      return { status: "error" };
+      const parsed = buildPersistenceErrorDetail(error, {
+        operation: "saveDocumentWithDuplicateOutcome",
+        table: "documents",
+        writeMode: normalizedSourceHash ? "upsert" : "insert",
+      });
+      console.error("[documents] saveDocument error:", parsed);
+      return { status: "error", error: parsed };
     }
 
-    if (!data) return { status: "error" };
+    if (!data) {
+      return {
+        status: "error",
+        error: {
+          operation: "saveDocumentWithDuplicateOutcome",
+          table: "documents",
+          writeMode: normalizedSourceHash ? "upsert" : "insert",
+          code: null,
+          message: "Document insert returned no row.",
+          details: null,
+          hint: null,
+          column: null,
+          constraint: null,
+          isRls: false,
+        },
+      };
+    }
 
     const saved = mapRow(data);
 
@@ -602,8 +665,13 @@ export async function saveDocumentWithDuplicateOutcome(
 
     return { status: "created", document: saved };
   } catch (err) {
-    console.error("[documents] saveDocument exception:", err);
-    return { status: "error" };
+    const parsed = buildPersistenceErrorDetail(err, {
+      operation: "saveDocumentWithDuplicateOutcome",
+      table: "documents",
+      writeMode: "insert",
+    });
+    console.error("[documents] saveDocument exception:", parsed);
+    return { status: "error", error: parsed };
   }
 }
 
@@ -987,6 +1055,12 @@ export async function updateDocumentAnalysis(
 
       const { nextPayload, removedColumn } = dropUnsupportedInsertColumn(payload, error.message ?? "");
       if (!removedColumn || !OPTIONAL_DOCUMENT_UPDATE_COLUMNS.has(removedColumn)) {
+        const parsed = buildPersistenceErrorDetail(error, {
+          operation: "updateDocumentAnalysis",
+          table: "documents",
+          writeMode: "update",
+        });
+        console.error("[documents] updateDocumentAnalysis error:", parsed);
         return false;
       }
       payload = nextPayload;
@@ -1029,6 +1103,56 @@ export async function updateDocumentLifecycleStatuses(
   }
 
   return false;
+}
+
+function inferErrorColumn(errorLike: { message?: string | null; details?: string | null }): string | null {
+  const message = errorLike.message ?? "";
+  const details = errorLike.details ?? "";
+  const fromMessage = message.match(/column "?([a-z_]+)"?/i)?.[1];
+  if (fromMessage) return fromMessage.toLowerCase();
+  const fromDetails = details.match(/\(([a-z_]+)\)=/i)?.[1];
+  if (fromDetails) return fromDetails.toLowerCase();
+  return null;
+}
+
+function inferConstraint(errorLike: { message?: string | null }): string | null {
+  const message = errorLike.message ?? "";
+  const match = message.match(/constraint "([^"]+)"/i);
+  return match?.[1] ?? null;
+}
+
+export function buildPersistenceErrorDetail(
+  error: any,
+  context: Pick<PersistenceErrorDetail, "operation" | "table" | "writeMode">,
+): PersistenceErrorDetail {
+  const message = typeof error?.message === "string" ? error.message : "Unknown persistence error";
+  const details = typeof error?.details === "string" ? error.details : null;
+  const hint = typeof error?.hint === "string" ? error.hint : null;
+  const code = typeof error?.code === "string" ? error.code : null;
+  const normalized = `${message} ${details ?? ""}`.toLowerCase();
+
+  return {
+    ...context,
+    code,
+    message,
+    details,
+    hint,
+    column: inferErrorColumn({ message, details }),
+    constraint: inferConstraint({ message }),
+    isRls: normalized.includes("row-level security") || code === "42501",
+  };
+}
+
+export function isCaseIdForeignKeyViolation(error: any): boolean {
+  const code = typeof error?.code === "string" ? error.code : "";
+  const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
+  const details = typeof error?.details === "string" ? error.details.toLowerCase() : "";
+  return code === "23503"
+    && (
+      message.includes("case_id")
+      || details.includes("(case_id)")
+      || message.includes("documents_case_id_fkey")
+    );
 }
 
 /**

@@ -2097,6 +2097,7 @@ CRITICAL RULES:
       let savedDocumentId: string | null = null;
       let duplicateUpload = false;
       let duplicateMessage: string | null = null;
+      let persistenceErrorDetail: any = null;
 
       if (docUserId && req.file) {
         const pageCount = parseInt(String(req.body?.pageCount ?? "1"), 10) || 1;
@@ -2185,8 +2186,23 @@ CRITICAL RULES:
             analysisJson: analysisWithSourceHash,
             extractedText: truncatedText,
             docType: "other",
-          }).catch(() => ({ status: "error" as const }));
+          }).catch((err) => ({
+            status: "error" as const,
+            error: {
+              operation: "saveDocumentWithDuplicateOutcome",
+              table: "documents",
+              writeMode: "insert" as const,
+              code: null,
+              message: err instanceof Error ? err.message : "Unknown route-level persistence error",
+              details: null,
+              hint: null,
+              column: null,
+              constraint: null,
+              isRls: false,
+            },
+          }));
         const savedDoc = saveOutcome.status === "error" ? null : saveOutcome.document;
+        persistenceErrorDetail = saveOutcome.status === "error" ? saveOutcome.error : null;
 
         if (savedDoc) {
           const isDuplicateUpload = saveOutcome.status === "duplicate";
@@ -2211,7 +2227,14 @@ CRITICAL RULES:
           if (isDuplicateUpload) {
             const updated = await updateDocumentAnalysis(savedDoc.id, docUserId, analysisWithSourceHash).catch(() => false);
             if (!updated) {
-              console.error("[analyze-document] duplicate analysis update failed");
+              console.error("[analyze-document] duplicate analysis update failed", {
+                fileName: documentName,
+                userId: docUserId,
+                analysisCompleted: true,
+                operation: "updateDocumentAnalysis",
+                table: "documents",
+                writeMode: "update",
+              });
               return res.status(500).json({
                 error: "Document analysis completed, but we could not persist this upload. Please retry.",
                 code: "DOCUMENT_PERSISTENCE_FAILED",
@@ -2319,7 +2342,23 @@ CRITICAL RULES:
       }
 
       if (docUserId && req.file && !savedDocumentId) {
-        console.error("[analyze-document] persistence failure: analysis succeeded but document row was not saved");
+        const errorDetail = persistenceErrorDetail;
+        console.error("[analyze-document] persistence failure: analysis succeeded but document row was not saved", {
+          fileName: req.file.originalname ?? "document",
+          userId: docUserId,
+          analysisCompleted: true,
+          operation: (errorDetail?.operation as string | undefined) ?? "saveDocumentWithDuplicateOutcome",
+          table: (errorDetail?.table as string | undefined) ?? "documents",
+          writeMode: (errorDetail?.writeMode as string | undefined) ?? "insert",
+          errorCode: (errorDetail?.code as string | undefined) ?? null,
+          errorMessage: (errorDetail?.message as string | undefined) ?? null,
+          errorDetails: (errorDetail?.details as string | undefined) ?? null,
+          errorHint: (errorDetail?.hint as string | undefined) ?? null,
+          column: (errorDetail?.column as string | undefined) ?? null,
+          constraint: (errorDetail?.constraint as string | undefined) ?? null,
+          isRls: (errorDetail?.isRls as boolean | undefined) ?? false,
+          supabaseContext: "service_role_admin_client",
+        });
         return res.status(500).json({
           error: "Document analysis completed, but we could not persist this upload. Please retry.",
           code: "DOCUMENT_PERSISTENCE_FAILED",

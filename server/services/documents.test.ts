@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildPersistenceErrorDetail,
   dropUnsupportedInsertColumn,
   extractMissingInsertColumn,
   getDocumentIntegrity,
+  isCaseIdForeignKeyViolation,
   isCanonicalDocument,
   isSourceHashUniqueConflict,
   mergeCaseScopedDocumentIds,
@@ -81,6 +83,44 @@ test("isSourceHashUniqueConflict detects unique index violations on source hash"
     ),
     false,
   );
+});
+
+test("isCaseIdForeignKeyViolation detects case_id FK write failures", () => {
+  assert.equal(
+    isCaseIdForeignKeyViolation({
+      code: "23503",
+      message: "insert or update on table \"documents\" violates foreign key constraint \"documents_case_id_fkey\"",
+      details: "Key (case_id)=(missing-case) is not present in table \"cases\".",
+    }),
+    true,
+  );
+  assert.equal(
+    isCaseIdForeignKeyViolation({
+      code: "23503",
+      message: "insert or update on table \"documents\" violates foreign key constraint \"documents_user_id_fkey\"",
+      details: "Key (user_id)=(missing-user) is not present in table \"users\".",
+    }),
+    false,
+  );
+});
+
+test("buildPersistenceErrorDetail surfaces constraint, column, and RLS hints", () => {
+  const detail = buildPersistenceErrorDetail(
+    {
+      code: "42501",
+      message: "new row violates row-level security policy for table \"documents\"",
+      details: "Failing row contains (case_id)=abc123.",
+      hint: "Use authenticated role",
+    },
+    {
+      operation: "saveDocumentWithDuplicateOutcome",
+      table: "documents",
+      writeMode: "insert",
+    },
+  );
+  assert.equal(detail.constraint, null);
+  assert.equal(detail.column, "case_id");
+  assert.equal(detail.isRls, true);
 });
 
 test("isCanonicalDocument returns true only for non-duplicate rows", () => {
