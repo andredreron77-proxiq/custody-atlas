@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "../server/lib/supabaseAdmin";
+import { pathToFileURL } from "node:url";
 
-type DocRow = {
+export type DocRow = {
   id: string;
   user_id: string;
   case_id: string | null;
@@ -22,6 +23,7 @@ type DocRow = {
 type GroupReason =
   | "file_hash_exact"
   | "intake_text_hash_exact"
+  | "filename_exact_fallback"
   | "filename_mime_text_similarity"
   | "filename_legacy_batch_semantic_similarity";
 
@@ -30,11 +32,6 @@ type DuplicateGroup = {
   duplicates: DocRow[];
   reason: GroupReason;
   confidence: number;
-};
-
-type CaseLinkRow = {
-  document_id: string;
-  case_id: string;
 };
 
 function normalizeText(text: string): string {
@@ -54,6 +51,12 @@ function normalizeFileName(name: string): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function fileExtension(name: string): string {
+  const clean = String(name ?? "").trim().toLowerCase();
+  const match = clean.match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : "";
 }
 
 function mimeFamily(value: string | null): string {
@@ -105,6 +108,13 @@ function strongTextSimilarity(a: DocRow, b: DocRow): number {
   return jaccardSimilarity(aTokens, bTokens);
 }
 
+function extensionCompatible(a: DocRow, b: DocRow): boolean {
+  const extA = fileExtension(a.file_name);
+  const extB = fileExtension(b.file_name);
+  if (extA && extB) return extA === extB;
+  return true;
+}
+
 function withinLegacyBatchWindow(a: DocRow, b: DocRow): boolean {
   const aTime = new Date(a.created_at).getTime();
   const bTime = new Date(b.created_at).getTime();
@@ -125,66 +135,11 @@ function pickCanonical(docs: DocRow[]): DocRow {
   return [...docs].sort((a, b) => {
     const score = qualityScore(b) - qualityScore(a);
     if (score !== 0) return score;
-    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   })[0];
 }
 
-async function repointDocumentId(table: string, canonicalId: string, duplicateId: string) {
-  if (!supabaseAdmin) return;
-  const { error } = await supabaseAdmin
-    .from(table)
-    .update({ document_id: canonicalId })
-    .eq("document_id", duplicateId);
-  if (error) console.warn(`[dedupe-remediation] repoint failed table=${table}:`, error.message);
-}
-
-async function repointCaseFactSource(canonicalId: string, duplicateId: string) {
-  if (!supabaseAdmin) return;
-  const { error } = await supabaseAdmin
-    .from("case_facts")
-    .update({ source: canonicalId })
-    .eq("source", duplicateId);
-  if (error) console.warn("[dedupe-remediation] case_facts source repoint failed:", error.message);
-}
-
-async function run() {
-  const apply = process.argv.includes("--apply");
-  if (!supabaseAdmin) {
-    console.error("SUPABASE credentials are required.");
-    process.exit(1);
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("documents")
-    .select("id,user_id,case_id,file_name,normalized_filename,mime_type,created_at,updated_at,analysis_json,file_hash,source_file_sha256,intake_text_hash,intake_text_preview,extracted_text,file_size_bytes,duplicate_of_document_id");
-  if (error || !data) {
-    console.error("Failed to load documents:", error?.message);
-    process.exit(1);
-  }
-
-  const { data: caseLinks, error: caseLinkError } = await supabaseAdmin
-    .from("document_case_links")
-    .select("document_id,case_id");
-  if (caseLinkError) {
-    console.error("Failed to load document_case_links:", caseLinkError.message);
-    process.exit(1);
-  }
-
-  const docs = data as DocRow[];
-  const links = (caseLinks ?? []) as CaseLinkRow[];
-  const caseIdsByDocumentId = new Map<string, string[]>();
-  for (const link of links) {
-    const arr = caseIdsByDocumentId.get(link.document_id) ?? [];
-    arr.push(link.case_id);
-    caseIdsByDocumentId.set(link.document_id, arr);
-  }
-
-  const caseScopeKey = (doc: DocRow): string => {
-    const caseIds = caseIdsByDocumentId.get(doc.id) ?? [];
-    if (caseIds.length > 0) return [...new Set(caseIds)].sort().join("|");
-    return doc.case_id ?? "NO_CASE";
-  };
-
+export function buildDuplicateGroups(docs: DocRow[]): { groups: DuplicateGroup[]; byUser: Map<string, DocRow[]> } {
   const unresolved = docs.filter((d) => !d.duplicate_of_document_id);
   const byUser = new Map<string, DocRow[]>();
   for (const doc of unresolved) {
@@ -257,6 +212,7 @@ async function run() {
         for (let j = i + 1; j < pending.length; j++) {
           const candidate = pending[j];
           if (consumed.has(candidate.id)) continue;
+          if (!extensionCompatible(seed, candidate)) continue;
           const similarity = strongTextSimilarity(seed, candidate);
           const summaryMatch =
             summarySignature(seed).length > 20 &&
@@ -267,6 +223,20 @@ async function run() {
             Math.abs(seed.file_size_bytes - candidate.file_size_bytes) <= 64;
           const sameMimeFamily = mimeFamily(seed.mime_type) === mimeFamily(candidate.mime_type);
           const inLegacyBatch = withinLegacyBatchWindow(seed, candidate);
+          const bothMissingIdentityHashes =
+            !(seed.file_hash || seed.source_file_sha256 || "").trim() &&
+            !(candidate.file_hash || candidate.source_file_sha256 || "").trim() &&
+            !(seed.intake_text_hash || "").trim() &&
+            !(candidate.intake_text_hash || "").trim();
+          const fallbackEligible =
+            sameMimeFamily ||
+            summaryMatch ||
+            similarity >= 0.65 ||
+            inLegacyBatch;
+          if (bothMissingIdentityHashes && fallbackEligible) {
+            cluster.push(candidate);
+            continue;
+          }
           if (sameMimeFamily && (similarity >= 0.72 || (summaryMatch && sameSize))) {
             cluster.push(candidate);
           } else if (inLegacyBatch && similarity >= 0.7 && (summaryMatch || sameSize)) {
@@ -278,11 +248,16 @@ async function run() {
         const duplicates = cluster.filter((d) => d.id !== canonical.id);
         const minSim = Math.min(...duplicates.map((d) => strongTextSimilarity(seed, d)));
         const batchHeuristicUsed = duplicates.some((d) => withinLegacyBatchWindow(seed, d));
+        const allMissingIdentityHashes = [seed, ...duplicates].every(
+          (d) => !(d.file_hash || d.source_file_sha256 || "").trim() && !(d.intake_text_hash || "").trim(),
+        );
         const reason: GroupReason =
-          minSim >= 0.72 && !batchHeuristicUsed
+          allMissingIdentityHashes
+            ? "filename_exact_fallback"
+            : minSim >= 0.72 && !batchHeuristicUsed
             ? "filename_mime_text_similarity"
             : "filename_legacy_batch_semantic_similarity";
-        const confidence = minSim >= 0.72 && !batchHeuristicUsed ? 0.91 : 0.87;
+        const confidence = allMissingIdentityHashes ? 0.84 : minSim >= 0.72 && !batchHeuristicUsed ? 0.91 : 0.87;
         groups.push({ canonical, duplicates, reason, confidence });
         for (const doc of cluster) {
           consumed.add(doc.id);
@@ -291,6 +266,44 @@ async function run() {
       }
     }
   }
+  return { groups, byUser };
+}
+
+async function repointDocumentId(table: string, canonicalId: string, duplicateId: string) {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin
+    .from(table)
+    .update({ document_id: canonicalId })
+    .eq("document_id", duplicateId);
+  if (error) console.warn(`[dedupe-remediation] repoint failed table=${table}:`, error.message);
+}
+
+async function repointCaseFactSource(canonicalId: string, duplicateId: string) {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin
+    .from("case_facts")
+    .update({ source: canonicalId })
+    .eq("source", duplicateId);
+  if (error) console.warn("[dedupe-remediation] case_facts source repoint failed:", error.message);
+}
+
+async function run() {
+  const apply = process.argv.includes("--apply");
+  if (!supabaseAdmin) {
+    console.error("SUPABASE credentials are required.");
+    process.exit(1);
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("documents")
+    .select("id,user_id,case_id,file_name,normalized_filename,mime_type,created_at,updated_at,analysis_json,file_hash,source_file_sha256,intake_text_hash,intake_text_preview,extracted_text,file_size_bytes,duplicate_of_document_id");
+  if (error || !data) {
+    console.error("Failed to load documents:", error?.message);
+    process.exit(1);
+  }
+
+  const docs = data as DocRow[];
+  const { groups, byUser } = buildDuplicateGroups(docs);
 
   console.log(`[dedupe-remediation] duplicate groups found: ${groups.length}`);
   const unresolvedDuplicateLooking = Array.from(byUser.entries())
@@ -358,7 +371,15 @@ async function run() {
   }
 }
 
-run().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const isEntrypoint = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(entry).href;
+})();
+
+if (isEntrypoint) {
+  run().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
