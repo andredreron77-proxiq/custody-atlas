@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   dropUnsupportedInsertColumn,
   extractMissingInsertColumn,
+  getDocumentIntegrity,
   isCanonicalDocument,
   isSourceHashUniqueConflict,
   mergeCaseScopedDocumentIds,
@@ -87,4 +88,29 @@ test("isCanonicalDocument returns true only for non-duplicate rows", () => {
   assert.equal(isCanonicalDocument({ duplicateOfDocumentId: "doc-1" }), false);
   assert.equal(isCanonicalDocument({ duplicate_of_document_id: null }), true);
   assert.equal(isCanonicalDocument({ duplicate_of_document_id: "doc-1" }), false);
+});
+
+test("getDocumentIntegrity treats completed lifecycle status as analyzed", () => {
+  const integrity = getDocumentIntegrity({
+    analysisJson: {
+      analysis_status: "completed",
+      summary: "Structured summary present.",
+    },
+  });
+
+  assert.equal(integrity.isAnalysisAvailable, true);
+  assert.equal(integrity.analysisStatus, "analyzed");
+  assert.equal(integrity.integrityIssue, null);
+});
+
+test("getDocumentIntegrity treats pending lifecycle status as analyzing", () => {
+  const integrity = getDocumentIntegrity({
+    analysisJson: {
+      analysis_status: "pending",
+    },
+  });
+
+  assert.equal(integrity.isAnalysisAvailable, false);
+  assert.equal(integrity.analysisStatus, "analyzing");
+  assert.equal(integrity.integrityIssue, "missing_analysis");
 });
