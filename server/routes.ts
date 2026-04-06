@@ -2650,6 +2650,14 @@ ${userQuestion}`;
         getDocuments(user.id),
         listTimelineEvents(user.id),
       ]);
+      console.info("[trace][workspace-api] raw canonical DB rows", rawDocuments.map((doc) => ({
+        id: doc.id,
+        file_name: doc.fileName,
+        user_id: doc.userId,
+        duplicateOfDocumentId: doc.duplicateOfDocumentId ?? null,
+        duplicate_of_document_id: doc.duplicateOfDocumentId ?? null,
+        canonical: !doc.duplicateOfDocumentId,
+      })));
       const canonicalMarkedDocuments = rawDocuments.filter((doc) => !doc.duplicateOfDocumentId);
       if (canonicalMarkedDocuments.length !== rawDocuments.length) {
         console.warn("[trace][workspace-api] filtered duplicate-marked rows from live response", {
@@ -2691,10 +2699,47 @@ ${userQuestion}`;
         }
         canonicalDocumentsByIdentity.set(identityKey, pickPreferredDocument(existing, doc));
       }
+      const normalizeVisibleFileName = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, " ");
+      const findSummarySignature = (doc: SavedDocument): string => {
+        const summary = typeof (doc.analysisJson as Record<string, unknown>)?.summary === "string"
+          ? ((doc.analysisJson as Record<string, unknown>).summary as string)
+          : "";
+        return summary.trim().toLowerCase().slice(0, 180);
+      };
+      const canonicalDocumentsByVisibleKey = new Map<string, SavedDocument>();
+      const canonicalDocumentsWithoutVisibleKey: SavedDocument[] = [];
+      for (const doc of canonicalDocumentsWithoutIdentity) {
+        const normalizedName = normalizeVisibleFileName(doc.fileName);
+        const summarySignature = findSummarySignature(doc);
+        if (!normalizedName || !summarySignature) {
+          canonicalDocumentsWithoutVisibleKey.push(doc);
+          continue;
+        }
+        const visibleKey = `${doc.userId}|${doc.caseId ?? "workspace"}|${normalizedName}|${summarySignature}`;
+        const existing = canonicalDocumentsByVisibleKey.get(visibleKey);
+        if (!existing) {
+          canonicalDocumentsByVisibleKey.set(visibleKey, doc);
+          continue;
+        }
+        canonicalDocumentsByVisibleKey.set(visibleKey, pickPreferredDocument(existing, doc));
+      }
+      const canonicalFromVisibleKeys = Array.from(canonicalDocumentsByVisibleKey.values());
       const canonicalDocuments = [
         ...Array.from(canonicalDocumentsByIdentity.values()),
-        ...canonicalDocumentsWithoutIdentity,
+        ...canonicalFromVisibleKeys,
+        ...canonicalDocumentsWithoutVisibleKey,
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      if (canonicalFromVisibleKeys.length !== canonicalDocumentsWithoutIdentity.length) {
+        const keptVisibleIds = new Set(canonicalFromVisibleKeys.map((doc) => doc.id));
+        console.warn("[trace][workspace-api] filtered visible-collision rows lacking identity hash", {
+          userId: user.id,
+          before: canonicalDocumentsWithoutIdentity.length,
+          after: canonicalFromVisibleKeys.length + canonicalDocumentsWithoutVisibleKey.length,
+          removedDocumentIds: canonicalDocumentsWithoutIdentity
+            .filter((doc) => !keptVisibleIds.has(doc.id) && !!findSummarySignature(doc))
+            .map((doc) => doc.id),
+        });
+      }
       if (canonicalDocuments.length !== canonicalMarkedDocuments.length) {
         const keptIds = new Set(canonicalDocuments.map((doc) => doc.id));
         console.warn("[trace][workspace-api] filtered identity-colliding canonical rows", {
