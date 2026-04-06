@@ -1531,7 +1531,6 @@ export default function WorkspacePage() {
       if (!res.ok) return { threads: [], documents: [], timelineEvents: [] };
       const payload = await res.json() as WorkspaceData;
       const rawDocuments = Array.isArray(payload?.documents) ? payload.documents : [];
-      const canonicalDocuments = rawDocuments.filter((doc) => !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id));
       const documentDiagnostics = rawDocuments.map((doc) => ({
         id: doc.id,
         file_name: doc.fileName ?? null,
@@ -1540,19 +1539,14 @@ export default function WorkspacePage() {
         canonical: !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id),
       }));
       console.info("[trace][workspace] workspace payload documents:", documentDiagnostics);
-      if (canonicalDocuments.length !== rawDocuments.length) {
-        console.warn("[trace][workspace] client-side filtered duplicate-marked documents", {
-          before: rawDocuments.length,
-          after: canonicalDocuments.length,
-          removedDocumentIds: rawDocuments
-            .filter((doc) => !!(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id))
-            .map((doc) => doc.id),
+      const duplicateMarkedRows = rawDocuments.filter((doc) => !!(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id));
+      if (duplicateMarkedRows.length > 0) {
+        console.warn("[trace][workspace] duplicate-marked documents received from API (unexpected)", {
+          count: duplicateMarkedRows.length,
+          ids: duplicateMarkedRows.map((doc) => doc.id),
         });
       }
-      return {
-        ...payload,
-        documents: canonicalDocuments,
-      };
+      return payload;
     },
   });
   const { data: casesData } = useQuery<{ cases: CaseRecord[] }>({
