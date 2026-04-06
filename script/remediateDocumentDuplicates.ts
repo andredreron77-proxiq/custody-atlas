@@ -34,6 +34,12 @@ type DuplicateGroup = {
   confidence: number;
 };
 
+type CoreWriteResult = {
+  success: boolean;
+  rowsAffected: number;
+  errorMessage: string | null;
+};
+
 function normalizeText(text: string): string {
   return String(text ?? "")
     .toLowerCase()
@@ -275,7 +281,13 @@ async function repointDocumentId(table: string, canonicalId: string, duplicateId
     .from(table)
     .update({ document_id: canonicalId })
     .eq("document_id", duplicateId);
-  if (error) console.warn(`[dedupe-remediation] repoint failed table=${table}:`, error.message);
+  if (error) {
+    if (isMissingRelationError(error)) {
+      console.log(`[dedupe-remediation] optional table missing; skipping table=${table}`);
+      return;
+    }
+    console.warn(`[dedupe-remediation] repoint failed table=${table}:`, error.message);
+  }
 }
 
 async function repointCaseFactSource(canonicalId: string, duplicateId: string) {
@@ -284,7 +296,57 @@ async function repointCaseFactSource(canonicalId: string, duplicateId: string) {
     .from("case_facts")
     .update({ source: canonicalId })
     .eq("source", duplicateId);
-  if (error) console.warn("[dedupe-remediation] case_facts source repoint failed:", error.message);
+  if (error) {
+    if (isMissingRelationError(error)) {
+      console.log("[dedupe-remediation] optional table missing; skipping table=case_facts");
+      return;
+    }
+    console.warn("[dedupe-remediation] case_facts source repoint failed:", error.message);
+  }
+}
+
+export function isMissingRelationError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const message = String(error.message || "").toLowerCase();
+  return error.code === "42P01" || message.includes("does not exist");
+}
+
+async function updateDuplicateDocumentLink(duplicateId: string, canonicalId: string): Promise<CoreWriteResult> {
+  if (!supabaseAdmin) {
+    return { success: false, rowsAffected: 0, errorMessage: "supabase admin client unavailable" };
+  }
+  const { data, error } = await supabaseAdmin
+    .from("documents")
+    .update({ duplicate_of_document_id: canonicalId })
+    .eq("id", duplicateId)
+    .select("id");
+
+  if (error) {
+    return { success: false, rowsAffected: 0, errorMessage: error.message };
+  }
+  return {
+    success: Array.isArray(data) && data.length > 0,
+    rowsAffected: Array.isArray(data) ? data.length : 0,
+    errorMessage: null,
+  };
+}
+
+async function updateDuplicateMetadata(duplicateId: string, confidence: number) {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin
+    .from("documents")
+    .update({
+      duplicate_confidence: confidence,
+      lifecycle_state: "duplicate_suppressed",
+    })
+    .eq("id", duplicateId);
+
+  if (error) {
+    console.warn(
+      `[dedupe-remediation] duplicate metadata update failed id=${duplicateId}; core duplicate_of_document_id write already attempted:`,
+      error.message,
+    );
+  }
 }
 
 async function run() {
@@ -348,6 +410,11 @@ async function run() {
     );
     if (!apply) continue;
     for (const duplicate of group.duplicates) {
+      const coreWrite = await updateDuplicateDocumentLink(duplicate.id, group.canonical.id);
+      console.log(
+        `[dedupe-remediation][documents-core-write] duplicate_id=${duplicate.id} canonical_id=${group.canonical.id} success=${coreWrite.success} rows_affected=${coreWrite.rowsAffected}${coreWrite.errorMessage ? ` error="${coreWrite.errorMessage}"` : ""}`,
+      );
+      await updateDuplicateMetadata(duplicate.id, group.confidence);
       await repointDocumentId("document_case_links", group.canonical.id, duplicate.id);
       await repointDocumentId("document_analysis_runs", group.canonical.id, duplicate.id);
       await repointDocumentId("document_chunks", group.canonical.id, duplicate.id);
@@ -355,14 +422,6 @@ async function run() {
       await repointDocumentId("document_dates", group.canonical.id, duplicate.id);
       await repointDocumentId("intelligence_audit_logs", group.canonical.id, duplicate.id);
       await repointCaseFactSource(group.canonical.id, duplicate.id);
-      await supabaseAdmin
-        .from("documents")
-        .update({
-          duplicate_of_document_id: group.canonical.id,
-          duplicate_confidence: group.confidence,
-          lifecycle_state: "duplicate_suppressed",
-        })
-        .eq("id", duplicate.id);
     }
   }
 

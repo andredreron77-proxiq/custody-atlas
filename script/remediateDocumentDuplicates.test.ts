@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDuplicateGroups, type DocRow } from "./remediateDocumentDuplicates";
+import { buildDuplicateGroups, isMissingRelationError, type DocRow } from "./remediateDocumentDuplicates";
 
 function baseDoc(overrides: Partial<DocRow>): DocRow {
   return {
@@ -75,4 +75,10 @@ test("fallback never dedupes across different users", () => {
 
   const { groups } = buildDuplicateGroups(docs);
   assert.equal(groups.length, 0);
+});
+
+test("missing relation detection catches Postgres undefined-table errors", () => {
+  assert.equal(isMissingRelationError({ code: "42P01", message: 'relation "document_chunks" does not exist' }), true);
+  assert.equal(isMissingRelationError({ code: "23505", message: "duplicate key value violates unique constraint" }), false);
+  assert.equal(isMissingRelationError(null), false);
 });
