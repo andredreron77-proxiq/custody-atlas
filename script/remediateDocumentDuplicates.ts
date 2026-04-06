@@ -6,17 +6,24 @@ type DocRow = {
   case_id: string | null;
   file_name: string;
   normalized_filename: string | null;
+  mime_type: string | null;
   created_at: string;
+  updated_at: string;
   analysis_json: Record<string, unknown> | null;
   file_hash: string | null;
   source_file_sha256: string | null;
   intake_text_hash: string | null;
+  intake_text_preview: string | null;
   extracted_text: string | null;
   file_size_bytes: number | null;
   duplicate_of_document_id: string | null;
 };
 
-type GroupReason = "file_hash_exact" | "intake_text_hash_exact" | "filename_case_text_similarity" | "filename_case_semantic_similarity";
+type GroupReason =
+  | "file_hash_exact"
+  | "intake_text_hash_exact"
+  | "filename_mime_text_similarity"
+  | "filename_legacy_batch_semantic_similarity";
 
 type DuplicateGroup = {
   canonical: DocRow;
@@ -49,6 +56,17 @@ function normalizeFileName(name: string): string {
     .trim();
 }
 
+function mimeFamily(value: string | null): string {
+  const mime = (value || "").trim().toLowerCase();
+  if (!mime) return "unknown";
+  if (mime.startsWith("application/pdf")) return "pdf";
+  if (mime.includes("wordprocessingml") || mime.includes("msword")) return "word";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("text/")) return "text";
+  if (mime.includes("officedocument")) return "office";
+  return mime.split("/")[0] || mime;
+}
+
 function textTokenSet(text: string): Set<string> {
   return new Set(
     normalizeText(text)
@@ -69,6 +87,30 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 function summarySignature(doc: DocRow): string {
   const summary = typeof doc.analysis_json?.summary === "string" ? String(doc.analysis_json.summary) : "";
   return normalizeText(summary).slice(0, 500);
+}
+
+function previewSignature(doc: DocRow): string {
+  if (typeof doc.intake_text_preview === "string" && doc.intake_text_preview.trim().length > 0) {
+    return normalizeText(doc.intake_text_preview).slice(0, 500);
+  }
+  if (typeof doc.extracted_text === "string" && doc.extracted_text.trim().length > 0) {
+    return normalizeText(doc.extracted_text).slice(0, 500);
+  }
+  return summarySignature(doc);
+}
+
+function strongTextSimilarity(a: DocRow, b: DocRow): number {
+  const aTokens = textTokenSet(previewSignature(a));
+  const bTokens = textTokenSet(previewSignature(b));
+  return jaccardSimilarity(aTokens, bTokens);
+}
+
+function withinLegacyBatchWindow(a: DocRow, b: DocRow): boolean {
+  const aTime = new Date(a.created_at).getTime();
+  const bTime = new Date(b.created_at).getTime();
+  if (!Number.isFinite(aTime) || !Number.isFinite(bTime)) return false;
+  const diffMs = Math.abs(aTime - bTime);
+  return diffMs <= 3 * 60 * 60 * 1000;
 }
 
 function qualityScore(doc: DocRow): number {
@@ -114,7 +156,7 @@ async function run() {
 
   const { data, error } = await supabaseAdmin
     .from("documents")
-    .select("id,user_id,case_id,file_name,normalized_filename,created_at,analysis_json,file_hash,source_file_sha256,intake_text_hash,extracted_text,file_size_bytes,duplicate_of_document_id");
+    .select("id,user_id,case_id,file_name,normalized_filename,mime_type,created_at,updated_at,analysis_json,file_hash,source_file_sha256,intake_text_hash,intake_text_preview,extracted_text,file_size_bytes,duplicate_of_document_id");
   if (error || !data) {
     console.error("Failed to load documents:", error?.message);
     process.exit(1);
@@ -194,53 +236,53 @@ async function run() {
     }
 
     const fallbackCandidates = userDocs.filter((d) => !assigned.has(d.id));
-    const byCaseAndName = new Map<string, DocRow[]>();
+    const byName = new Map<string, DocRow[]>();
     for (const doc of fallbackCandidates) {
       const normalizedName = (doc.normalized_filename || "").trim() || normalizeFileName(doc.file_name);
       if (!normalizedName) continue;
-      const key = `${caseScopeKey(doc)}|${normalizedName}`;
-      const arr = byCaseAndName.get(key) ?? [];
+      const key = `${normalizedName}`;
+      const arr = byName.get(key) ?? [];
       arr.push(doc);
-      byCaseAndName.set(key, arr);
+      byName.set(key, arr);
     }
 
-    for (const [, grouped] of byCaseAndName) {
+    for (const [, grouped] of byName) {
       if (grouped.length < 2) continue;
       const pending = [...grouped].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
       const consumed = new Set<string>();
       for (let i = 0; i < pending.length; i++) {
         const seed = pending[i];
         if (consumed.has(seed.id)) continue;
-        const seedTokens = textTokenSet(seed.extracted_text ?? summarySignature(seed));
-        const seedSummary = summarySignature(seed);
         const cluster = [seed];
         for (let j = i + 1; j < pending.length; j++) {
           const candidate = pending[j];
           if (consumed.has(candidate.id)) continue;
-          const candidateTokens = textTokenSet(candidate.extracted_text ?? summarySignature(candidate));
-          const similarity = jaccardSimilarity(seedTokens, candidateTokens);
-          const summaryMatch = seedSummary.length > 20 && seedSummary === summarySignature(candidate);
+          const similarity = strongTextSimilarity(seed, candidate);
+          const summaryMatch =
+            summarySignature(seed).length > 20 &&
+            summarySignature(seed) === summarySignature(candidate);
           const sameSize =
             seed.file_size_bytes != null &&
             candidate.file_size_bytes != null &&
             Math.abs(seed.file_size_bytes - candidate.file_size_bytes) <= 64;
-          if (similarity >= 0.82 || (summaryMatch && sameSize)) {
+          const sameMimeFamily = mimeFamily(seed.mime_type) === mimeFamily(candidate.mime_type);
+          const inLegacyBatch = withinLegacyBatchWindow(seed, candidate);
+          if (sameMimeFamily && (similarity >= 0.72 || (summaryMatch && sameSize))) {
             cluster.push(candidate);
-          } else if (similarity >= 0.68 && summaryMatch) {
+          } else if (inLegacyBatch && similarity >= 0.7 && (summaryMatch || sameSize)) {
             cluster.push(candidate);
           }
         }
         if (cluster.length < 2) continue;
         const canonical = pickCanonical(cluster);
         const duplicates = cluster.filter((d) => d.id !== canonical.id);
-        const minSim = Math.min(
-          ...duplicates.map((d) =>
-            jaccardSimilarity(seedTokens, textTokenSet(d.extracted_text ?? summarySignature(d))),
-          ),
-        );
+        const minSim = Math.min(...duplicates.map((d) => strongTextSimilarity(seed, d)));
+        const batchHeuristicUsed = duplicates.some((d) => withinLegacyBatchWindow(seed, d));
         const reason: GroupReason =
-          minSim >= 0.82 ? "filename_case_text_similarity" : "filename_case_semantic_similarity";
-        const confidence = minSim >= 0.82 ? 0.93 : 0.86;
+          minSim >= 0.72 && !batchHeuristicUsed
+            ? "filename_mime_text_similarity"
+            : "filename_legacy_batch_semantic_similarity";
+        const confidence = minSim >= 0.72 && !batchHeuristicUsed ? 0.91 : 0.87;
         groups.push({ canonical, duplicates, reason, confidence });
         for (const doc of cluster) {
           consumed.add(doc.id);
@@ -255,7 +297,7 @@ async function run() {
     .flatMap(([userId, userDocs]) => {
       const byKey = new Map<string, DocRow[]>();
       for (const doc of userDocs) {
-        const key = `${userId}|${caseScopeKey(doc)}|${(doc.normalized_filename || normalizeFileName(doc.file_name)).trim()}`;
+        const key = `${userId}|${(doc.normalized_filename || normalizeFileName(doc.file_name)).trim()}|${mimeFamily(doc.mime_type)}`;
         const arr = byKey.get(key) ?? [];
         arr.push(doc);
         byKey.set(key, arr);
@@ -274,13 +316,14 @@ async function run() {
           id: row.id,
           user_id: row.user_id,
           file_name: row.file_name,
-          normalized_filename: row.normalized_filename || normalizeFileName(row.file_name),
+          file_size_bytes: row.file_size_bytes,
+          mime_type: row.mime_type,
           file_hash: (row.file_hash || row.source_file_sha256 || "").trim().toLowerCase() || null,
           intake_text_hash: (row.intake_text_hash || "").trim().toLowerCase() || null,
-          file_size_bytes: row.file_size_bytes,
-          case_scope: caseScopeKey(row),
-          summary_signature: summarySignature(row).slice(0, 120) || null,
+          intake_text_preview: previewSignature(row).slice(0, 200) || null,
+          duplicate_of_document_id: row.duplicate_of_document_id,
           created_at: row.created_at,
+          updated_at: row.updated_at,
         }),
       );
     }
