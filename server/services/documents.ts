@@ -117,7 +117,47 @@ const OPTIONAL_DOCUMENT_INSERT_COLUMNS = new Set([
   "intake_text_preview",
   "duplicate_of_document_id",
   "duplicate_confidence",
+  "ocr_status",
+  "analysis_status",
 ]);
+
+const OPTIONAL_DOCUMENT_UPDATE_COLUMNS = new Set([
+  "ocr_status",
+  "analysis_status",
+]);
+
+type LifecycleStatus = "pending" | "completed" | "failed";
+
+function normalizeLifecycleStatus(raw: unknown, fallback: LifecycleStatus): LifecycleStatus {
+  if (typeof raw !== "string") return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "completed" || normalized === "analyzed" || normalized === "success") {
+    return "completed";
+  }
+  if (normalized === "failed" || normalized === "error") {
+    return "failed";
+  }
+  if (normalized === "pending" || normalized === "uploaded" || normalized === "analyzing" || normalized === "processing") {
+    return "pending";
+  }
+  return fallback;
+}
+
+function getLifecycleStatusesFromAnalysis(
+  analysisJson: Record<string, unknown>,
+  extractedText: string,
+): { ocrStatus: LifecycleStatus; analysisStatus: LifecycleStatus } {
+  const ocrStatus = normalizeLifecycleStatus(
+    analysisJson.ocr_status,
+    extractedText.trim().length > 0 ? "completed" : "pending",
+  );
+  const summary = typeof analysisJson.summary === "string" ? analysisJson.summary.trim() : "";
+  const analysisStatus = normalizeLifecycleStatus(
+    analysisJson.analysis_status,
+    summary.length > 0 ? "completed" : "pending",
+  );
+  return { ocrStatus, analysisStatus };
+}
 
 export function extractMissingInsertColumn(errorMessage: string): string | null {
   if (!errorMessage) return null;
@@ -227,7 +267,7 @@ export function getDocumentIntegrity(doc: Pick<SavedDocument, "analysisJson">): 
   if (explicitStatus === "failed") {
     return { isAnalysisAvailable: false, analysisStatus: "failed", integrityIssue: "missing_analysis" };
   }
-  if (explicitStatus === "analyzing") {
+  if (explicitStatus === "analyzing" || explicitStatus === "pending" || explicitStatus === "processing") {
     return { isAnalysisAvailable: false, analysisStatus: "analyzing", integrityIssue: "missing_analysis" };
   }
   if (explicitStatus === "uploaded") {
@@ -436,6 +476,7 @@ export async function saveDocumentWithDuplicateOutcome(
 ): Promise<SaveDocumentOutcome> {
   if (!supabaseAdmin) return { status: "error" };
   try {
+    const lifecycle = getLifecycleStatusesFromAnalysis(fields.analysisJson, fields.extractedText ?? "");
     const insertPayload: Record<string, unknown> = {
       user_id:        userId,
       file_name:      fields.fileName,
@@ -458,6 +499,8 @@ export async function saveDocumentWithDuplicateOutcome(
       original_expires_at: fields.originalExpiresAt,
       intelligence_expires_at: fields.intelligenceExpiresAt,
       lifecycle_state: fields.lifecycleState ?? "active",
+      ocr_status: lifecycle.ocrStatus,
+      analysis_status: lifecycle.analysisStatus,
       // case_id column confirmed present; include whenever a case is active
       case_id:        fields.caseId ?? null,
     };
@@ -927,15 +970,65 @@ export async function updateDocumentAnalysis(
 ): Promise<boolean> {
   if (!supabaseAdmin) return false;
   try {
-    const { error } = await supabaseAdmin
-      .from("documents")
-      .update({ analysis_json: analysisJson })
-      .eq("id", documentId)
-      .eq("user_id", userId);
-    return !error;
+    const lifecycle = getLifecycleStatusesFromAnalysis(analysisJson, "has_text");
+    let payload: Record<string, unknown> = {
+      analysis_json: analysisJson,
+      ocr_status: lifecycle.ocrStatus,
+      analysis_status: lifecycle.analysisStatus,
+    };
+
+    for (let attempt = 0; attempt <= OPTIONAL_DOCUMENT_UPDATE_COLUMNS.size + 1; attempt += 1) {
+      const { error } = await supabaseAdmin
+        .from("documents")
+        .update(payload)
+        .eq("id", documentId)
+        .eq("user_id", userId);
+      if (!error) return true;
+
+      const { nextPayload, removedColumn } = dropUnsupportedInsertColumn(payload, error.message ?? "");
+      if (!removedColumn || !OPTIONAL_DOCUMENT_UPDATE_COLUMNS.has(removedColumn)) {
+        return false;
+      }
+      payload = nextPayload;
+      console.warn(`[documents] updateDocumentAnalysis retry without optional column: ${removedColumn}`);
+    }
+
+    return false;
   } catch {
     return false;
   }
+}
+
+export async function updateDocumentLifecycleStatuses(
+  documentId: string,
+  userId: string,
+  statuses: Partial<{ ocrStatus: LifecycleStatus; analysisStatus: LifecycleStatus }>,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+
+  let payload: Record<string, unknown> = {};
+  if (statuses.ocrStatus) payload.ocr_status = statuses.ocrStatus;
+  if (statuses.analysisStatus) payload.analysis_status = statuses.analysisStatus;
+  if (Object.keys(payload).length === 0) return true;
+
+  for (let attempt = 0; attempt <= OPTIONAL_DOCUMENT_UPDATE_COLUMNS.size + 1; attempt += 1) {
+    const { error } = await supabaseAdmin
+      .from("documents")
+      .update(payload)
+      .eq("id", documentId)
+      .eq("user_id", userId);
+    if (!error) return true;
+
+    const { nextPayload, removedColumn } = dropUnsupportedInsertColumn(payload, error.message ?? "");
+    if (!removedColumn || !OPTIONAL_DOCUMENT_UPDATE_COLUMNS.has(removedColumn)) {
+      return false;
+    }
+    payload = nextPayload;
+    if (Object.keys(payload).length === 0) return true;
+    console.warn(`[documents] updateDocumentLifecycleStatuses retry without optional column: ${removedColumn}`);
+  }
+
+  return false;
 }
 
 /**

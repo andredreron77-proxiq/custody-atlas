@@ -44,7 +44,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, saveDocumentWithDuplicateOutcome, getAllDocumentsForUser, findDocumentByIntakeTextHash, recordUploadIntakeAttempt, type DocumentType, type SavedDocument } from "./services/documents";
+import { getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, updateDocumentLifecycleStatuses, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, saveDocumentWithDuplicateOutcome, getAllDocumentsForUser, findDocumentByIntakeTextHash, recordUploadIntakeAttempt, type DocumentType, type SavedDocument } from "./services/documents";
 import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
@@ -2882,6 +2882,10 @@ ${userQuestion}`;
       if (truncatedText.trim().length < 20) {
         return res.status(422).json({ error: "This document has no stored text to re-analyze." });
       }
+      await updateDocumentLifecycleStatuses(documentId, user.id, {
+        ocrStatus: "completed",
+        analysisStatus: "pending",
+      }).catch(() => false);
 
       const systemPrompt = `You are an assistant that analyzes custody-related legal documents and explains them in plain English.
 
@@ -2954,6 +2958,7 @@ CRITICAL RULES:
       // Update the existing document row — no new row created
       const updated = await updateDocumentAnalysis(documentId, user.id, analysisPayload).catch(() => false);
       if (!updated) {
+        await updateDocumentLifecycleStatuses(documentId, user.id, { analysisStatus: "failed" }).catch(() => false);
         return res.status(500).json({
           error: "Re-analysis finished, but we could not persist the result. Please try again.",
           code: "DOCUMENT_PERSISTENCE_FAILED",
@@ -2962,6 +2967,7 @@ CRITICAL RULES:
 
       return res.json({ ...validated.data, extractedText: truncatedText, documentId });
     } catch (err: any) {
+      await updateDocumentLifecycleStatuses(documentId, user.id, { analysisStatus: "failed" }).catch(() => false);
       console.error("[reanalyze] error:", err);
       return res.status(500).json({
         error: "We couldn't re-analyze that document right now. Please try again.",
