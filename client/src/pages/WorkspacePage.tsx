@@ -961,6 +961,17 @@ function DocumentsSection({
     },
   });
 
+  useEffect(() => {
+    console.info(
+      "[trace][workspace] documents before rendering",
+      documents.map((doc) => ({
+        id: doc.id,
+        file_name: doc.fileName,
+        duplicate_of_document_id: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
+      })),
+    );
+  }, [documents]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-6">
@@ -984,16 +995,6 @@ function DocumentsSection({
   const orderedDocs = [...documents].sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a));
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
   const visibleDocs = orderedDocs.slice(0, MAX_VISIBLE);
-  useEffect(() => {
-    console.info(
-      "[trace][workspace] documents before rendering",
-      documents.map((doc) => ({
-        id: doc.id,
-        file_name: doc.fileName,
-        duplicate_of_document_id: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
-      })),
-    );
-  }, [documents]);
 
   return (
     <div className="space-y-3" data-testid="list-documents-grouped">
