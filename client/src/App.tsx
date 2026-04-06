@@ -139,6 +139,9 @@ function Router() {
       <Route path="/workspace">
         {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
       </Route>
+      <Route path="/workspace/documents">
+        {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
+      </Route>
       <Route path="/case/:caseId">
         {() => <ProtectedRoute component={CaseDashboardPage} feature="workspace" />}
       </Route>

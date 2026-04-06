@@ -921,9 +921,12 @@ function DocumentsSection({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [location] = useLocation();
   const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
 
-  const MAX_VISIBLE = 4;
+  const isFullDocumentsView = location.split("?")[0] === "/workspace/documents";
+  const MAX_VISIBLE = isFullDocumentsView ? Number.POSITIVE_INFINITY : 4;
+  const canonicalDocuments = documents.filter((doc) => !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id));
 
   const deleteMutation = useMutation({
     mutationFn: async (docId: string) => {
@@ -965,20 +968,20 @@ function DocumentsSection({
   useEffect(() => {
     console.info(
       "[trace][workspace] documents before rendering",
-      documents.map((doc) => ({
+      canonicalDocuments.map((doc) => ({
         id: doc.id,
         file_name: doc.fileName,
         duplicate_of_document_id: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
       })),
     );
-  }, [documents]);
+  }, [canonicalDocuments]);
 
-  const orderedDocs = [...documents].sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a));
+  const orderedDocs = [...canonicalDocuments].sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a));
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
   const visibleDocs = orderedDocs.slice(0, MAX_VISIBLE);
 
   useEffect(() => {
-    if (isLoading || documents.length === 0) return;
+    if (isLoading || canonicalDocuments.length === 0) return;
 
     const normalizeVisibleFileName = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, " ");
     const summarySignature = (doc: WorkspaceDocument): string => {
@@ -1019,7 +1022,7 @@ function DocumentsSection({
     if (duplicateVisible.length > 0) {
       console.warn("[trace][workspace] visible duplicate rows on render", duplicateVisible);
     }
-  }, [documents.length, isLoading, visibleDocs, currentUserId]);
+  }, [canonicalDocuments.length, isLoading, visibleDocs, currentUserId]);
 
   if (isLoading) {
     return (
@@ -1029,7 +1032,7 @@ function DocumentsSection({
     );
   }
 
-  if (documents.length === 0) {
+  if (canonicalDocuments.length === 0) {
     return (
       <EmptyState
         icon={FileSearch}
@@ -1148,15 +1151,19 @@ function DocumentsSection({
 
       <div className="pt-1 flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground">
-          Showing {Math.min(orderedDocs.length, MAX_VISIBLE)} of {orderedDocs.length} document{orderedDocs.length === 1 ? "" : "s"}
-          {hiddenCount > 0 ? ` · ${hiddenCount} more in full view` : ""}
+          {isFullDocumentsView
+            ? `Showing all ${orderedDocs.length} document${orderedDocs.length === 1 ? "" : "s"}`
+            : `Showing ${Math.min(orderedDocs.length, MAX_VISIBLE)} of ${orderedDocs.length} document${orderedDocs.length === 1 ? "" : "s"}`}
+          {!isFullDocumentsView && hiddenCount > 0 ? ` · ${hiddenCount} more in full view` : ""}
         </p>
-        <Link href="/workspace/documents">
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-show-all-docs">
-            View all documents
-            <ArrowRight className="w-3 h-3" />
-          </Button>
-        </Link>
+        {!isFullDocumentsView && (
+          <Link href="/workspace/documents">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-show-all-docs">
+              View all documents
+              <ArrowRight className="w-3 h-3" />
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* ── Shared delete confirmation dialog ────────────────────────────── */}
@@ -1557,7 +1564,9 @@ export default function WorkspacePage() {
   });
 
   const threads: WorkspaceThread[] = workspaceData?.threads ?? [];
-  const documents: WorkspaceDocument[] = workspaceData?.documents ?? [];
+  const documents: WorkspaceDocument[] = (workspaceData?.documents ?? []).filter(
+    (doc) => !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id),
+  );
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
   const cases = casesData?.cases ?? [];
   const firstCaseId = cases[0]?.id ?? null;
