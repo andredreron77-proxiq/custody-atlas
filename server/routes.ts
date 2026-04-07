@@ -90,7 +90,7 @@ import {
   getRelatedQuestions,
   TOPIC_LABELS,
 } from "./services/publicQuestions";
-import { getUserProfile, setDisplayName } from "./services/userProfile";
+import { getUserProfile, setDisplayName, setWelcomeDismissed } from "./services/userProfile";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -1090,6 +1090,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.error("[user-profile] PATCH display-name error:", err);
       return res.status(500).json({
         error: "We couldn't save your preferred name right now. Please try again in a moment.",
+      });
+    }
+  });
+
+  app.patch("/api/user-profile/welcome-dismissed", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id as string;
+      const result = await setWelcomeDismissed(userId);
+      if (!result.ok) {
+        console.error("[user-profile] PATCH welcome-dismissed save failed", {
+          reason: result.reason ?? "UNKNOWN",
+          stage: result.stage ?? "unknown",
+          supabaseCode: result.error?.code ?? null,
+          supabaseMessage: result.error?.message ?? null,
+          supabaseDetails: result.error?.details ?? null,
+          supabaseHint: result.error?.hint ?? null,
+          payload: { userId },
+        });
+        return res.status(500).json({
+          error: "We couldn't save onboarding progress right now. Please try again in a moment.",
+        });
+      }
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[user-profile] PATCH welcome-dismissed error:", err);
+      return res.status(500).json({
+        error: "We couldn't save onboarding progress right now. Please try again in a moment.",
       });
     }
   });

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "../lib/supabaseAdmin";
 export interface UserProfile {
   id: string;
   displayName: string | null;
+  welcomeDismissedAt: string | null;
 }
 
 export interface SetDisplayNameResult {
@@ -17,24 +18,37 @@ export interface SetDisplayNameResult {
   };
 }
 
+export interface SetWelcomeDismissedResult {
+  ok: boolean;
+  reason?: "SUPABASE_NOT_CONFIGURED" | "SUPABASE_ERROR";
+  stage?: "update" | "insert";
+  error?: {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+  };
+}
+
 export async function getUserProfile(userId: string): Promise<UserProfile> {
   if (!supabaseAdmin) {
-    return { id: userId, displayName: null };
+    return { id: userId, displayName: null, welcomeDismissedAt: null };
   }
 
   try {
     const { data } = await supabaseAdmin
       .from("user_profiles")
-      .select("id, display_name")
+      .select("id, display_name, welcome_dismissed_at")
       .eq("id", userId)
       .maybeSingle();
 
     return {
       id: userId,
       displayName: data?.display_name ?? null,
+      welcomeDismissedAt: data?.welcome_dismissed_at ?? null,
     };
   } catch {
-    return { id: userId, displayName: null };
+    return { id: userId, displayName: null, welcomeDismissedAt: null };
   }
 }
 
@@ -100,6 +114,69 @@ export async function setDisplayName(userId: string, displayName: string): Promi
       error: {
         code: error?.code,
         message: error?.message ?? "Unexpected error while saving display name.",
+        details: error?.details,
+        hint: error?.hint,
+      },
+    };
+  }
+}
+
+export async function setWelcomeDismissed(userId: string): Promise<SetWelcomeDismissedResult> {
+  if (!supabaseAdmin) {
+    return { ok: false, reason: "SUPABASE_NOT_CONFIGURED" };
+  }
+  const nowIso = new Date().toISOString();
+  try {
+    const { data: updatedRows, error: updateError } = await supabaseAdmin
+      .from("user_profiles")
+      .update({ welcome_dismissed_at: nowIso })
+      .eq("id", userId)
+      .select("id");
+
+    if (updateError) {
+      return {
+        ok: false,
+        reason: "SUPABASE_ERROR",
+        stage: "update",
+        error: {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+        },
+      };
+    }
+
+    if ((updatedRows?.length ?? 0) > 0) {
+      return { ok: true };
+    }
+
+    const { error: insertError } = await supabaseAdmin
+      .from("user_profiles")
+      .insert({ id: userId, welcome_dismissed_at: nowIso });
+
+    if (insertError) {
+      return {
+        ok: false,
+        reason: "SUPABASE_ERROR",
+        stage: "insert",
+        error: {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+        },
+      };
+    }
+
+    return { ok: true };
+  } catch (error: any) {
+    return {
+      ok: false,
+      reason: "SUPABASE_ERROR",
+      error: {
+        code: error?.code,
+        message: error?.message ?? "Unexpected error while saving welcome dismissal.",
         details: error?.details,
         hint: error?.hint,
       },
