@@ -71,6 +71,42 @@ type CaseDashboardPayload = {
   }>;
 };
 
+type IntelligenceSeverity = "low" | "medium" | "high";
+type IntelligenceDateKind = "hearing" | "deadline" | "filing" | "service" | "appointment" | "child_birthdate" | "other";
+
+type CaseIntelligencePayload = {
+  intelligence: {
+    what_matters_now_json?: unknown;
+    risks_json?: unknown;
+    actions_json?: unknown;
+    key_dates_json?: unknown;
+  } | null;
+};
+
+type IntelligenceWhatMattersNow = {
+  top_priority: string;
+  reason: string;
+  urgency: string;
+};
+
+type IntelligenceRisk = {
+  id: string;
+  title: string;
+  description: string;
+  severity: IntelligenceSeverity;
+};
+
+type IntelligenceAction = {
+  risk_id: string;
+  action: string;
+};
+
+type IntelligenceKeyDate = {
+  raw: string;
+  parsedDate: string | null;
+  kind: IntelligenceDateKind;
+};
+
 function sentence(input: string, fallback: string): string {
   const normalized = (input || "").trim();
   if (!normalized) return fallback;
@@ -152,6 +188,23 @@ function alertStateBadgeClass(state: "active" | "reviewed" | "resolved" | "dismi
   return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
 }
 
+function intelligenceUrgencyBadgeClass(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "high") return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
+  if (normalized === "medium") return "bg-[hsl(var(--semantic-amber)/0.16)] text-[hsl(var(--semantic-amber))] border-[hsl(var(--semantic-amber)/0.5)]";
+  return "bg-[hsl(var(--semantic-blue)/0.16)] text-[hsl(var(--semantic-blue))] border-[hsl(var(--semantic-blue)/0.5)]";
+}
+
+function intelligenceSeverityBadgeClass(value: IntelligenceSeverity): string {
+  if (value === "high") return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
+  if (value === "medium") return "bg-[hsl(var(--semantic-amber)/0.16)] text-[hsl(var(--semantic-amber))] border-[hsl(var(--semantic-amber)/0.5)]";
+  return "bg-[hsl(var(--semantic-green)/0.16)] text-[hsl(var(--semantic-green))] border-[hsl(var(--semantic-green)/0.5)]";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const [expanded, setExpanded] = useState(false);
@@ -173,8 +226,88 @@ export default function CaseDashboardPage() {
       return res.json();
     },
   });
+  const intelligenceQuery = useQuery<CaseIntelligencePayload>({
+    queryKey: ["/api/cases", caseId, "intelligence"],
+    enabled: Boolean(caseId),
+    queryFn: async () => {
+      const res = await apiRequestRaw("POST", `/api/cases/${caseId}/intelligence`);
+      if (!res.ok) throw new Error("Failed to load case intelligence.");
+      return res.json();
+    },
+  });
 
   const data = dashboardQuery.data;
+  const intelligenceRecord = intelligenceQuery.data?.intelligence;
+  const intelligenceWhatMatters = useMemo<IntelligenceWhatMattersNow | null>(() => {
+    if (!intelligenceRecord || !isRecord(intelligenceRecord.what_matters_now_json)) return null;
+    const source = intelligenceRecord.what_matters_now_json;
+    return {
+      top_priority: typeof source.top_priority === "string" ? source.top_priority.trim() : "",
+      reason: typeof source.reason === "string" ? source.reason.trim() : "",
+      urgency: typeof source.urgency === "string" ? source.urgency.trim() : "Medium",
+    };
+  }, [intelligenceRecord]);
+  const intelligenceRisks = useMemo<IntelligenceRisk[]>(() => {
+    if (!intelligenceRecord || !Array.isArray(intelligenceRecord.risks_json)) return [];
+    return intelligenceRecord.risks_json
+      .filter(isRecord)
+      .map((risk, index): IntelligenceRisk => {
+        const severityRaw = typeof risk.severity === "string" ? risk.severity.trim().toLowerCase() : "low";
+        const severity: IntelligenceSeverity = severityRaw === "high" || severityRaw === "medium" || severityRaw === "low" ? severityRaw : "low";
+        return {
+          id: typeof risk.id === "string" ? risk.id : `risk-${index}`,
+          title: typeof risk.title === "string" ? risk.title.trim() : "Untitled risk",
+          description: typeof risk.description === "string" ? risk.description.trim() : "",
+          severity,
+        };
+      })
+      .filter((risk) => risk.title)
+      .slice(0, 3);
+  }, [intelligenceRecord]);
+  const intelligenceActions = useMemo<IntelligenceAction[]>(() => {
+    if (!intelligenceRecord || !Array.isArray(intelligenceRecord.actions_json)) return [];
+    return intelligenceRecord.actions_json
+      .filter(isRecord)
+      .map((action, index) => ({
+        risk_id: typeof action.risk_id === "string" ? action.risk_id : `action-${index}`,
+        action: typeof action.action === "string" ? action.action.trim() : "",
+      }))
+      .filter((action) => action.action)
+      .slice(0, 4);
+  }, [intelligenceRecord]);
+  const intelligenceKeyDates = useMemo<IntelligenceKeyDate[]>(() => {
+    if (!intelligenceRecord || !Array.isArray(intelligenceRecord.key_dates_json)) return [];
+    const kindPriority: IntelligenceDateKind[] = ["hearing", "deadline", "filing", "service", "appointment"];
+    const acceptedKinds = new Set(kindPriority);
+    const filtered = intelligenceRecord.key_dates_json
+      .filter(isRecord)
+      .map((entry) => {
+        const kindValue = typeof entry.kind === "string" ? entry.kind.trim().toLowerCase() : "other";
+        const kind: IntelligenceDateKind = kindValue === "hearing"
+          || kindValue === "deadline"
+          || kindValue === "filing"
+          || kindValue === "service"
+          || kindValue === "appointment"
+          || kindValue === "child_birthdate"
+          ? kindValue
+          : "other";
+        return {
+          raw: typeof entry.raw === "string" ? entry.raw.trim() : "",
+          parsedDate: typeof entry.parsedDate === "string" ? entry.parsedDate : null,
+          kind,
+        };
+      })
+      .filter((entry) => entry.raw && acceptedKinds.has(entry.kind));
+
+    return filtered
+      .sort((a, b) => {
+        const kindRank = kindPriority.indexOf(a.kind) - kindPriority.indexOf(b.kind);
+        if (kindRank !== 0) return kindRank;
+        return (Date.parse(a.parsedDate ?? "") || Number.MAX_SAFE_INTEGER) - (Date.parse(b.parsedDate ?? "") || Number.MAX_SAFE_INTEGER);
+      })
+      .slice(0, 5);
+  }, [intelligenceRecord]);
+
   const alertActionMutation = useMutation({
     mutationFn: async (payload: { alertId: string; actionId: string; confirmSuggested?: boolean }) => {
       await apiRequest("POST", `/api/cases/${caseId}/alerts/${payload.alertId}/actions`, {
@@ -310,6 +443,27 @@ export default function CaseDashboardPage() {
           <CardTitle className="text-base">What Matters Now</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+          <div className="rounded-md border border-[hsl(var(--semantic-blue)/0.25)] bg-[hsl(var(--semantic-blue)/0.08)] p-3 md:col-span-2">
+            {intelligenceQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading case intelligence…</p>
+            ) : intelligenceWhatMatters && intelligenceWhatMatters.top_priority ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-base font-semibold">{intelligenceWhatMatters.top_priority}</p>
+                  <Badge variant="outline" className={intelligenceUrgencyBadgeClass(intelligenceWhatMatters.urgency)}>
+                    {intelligenceWhatMatters.urgency || "Medium"} urgency
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {sentence(intelligenceWhatMatters.reason, "No clear reason is available yet.")}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Intelligence is not available for this case yet. Add or analyze documents to improve guidance.
+              </p>
+            )}
+          </div>
           <div>
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current Stage</p>
             <p>{sentence(data.whatMattersNow.currentStage, "Case stage is still being established.")}</p>
@@ -433,6 +587,65 @@ export default function CaseDashboardPage() {
         </div>
 
         <div className="space-y-3 lg:col-span-2">
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Top Risks</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {intelligenceRisks.length > 0 ? intelligenceRisks.map((risk) => (
+                <div key={risk.id} className="space-y-1 rounded border border-border p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium">{risk.title}</p>
+                    <Badge variant="outline" className={intelligenceSeverityBadgeClass(risk.severity)}>
+                      {risk.severity}
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground">{sentence(risk.description, "No additional detail was provided.")}</p>
+                </div>
+              )) : (
+                <p className="text-muted-foreground">No major risks are flagged right now.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Recommended Actions</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {intelligenceActions.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {intelligenceActions.map((action) => (
+                    <li key={action.risk_id} className="rounded border border-border bg-muted/40 px-2 py-1.5">
+                      {action.action}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">No recommended actions yet. Intelligence will update as more case details are available.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-base">Key Dates</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {intelligenceKeyDates.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {intelligenceKeyDates.map((date, index) => (
+                    <li key={`${date.raw}-${index}`} className="flex items-start justify-between gap-2 rounded border border-border px-2 py-1.5">
+                      <div className="min-w-0">
+                        <p className="truncate">{date.raw}</p>
+                        <p className="text-xs capitalize text-muted-foreground">{date.kind}</p>
+                      </div>
+                      <p className="shrink-0 text-xs text-muted-foreground">
+                        {date.parsedDate ? formatDate(date.parsedDate) : "Date TBD"}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">No high-priority dates are available yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-base">Case Health</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
