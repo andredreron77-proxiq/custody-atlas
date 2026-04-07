@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { qaEnv, getDefaultUserCredentials } from '../../fixtures/env';
+import { qaProduct } from '../../fixtures/product';
 import { loginWithEmail } from '../../utils/auth';
 import { captureQaScreenshot } from '../../utils/screenshot';
-import { expectStablePage, expectVisibleHeading } from '../../utils/assertions';
+import { expectStablePage } from '../../utils/assertions';
 
 test.describe('Custody Atlas case dashboard intelligence', () => {
   test('shows core intelligence sections and captures a screenshot', async ({ page }) => {
@@ -10,16 +11,16 @@ test.describe('Custody Atlas case dashboard intelligence', () => {
     test.skip(!qaEnv.caseId, 'Set QA_CASE_ID to validate a specific case dashboard.');
 
     await loginWithEmail(page, getDefaultUserCredentials());
-    await page.goto(`/case/${qaEnv.caseId}`);
+    await page.goto(qaProduct.routes.caseDashboard(qaEnv.caseId));
 
-    await expectStablePage(page, 'page-case-dashboard');
-    await expectVisibleHeading(page, 'What Matters Now');
-    await expectVisibleHeading(page, 'Top Risks');
-    await expectVisibleHeading(page, 'Recommended Actions');
-    await expectVisibleHeading(page, 'Key Dates');
+    await expectStablePage(page, qaProduct.testIds.pageCaseDashboard);
+    await expect(page.getByTestId(qaProduct.testIds.sectionWhatMattersNow)).toBeVisible();
+    await expect(page.getByTestId(qaProduct.testIds.sectionTopRisks)).toBeVisible();
+    await expect(page.getByTestId(qaProduct.testIds.sectionRecommendedActions)).toBeVisible();
+    await expect(page.getByTestId(qaProduct.testIds.sectionKeyDates)).toBeVisible();
 
     const screenshotPath = await captureQaScreenshot(page, `case-dashboard-${qaEnv.caseId}`);
-    await expect(page.getByRole('heading', { name: 'What Matters Now' })).toBeVisible();
+    await expect(page.getByTestId(qaProduct.testIds.sectionWhatMattersNow)).toBeVisible();
     test.info().annotations.push({ type: 'screenshot', description: screenshotPath });
   });
 });

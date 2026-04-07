@@ -130,8 +130,8 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex-1 flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md rounded-xl border bg-card p-5 shadow-sm">
-        <h1 className="text-lg font-semibold text-foreground">What should we call you?</h1>
+      <div className="w-full max-w-md rounded-xl border bg-card p-5 shadow-sm" data-testid="prompt-preferred-name">
+        <h1 className="text-lg font-semibold text-foreground" data-testid="heading-preferred-name-prompt">What should we call you?</h1>
         <p className="text-sm text-muted-foreground mt-1">You can change this later.</p>
         <div className="mt-4 space-y-2">
           <Label htmlFor="display-name">Preferred name</Label>

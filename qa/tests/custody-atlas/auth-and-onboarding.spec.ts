@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { qaEnv, getDefaultUserCredentials, getFreshUserCredentials } from '../../fixtures/env';
+import { qaProduct } from '../../fixtures/product';
 import { loginWithEmail } from '../../utils/auth';
 import { expectStablePage } from '../../utils/assertions';
 
@@ -8,8 +9,8 @@ test.describe('Custody Atlas auth + onboarding', () => {
     test.skip(!qaEnv.defaultUser.email || !qaEnv.defaultUser.password, 'Set QA_USER_EMAIL and QA_USER_PASSWORD.');
 
     await loginWithEmail(page, getDefaultUserCredentials());
-    await page.goto('/workspace');
-    await expectStablePage(page, 'page-workspace');
+    await page.goto(qaProduct.routes.workspace);
+    await expectStablePage(page, qaProduct.testIds.pageWorkspace);
   });
 
   test('preferred name onboarding flow saves preferred name for a fresh user', async ({ page }) => {
@@ -21,11 +22,13 @@ test.describe('Custody Atlas auth + onboarding', () => {
     const freshCreds = getFreshUserCredentials();
     await loginWithEmail(page, freshCreds);
 
-    await expect(page.getByRole('heading', { name: 'What should we call you?' })).toBeVisible();
-    await page.getByTestId('input-display-name').fill(qaEnv.freshUser.preferredName);
-    await page.getByTestId('button-continue-display-name').click();
+    await expect(page.getByTestId(qaProduct.testIds.preferredNamePrompt)).toBeVisible();
+    await page.getByTestId(qaProduct.testIds.preferredNameInput).fill(qaEnv.freshUser.preferredName);
+    await page.getByTestId(qaProduct.testIds.preferredNameSaveButton).click();
 
-    await expectStablePage(page, 'page-workspace');
-    await expect(page.getByText(new RegExp(`${qaEnv.freshUser.preferredName}\\'s Workspace`, 'i'))).toBeVisible();
+    await expectStablePage(page, qaProduct.testIds.pageWorkspace);
+    await expect(page.getByTestId(qaProduct.testIds.headerDisplayName)).toHaveText(
+      `${qaEnv.freshUser.preferredName}'s Workspace`,
+    );
   });
 });
