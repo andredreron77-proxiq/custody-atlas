@@ -40,7 +40,7 @@ import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequestRaw, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { firstNameFromDisplayName, useUserProfile } from "@/hooks/use-user-profile";
+import { resolvePreferredFirstName, useUserProfile } from "@/hooks/use-user-profile";
 import {
   deriveCaseActivityState,
   type CaseActivityState,
@@ -1805,7 +1805,13 @@ export default function WorkspacePage() {
     if (lastThread.jurisdictionCounty) p.set("county", lastThread.jurisdictionCounty);
     return `/ask?${p.toString()}`;
   })();
-  const preferredName = firstNameFromDisplayName(profile?.displayName ?? user?.displayName ?? null) || null;
+  const preferredName = resolvePreferredFirstName({
+    profileDisplayName: profile?.displayName,
+    profileFullName: profile?.fullName,
+    authMetadataName: user?.authMetadataName,
+    authDisplayName: user?.fullName ?? user?.displayName,
+    email: user?.email,
+  });
   const uploadEmptyMessage = preferredName
     ? `${preferredName}, upload your first custody document`
     : "Upload your first custody document";

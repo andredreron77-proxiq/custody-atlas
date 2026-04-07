@@ -19,11 +19,57 @@ function displayNameSkipUntilKey(userId?: string | null): string {
 export interface UserProfile {
   id: string;
   displayName: string | null;
+  fullName: string | null;
 }
 
 export function firstNameFromDisplayName(input: string | null | undefined): string {
   if (!input) return "";
   return input.trim().split(/\s+/)[0] ?? "";
+}
+
+export interface PreferredNameSources {
+  profileDisplayName?: string | null;
+  profileFullName?: string | null;
+  authMetadataName?: string | null;
+  authDisplayName?: string | null;
+  email?: string | null;
+}
+
+function cleanName(value?: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function resolvePreferredDisplayName({
+  profileDisplayName,
+  profileFullName,
+  authMetadataName,
+  authDisplayName,
+  email,
+}: PreferredNameSources): string | null {
+  return (
+    cleanName(profileDisplayName) ??
+    cleanName(profileFullName) ??
+    cleanName(authMetadataName) ??
+    cleanName(authDisplayName) ??
+    cleanName(email) ??
+    null
+  );
+}
+
+export function resolvePreferredFirstName(sources: PreferredNameSources): string | null {
+  const preferred = resolvePreferredDisplayName(sources);
+  return firstNameFromDisplayName(preferred) || preferred;
+}
+
+export function initialsFromPreferredName(sources: PreferredNameSources): string {
+  const preferred = resolvePreferredDisplayName(sources);
+  if (!preferred) return "U";
+  const parts = preferred.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "U";
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
 export function getDisplayNameSkipUntil(userId?: string | null): number | null {
@@ -86,10 +132,17 @@ export function useUserProfile() {
     queryFn: async () => {
       const res = await apiRequestRaw("GET", "/api/user-profile");
       if (!res.ok) return null;
-      const json = await res.json() as { id: string; displayName?: string | null; display_name?: string | null };
+      const json = await res.json() as {
+        id: string;
+        displayName?: string | null;
+        display_name?: string | null;
+        fullName?: string | null;
+        full_name?: string | null;
+      };
       return {
         id: json.id,
         displayName: json.displayName ?? json.display_name ?? null,
+        fullName: json.fullName ?? json.full_name ?? null,
       };
     },
     staleTime: 30_000,

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SiGoogle } from "react-icons/si";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { initialsFromPreferredName, resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
 import {
   signInWithEmail,
   signUpWithEmail,
@@ -106,6 +107,7 @@ function DialogBrand({ subtitle }: { subtitle: string }) {
 
 export function AuthButton() {
   const { user, isLoading } = useCurrentUser();
+  const { data: profile } = useUserProfile();
   const [open, setOpen]         = useState(false);
   const [view, setView]         = useState<DialogView>("main");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -214,9 +216,20 @@ export function AuthButton() {
   }
 
   if (user) {
-    const initials = user.displayName
-      ? user.displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-      : (user.email?.[0] ?? "U").toUpperCase();
+    const preferredDisplayName = resolvePreferredDisplayName({
+      profileDisplayName: profile?.displayName,
+      profileFullName: profile?.fullName,
+      authMetadataName: user.authMetadataName,
+      authDisplayName: user.fullName ?? user.displayName,
+      email: user.email,
+    });
+    const initials = initialsFromPreferredName({
+      profileDisplayName: profile?.displayName,
+      profileFullName: profile?.fullName,
+      authMetadataName: user.authMetadataName,
+      authDisplayName: user.fullName ?? user.displayName,
+      email: user.email,
+    });
 
     return (
       <DropdownMenu>
@@ -229,7 +242,7 @@ export function AuthButton() {
             {user.avatarUrl ? (
               <img
                 src={user.avatarUrl}
-                alt={user.displayName ?? "User avatar"}
+                alt={preferredDisplayName ?? "User avatar"}
                 className="w-8 h-8 rounded-full object-cover border border-white/20"
               />
             ) : (
@@ -241,7 +254,7 @@ export function AuthButton() {
               className="hidden lg:block text-sm text-slate-300 max-w-[120px] truncate"
               data-testid="text-username"
             >
-              {user.displayName ?? user.email}
+              {preferredDisplayName ?? user.email}
             </span>
           </button>
         </DropdownMenuTrigger>

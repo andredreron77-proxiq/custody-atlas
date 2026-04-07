@@ -12,6 +12,8 @@ export interface AuthUser {
   id: string;
   email: string | null;
   displayName: string | null;
+  fullName: string | null;
+  authMetadataName: string | null;
   tier: UserTier;
   avatarUrl: string | null;
 }
@@ -28,6 +30,8 @@ export async function getAuthUser(): Promise<AuthUser | null> {
       id: user.id,
       email: user.email ?? null,
       displayName: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+      fullName: user.user_metadata?.full_name ?? null,
+      authMetadataName: user.user_metadata?.name ?? null,
       tier: "free",
       avatarUrl: user.user_metadata?.avatar_url ?? null,
     };
