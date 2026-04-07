@@ -258,6 +258,40 @@ export const documentAnalysisResultSchema = z.object({
 
 export type DocumentAnalysisResult = z.infer<typeof documentAnalysisResultSchema>;
 
+export const caseIntelligenceCommunicationProfileSchema = z.object({
+  mode: z.string().default("simple"),
+  reading_level: z.string().default("grade_5"),
+  explain_legal_terms: z.boolean().default(true),
+  tone: z.string().default("calm_supportive_direct"),
+});
+
+export const caseIntelligenceSchema = z.object({
+  id: z.string().uuid(),
+  case_id: z.string().uuid(),
+  case_stage: z.string().nullable().optional(),
+  summary: z.string().nullable().optional(),
+  primary_issue: z.string().nullable().optional(),
+  active_issues_json: z.array(z.record(z.unknown())).default([]),
+  key_dates_json: z.array(z.record(z.unknown())).default([]),
+  obligations_json: z.array(z.record(z.unknown())).default([]),
+  risks_json: z.array(z.record(z.unknown())).default([]),
+  actions_json: z.array(z.record(z.unknown())).default([]),
+  what_matters_now_json: z.record(z.unknown()).default({}),
+  missing_information_json: z.array(z.record(z.unknown())).default([]),
+  source_document_ids_json: z.array(z.string().uuid()).default([]),
+  communication_profile_json: caseIntelligenceCommunicationProfileSchema.default({
+    mode: "simple",
+    reading_level: "grade_5",
+    explain_legal_terms: true,
+    tone: "calm_supportive_direct",
+  }),
+  confidence_score: z.number().default(0),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
+
+export type CaseIntelligence = z.infer<typeof caseIntelligenceSchema>;
+
 /**
  * Document follow-up Q&A — request / response types.
  */
