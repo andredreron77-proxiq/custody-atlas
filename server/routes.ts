@@ -1732,6 +1732,35 @@ The user is asking what they should do or how to take a specific action. Focus y
       hasUser: Boolean(docUserId),
       requestedCaseId: requestedCaseId ?? null,
     });
+    const buildDuplicateCaseContext = async (documentId: string) => {
+      if (!docUserId) {
+        return {
+          linkedCaseIds: [] as string[],
+          linkedCases: [] as Array<{ id: string; title: string }>,
+          requestedCaseId: requestedCaseId ?? null,
+          requestedCaseTitle: null as string | null,
+          isLinkedToRequestedCase: false,
+        };
+      }
+
+      const [linkedCaseIds, allCases] = await Promise.all([
+        getDocumentCaseIds(documentId, docUserId),
+        listCases(docUserId).catch(() => []),
+      ]);
+      const linkedCases = allCases
+        .filter((c) => linkedCaseIds.includes(c.id))
+        .map((c) => ({ id: c.id, title: c.title }));
+      const requestedCaseTitle = requestedCaseId
+        ? allCases.find((c) => c.id === requestedCaseId)?.title ?? null
+        : null;
+      return {
+        linkedCaseIds,
+        linkedCases,
+        requestedCaseId: requestedCaseId ?? null,
+        requestedCaseTitle,
+        isLinkedToRequestedCase: Boolean(requestedCaseId && linkedCaseIds.includes(requestedCaseId)),
+      };
+    };
     try {
       const hasAI = Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
       const isDocx = req.file?.mimetype === DOCX_MIME;
@@ -1867,6 +1896,7 @@ The user is asking what they should do or how to take a specific action. Focus y
             analysisStatus: getDocumentIntegrity(matched).analysisStatus,
             confidence: intakeDecision.confidence,
             reasons: intakeDecision.reasons,
+            ...(await buildDuplicateCaseContext(matched.id)),
           }
           : undefined;
 
@@ -2134,6 +2164,7 @@ CRITICAL RULES:
             fallbackSignature: duplicateSignatureV1,
           });
         if (duplicateDoc && !allowDuplicateUpload) {
+          const caseContext = await buildDuplicateCaseContext(duplicateDoc.id);
           console.info("[analyze-document] duplicate-check-post-analysis-match", {
             ...conflictDiagnostics,
             duplicateFound: true,
@@ -2152,6 +2183,7 @@ CRITICAL RULES:
               existingDocumentName: duplicateDoc.fileName,
               fileType: duplicateDoc.mimeType,
               analysisStatus: getDocumentIntegrity(duplicateDoc).analysisStatus,
+              ...caseContext,
             },
             options: {
               canUseExisting: true,
@@ -2311,6 +2343,7 @@ CRITICAL RULES:
             fallbackSignature: duplicateSignatureV1,
           });
           if (existingDuplicate && !allowDuplicateUpload) {
+            const caseContext = await buildDuplicateCaseContext(existingDuplicate.id);
             console.info("[analyze-document] duplicate-check-insert-conflict", {
               ...conflictDiagnostics,
               duplicateFound: true,
@@ -2329,6 +2362,7 @@ CRITICAL RULES:
                 existingDocumentName: existingDuplicate.fileName,
                 fileType: existingDuplicate.mimeType,
                 analysisStatus: getDocumentIntegrity(existingDuplicate).analysisStatus,
+                ...caseContext,
               },
               options: {
                 canUseExisting: true,

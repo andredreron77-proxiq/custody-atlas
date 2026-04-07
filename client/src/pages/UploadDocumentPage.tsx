@@ -50,6 +50,11 @@ interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
     fileName: string;
     confidence?: number;
     analysisStatus?: "uploaded" | "analyzing" | "analyzed" | "failed";
+    linkedCaseIds?: string[];
+    linkedCases?: Array<{ id: string; title: string }>;
+    requestedCaseId?: string | null;
+    requestedCaseTitle?: string | null;
+    isLinkedToRequestedCase?: boolean;
   };
   options?: {
     canUseExisting: boolean;
@@ -1085,6 +1090,7 @@ export default function UploadDocumentPage() {
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [duplicateConflict, setDuplicateConflict] = useState<AnalyzeDocumentResponse["duplicate"] | null>(null);
+  const [duplicateOptions, setDuplicateOptions] = useState<AnalyzeDocumentResponse["options"] | null>(null);
   const [docLimitReached, setDocLimitReached] = useState(false);
   // Stored after a successful analysis — used for re-analysis without creating a duplicate record
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -1367,6 +1373,7 @@ export default function UploadDocumentPage() {
     setError(null);
     setResult(null);
     setDuplicateConflict(null);
+    setDuplicateOptions(null);
 
     try {
       let fileToSubmit: File;
@@ -1424,6 +1431,7 @@ export default function UploadDocumentPage() {
         const apiError = new Error((data as any).error || `Server error (${res.status})`);
         (apiError as any).code = data.code;
         (apiError as any).duplicate = data.duplicate;
+        (apiError as any).options = data.options;
         throw apiError;
       }
 
@@ -1442,6 +1450,7 @@ export default function UploadDocumentPage() {
             ? "This appears to be the same document already in your workspace, even though the file itself is different."
             : "A similar document may already exist in your workspace.";
         setDuplicateConflict(err?.duplicate ?? null);
+        setDuplicateOptions(err?.options ?? null);
         setError(message);
         toast({
           title: duplicateType === "exact" ? "Exact duplicate found" : duplicateType === "semantic" ? "Semantic duplicate found" : "Likely duplicate found",
@@ -1532,8 +1541,31 @@ export default function UploadDocumentPage() {
 
   const handleUploadAnother = () => {
     clearAll();
+    setDuplicateOptions(null);
     // clearAll already resets result, documentId, pages, error — just scroll to top
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const linkExistingDuplicateToActiveCase = async () => {
+    if (!duplicateConflict?.documentId || !activeCaseId) return;
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`/api/documents/${duplicateConflict.documentId}/case-assignment`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ caseId: activeCaseId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to link existing document to case.");
+      queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      setDuplicateConflict((prev) => prev ? { ...prev, isLinkedToRequestedCase: true } : prev);
+      toast({ title: "Document linked", description: "Existing document is now linked to this case." });
+    } catch (err: any) {
+      toast({ title: "Could not link document", description: err?.message ?? "Please try again.", variant: "destructive" });
+    }
   };
 
   /* ── Render ──────────────────────────────────────────────────────────── */
@@ -1692,7 +1724,27 @@ export default function UploadDocumentPage() {
               <p className="text-xs text-muted-foreground">
                 Existing document: <span className="font-medium text-foreground">{duplicateConflict.fileName}</span>
               </p>
+              {(duplicateConflict.linkedCases?.length ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Currently linked to:{" "}
+                  <span className="font-medium text-foreground">
+                    {duplicateConflict.linkedCases!.map((c) => c.title).join(", ")}
+                  </span>
+                </p>
+              )}
+              {activeCaseId && (
+                <p className="text-xs text-muted-foreground">
+                  {duplicateConflict.isLinkedToRequestedCase
+                    ? "This document is already linked to the selected case."
+                    : `You selected case: ${duplicateConflict.requestedCaseTitle ?? "Current case"}.`}
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
+                {activeCaseId && duplicateOptions?.canUseExisting && !duplicateConflict.isLinkedToRequestedCase && (
+                  <Button size="sm" onClick={linkExistingDuplicateToActiveCase}>
+                    Link existing to selected case
+                  </Button>
+                )}
                 <Button size="sm" onClick={() => window.location.assign(`/document/${duplicateConflict.documentId}`)}>
                   {duplicateConflict.type === "semantic" || duplicateConflict.type === "likely"
                     ? "Review existing"
