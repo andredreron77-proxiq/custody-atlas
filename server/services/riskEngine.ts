@@ -4,7 +4,7 @@ export interface NormalizedIntelligenceDate {
   documentId: string;
   raw: string;
   parsedDate: string | null;
-  kind: "hearing" | "deadline" | "other";
+  kind: "hearing" | "deadline" | "filing" | "service" | "appointment" | "child_birthdate" | "other";
 }
 
 export interface NormalizedIntelligenceData {
