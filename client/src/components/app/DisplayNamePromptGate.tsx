@@ -7,16 +7,16 @@ import { Label } from "@/components/ui/label";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
-  DISPLAY_NAME_SKIP_SESSION_KEY,
+  clearDisplayNameSessionSkip,
   firstNameFromDisplayName,
-  shouldSuppressDisplayNamePrompt,
+  getDisplayNamePromptSuppressionState,
+  setDisplayNameSkipForSession,
   skipDisplayNamePromptForAWhile,
   useUserProfile,
 } from "@/hooks/use-user-profile";
 
-function shouldPrompt(displayName: string | null | undefined): boolean {
-  if (displayName) return false;
-  return !shouldSuppressDisplayNamePrompt();
+function hasRealDisplayName(displayName: string | null | undefined): boolean {
+  return Boolean(displayName?.trim());
 }
 
 export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
@@ -34,10 +34,43 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
     }
   }, [draft, user?.displayName]);
 
-  const needsPrompt = useMemo(
-    () => Boolean(user) && !isLoading && !dismissed && shouldPrompt(profile?.displayName),
-    [user, isLoading, dismissed, profile?.displayName],
+  const suppressionState = useMemo(
+    () => getDisplayNamePromptSuppressionState(user?.id),
+    [user?.id],
   );
+
+  const hasProfileDisplayName = hasRealDisplayName(profile?.displayName);
+  const profileLoaded = !isLoading;
+
+  const needsPrompt = useMemo(
+    () => Boolean(user) && profileLoaded && !dismissed && !hasProfileDisplayName && !suppressionState.suppressed,
+    [user, profileLoaded, dismissed, hasProfileDisplayName, suppressionState.suppressed],
+  );
+
+  useEffect(() => {
+    console.info("[DisplayNamePromptGate] decision", {
+      hasUserId: Boolean(user?.id),
+      userId: user?.id ?? null,
+      profileLoaded,
+      rawDisplayName: profile?.displayName ?? null,
+      hasRealDisplayName: hasProfileDisplayName,
+      hasSessionSkip: suppressionState.hasSessionSkip,
+      localSkipUntil: suppressionState.localSkipUntil,
+      hasActiveLocalSkip: suppressionState.hasActiveLocalSkip,
+      dismissed,
+      shouldShowPrompt: needsPrompt,
+    });
+  }, [
+    user?.id,
+    profileLoaded,
+    profile?.displayName,
+    hasProfileDisplayName,
+    suppressionState.hasSessionSkip,
+    suppressionState.localSkipUntil,
+    suppressionState.hasActiveLocalSkip,
+    dismissed,
+    needsPrompt,
+  ]);
 
   const saveMutation = useMutation({
     mutationFn: async (displayName: string) => {
@@ -53,8 +86,8 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
     onSuccess: async () => {
       setDismissed(true);
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
-      if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem(DISPLAY_NAME_SKIP_SESSION_KEY);
+      if (user?.id) {
+        clearDisplayNameSessionSkip(user.id);
       }
       navigate("/workspace", { replace: true });
     },
@@ -70,10 +103,10 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
     setDismissed(true);
 
     try {
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(DISPLAY_NAME_SKIP_SESSION_KEY, "1");
+      if (user?.id) {
+        setDisplayNameSkipForSession(user.id);
       }
-      skipDisplayNamePromptForAWhile();
+      skipDisplayNamePromptForAWhile(user?.id);
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
       navigate("/workspace", { replace: true });
     } catch (error) {
