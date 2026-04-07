@@ -44,6 +44,8 @@ function buildUser(u: NonNullable<Awaited<ReturnType<typeof supabase.auth.getSes
       u.user_metadata?.full_name ??
       u.user_metadata?.name ??
       null,
+    fullName: u.user_metadata?.full_name ?? null,
+    authMetadataName: u.user_metadata?.name ?? null,
     tier: "free",
     avatarUrl: u.user_metadata?.avatar_url ?? null,
   };
