@@ -75,6 +75,7 @@ import {
   appendConversationMessage,
   listCaseMemory,
 } from "./services/cases";
+import { generateCaseIntelligence } from "./services/caseIntelligence";
 import {
   createThread,
   appendMessage,
@@ -4658,6 +4659,29 @@ Do not add facts not present in the provided evidence.`,
     } catch (err) {
       console.error("[timeline] deriveCaseTimeline error:", err);
       return res.status(500).json({ error: "Failed to derive timeline." });
+    }
+  });
+
+  /**
+   * POST /api/cases/:caseId/intelligence
+   * Generates and persists a deterministic "What Matters Now" case snapshot.
+   */
+  app.post("/api/cases/:caseId/intelligence", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { caseId } = req.params;
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const intelligence = await generateCaseIntelligence(caseId);
+      if (!intelligence) {
+        return res.status(503).json({ error: "Case intelligence is unavailable right now." });
+      }
+
+      return res.json({ intelligence });
+    } catch (err) {
+      console.error("[case-intelligence] POST generate error:", err);
+      return res.status(500).json({ error: "Failed to generate case intelligence." });
     }
   });
 
