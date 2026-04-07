@@ -20,6 +20,7 @@ export interface UserProfile {
   id: string;
   displayName: string | null;
   fullName: string | null;
+  welcomeDismissedAt: string | null;
 }
 
 export function firstNameFromDisplayName(input: string | null | undefined): string {
@@ -138,11 +139,14 @@ export function useUserProfile() {
         display_name?: string | null;
         fullName?: string | null;
         full_name?: string | null;
+        welcomeDismissedAt?: string | null;
+        welcome_dismissed_at?: string | null;
       };
       return {
         id: json.id,
         displayName: json.displayName ?? json.display_name ?? null,
         fullName: json.fullName ?? json.full_name ?? null,
+        welcomeDismissedAt: json.welcomeDismissedAt ?? json.welcome_dismissed_at ?? null,
       };
     },
     staleTime: 30_000,

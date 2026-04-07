@@ -21,7 +21,7 @@ function hasRealDisplayName(displayName: string | null | undefined): boolean {
 
 export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   const { user } = useCurrentUser();
-  const { data: profile, isLoading } = useUserProfile();
+  const { data: profile, isLoading, isError } = useUserProfile();
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const [draft, setDraft] = useState(() => firstNameFromDisplayName(user?.displayName));
@@ -40,11 +40,19 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   );
 
   const hasProfileDisplayName = hasRealDisplayName(profile?.displayName);
+  const hasProfileRecord = Boolean(profile?.id);
   const profileLoaded = !isLoading;
 
   const needsPrompt = useMemo(
-    () => Boolean(user) && profileLoaded && !dismissed && !hasProfileDisplayName && !suppressionState.suppressed,
-    [user, profileLoaded, dismissed, hasProfileDisplayName, suppressionState.suppressed],
+    () =>
+      Boolean(user) &&
+      profileLoaded &&
+      !isError &&
+      hasProfileRecord &&
+      !dismissed &&
+      !hasProfileDisplayName &&
+      !suppressionState.suppressed,
+    [user, profileLoaded, isError, hasProfileRecord, dismissed, hasProfileDisplayName, suppressionState.suppressed],
   );
 
   useEffect(() => {
@@ -52,7 +60,12 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
       hasUserId: Boolean(user?.id),
       userId: user?.id ?? null,
       profileLoaded,
+      profileLoadError: isError,
+      hasProfileRecord,
       rawDisplayName: profile?.displayName ?? null,
+      rawFullName: profile?.fullName ?? null,
+      authDisplayName: user?.displayName ?? null,
+      authMetadataName: user?.authMetadataName ?? null,
       hasRealDisplayName: hasProfileDisplayName,
       hasSessionSkip: suppressionState.hasSessionSkip,
       localSkipUntil: suppressionState.localSkipUntil,
@@ -63,7 +76,12 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   }, [
     user?.id,
     profileLoaded,
+    isError,
+    hasProfileRecord,
     profile?.displayName,
+    profile?.fullName,
+    user?.displayName,
+    user?.authMetadataName,
     hasProfileDisplayName,
     suppressionState.hasSessionSkip,
     suppressionState.localSkipUntil,

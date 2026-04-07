@@ -8,7 +8,7 @@
  * localStorage key:  custody-atlas:onboarded
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
   MessageSquare, FileSearch, LayoutDashboard,
@@ -23,8 +23,15 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { apiRequestRaw } from "@/lib/queryClient";
+import { useUserProfile } from "@/hooks/use-user-profile";
 
 const STORAGE_KEY = "custody-atlas:onboarded";
+
+function welcomeStorageKeyForUser(userId?: string | null): string {
+  if (!userId) return STORAGE_KEY;
+  return `${STORAGE_KEY}:${userId}`;
+}
 
 const STEPS = [
   {
@@ -56,17 +63,37 @@ const STEPS = [
 export function OnboardingModal() {
   const [open, setOpen] = useState(false);
   const { user, isLoading } = useCurrentUser();
+  const { data: profile, isLoading: isProfileLoading } = useUserProfile();
   const [, navigate] = useLocation();
+  const [isPersistingDismissal, setIsPersistingDismissal] = useState(false);
+  const storageKey = useMemo(() => welcomeStorageKeyForUser(user?.id), [user?.id]);
 
-  // Auto-open once for first-time authenticated users
+  // Auto-open once for first-time authenticated users.
+  // Durable source of truth: user_profiles.welcome_dismissed_at.
+  // Local storage is a fallback optimization.
   useEffect(() => {
     if (isLoading) return;
     if (!user) return;
-    const seen = localStorage.getItem(STORAGE_KEY);
-    if (!seen) {
+    if (isProfileLoading) return;
+    const localSeen = localStorage.getItem(storageKey);
+    const hasDurableDismissal = Boolean(profile?.welcomeDismissedAt);
+    const shouldShow = !hasDurableDismissal && localSeen !== "true";
+
+    console.info("[OnboardingModal] decision", {
+      hasUserId: Boolean(user?.id),
+      userId: user?.id ?? null,
+      profileLoaded: !isProfileLoading,
+      profileWelcomeDismissedAt: profile?.welcomeDismissedAt ?? null,
+      storageKey,
+      localSeen,
+      hasDurableDismissal,
+      shouldShow,
+    });
+
+    if (shouldShow) {
       setOpen(true);
     }
-  }, [user, isLoading]);
+  }, [user, isLoading, isProfileLoading, profile?.welcomeDismissedAt, storageKey]);
 
   // Allow any component to reopen via event dispatch
   useEffect(() => {
@@ -75,18 +102,33 @@ export function OnboardingModal() {
     return () => window.removeEventListener("custody-atlas:open-onboarding", handler);
   }, []);
 
-  const dismiss = () => {
-    localStorage.setItem(STORAGE_KEY, "true");
+  const dismiss = async () => {
+    if (!user?.id) return;
+    localStorage.setItem(storageKey, "true");
     setOpen(false);
+    if (isPersistingDismissal) return;
+    try {
+      setIsPersistingDismissal(true);
+      const res = await apiRequestRaw("PATCH", "/api/user-profile/welcome-dismissed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to persist welcome state.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to persist welcome state.";
+      console.error("[OnboardingModal] Failed to persist welcome dismissal:", message, error);
+    } finally {
+      setIsPersistingDismissal(false);
+    }
   };
 
-  const go = (href: string) => {
-    dismiss();
+  const go = async (href: string) => {
+    await dismiss();
     navigate(href);
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) dismiss(); }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) void dismiss(); }}>
       <DialogContent
         className="max-w-lg w-full p-0 gap-0 overflow-hidden"
         data-testid="modal-onboarding"
@@ -94,7 +136,7 @@ export function OnboardingModal() {
         {/* ── Header band ─────────────────────────────────────────────────── */}
         <div className="bg-[#0f172a] px-6 pt-6 pb-5 relative">
           <button
-            onClick={dismiss}
+            onClick={() => { void dismiss(); }}
             className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
             aria-label="Close"
             data-testid="button-onboarding-close"
@@ -149,7 +191,7 @@ export function OnboardingModal() {
           <div className="flex flex-col gap-2">
             <Button
               className="w-full gap-2 justify-start"
-              onClick={() => go("/ask")}
+              onClick={() => { void go("/ask"); }}
               data-testid="button-onboarding-ask"
             >
               <MessageSquare className="w-4 h-4" />
@@ -160,7 +202,7 @@ export function OnboardingModal() {
               <Button
                 variant="outline"
                 className="gap-2"
-                onClick={() => go("/upload-document")}
+                onClick={() => { void go("/upload-document"); }}
                 data-testid="button-onboarding-upload"
               >
                 <FileSearch className="w-3.5 h-3.5" />
@@ -169,7 +211,7 @@ export function OnboardingModal() {
               <Button
                 variant="outline"
                 className="gap-2"
-                onClick={() => go("/workspace")}
+                onClick={() => { void go("/workspace"); }}
                 data-testid="button-onboarding-workspace"
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />
@@ -193,13 +235,13 @@ export function OnboardingModal() {
           {/* Dismiss */}
           <div className="flex items-center justify-between pt-1">
             <button
-              onClick={dismiss}
+              onClick={() => { void dismiss(); }}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               data-testid="button-onboarding-skip"
             >
               Skip for now
             </button>
-            <Button size="sm" onClick={() => go("/ask")} data-testid="button-onboarding-get-started">
+            <Button size="sm" onClick={() => { void go("/ask"); }} data-testid="button-onboarding-get-started">
               Get Started
             </Button>
           </div>
