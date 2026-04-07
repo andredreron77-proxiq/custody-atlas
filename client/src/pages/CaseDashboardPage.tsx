@@ -438,7 +438,7 @@ export default function CaseDashboardPage() {
         </div>
       </header>
 
-      <Card className="border border-[hsl(var(--semantic-blue)/0.35)] bg-gradient-to-br from-card via-card to-muted/60 shadow-lg shadow-[hsl(var(--semantic-blue)/0.1)]">
+      <Card className="border border-[hsl(var(--semantic-blue)/0.35)] bg-gradient-to-br from-card via-card to-muted/60 shadow-lg shadow-[hsl(var(--semantic-blue)/0.1)]" data-testid="section-what-matters-now">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">What Matters Now</CardTitle>
         </CardHeader>
@@ -587,7 +587,7 @@ export default function CaseDashboardPage() {
         </div>
 
         <div className="space-y-3 lg:col-span-2">
-          <Card>
+          <Card data-testid="section-top-risks">
             <CardHeader className="pb-2"><CardTitle className="text-base">Top Risks</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               {intelligenceRisks.length > 0 ? intelligenceRisks.map((risk) => (
@@ -606,7 +606,7 @@ export default function CaseDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-testid="section-recommended-actions">
             <CardHeader className="pb-2"><CardTitle className="text-base">Recommended Actions</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               {intelligenceActions.length > 0 ? (
@@ -623,7 +623,7 @@ export default function CaseDashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-testid="section-key-dates">
             <CardHeader className="pb-2"><CardTitle className="text-base">Key Dates</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               {intelligenceKeyDates.length > 0 ? (

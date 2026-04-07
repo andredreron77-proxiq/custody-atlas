@@ -36,7 +36,7 @@ export function WorkspaceHeader({
     <div className="sticky top-2 z-10 rounded-xl border border-border/70 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-sm px-4 py-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-1 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground" data-testid="text-header-display-name">
             {preferredName ? `${preferredName}'s Workspace` : "Active Workspace"}
           </p>
           <div className="flex items-center gap-2 min-w-0">
