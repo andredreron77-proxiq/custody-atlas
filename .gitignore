@@ -4,3 +4,7 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+# Playwright QA artifacts
+playwright-report/
+test-results/
+qa/artifacts/

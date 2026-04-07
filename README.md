@@ -100,3 +100,13 @@ Alabama, Alaska, Arizona, California, Colorado, Florida, Georgia, Illinois, Mich
 ## Legal Disclaimer
 
 This application provides general legal information for educational purposes only. It does not constitute legal advice. Always consult a licensed family law attorney in your jurisdiction for advice specific to your situation.
+
+## Browser QA (Playwright)
+
+A minimal reusable Playwright QA foundation is available under `qa/`.
+
+```bash
+npm run qa:test
+```
+
+See `qa/README.md` for required test account env vars and flow coverage.
