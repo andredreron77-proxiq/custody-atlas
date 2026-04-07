@@ -1065,14 +1065,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "displayName is required." });
       }
       const userId = (req as any).user?.id as string;
-      const ok = await setDisplayName(userId, parsed.data.displayName);
-      if (!ok) {
-        return res.status(500).json({ error: "Failed to save display name." });
+      const displayName = parsed.data.displayName.trim();
+      const result = await setDisplayName(userId, displayName);
+      if (!result.ok) {
+        console.error("[user-profile] PATCH display-name save failed", {
+          reason: result.reason ?? "UNKNOWN",
+          stage: result.stage ?? "unknown",
+          supabaseCode: result.error?.code ?? null,
+          supabaseMessage: result.error?.message ?? null,
+          supabaseDetails: result.error?.details ?? null,
+          supabaseHint: result.error?.hint ?? null,
+          payload: {
+            userId,
+            displayNameLength: displayName.length,
+          },
+        });
+        return res.status(500).json({
+          error: "We couldn't save your preferred name right now. Please try again in a moment.",
+        });
       }
       return res.json({ ok: true });
     } catch (err) {
       console.error("[user-profile] PATCH display-name error:", err);
-      return res.status(500).json({ error: "Failed to save display name." });
+      return res.status(500).json({
+        error: "We couldn't save your preferred name right now. Please try again in a moment.",
+      });
     }
   });
 
