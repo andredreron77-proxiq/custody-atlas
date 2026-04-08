@@ -9,6 +9,8 @@ export const qaProduct = {
     preferredNamePrompt: 'prompt-preferred-name',
     preferredNameInput: 'input-display-name',
     preferredNameSaveButton: 'button-continue-display-name',
+    onboardingModal: 'modal-onboarding',
+    onboardingSkipButton: 'button-onboarding-skip',
     headerDisplayName: 'text-header-display-name',
     sectionWhatMattersNow: 'section-what-matters-now',
     sectionTopRisks: 'section-top-risks',
