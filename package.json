@@ -11,7 +11,14 @@
     "db:push": "drizzle-kit push",
     "qa:test": "playwright test",
     "qa:test:headed": "playwright test --headed",
-    "qa:test:debug": "playwright test --debug"
+    "qa:test:debug": "playwright test --debug",
+    "dev:local": "NODE_ENV=development tsx server/index.ts",
+    "qa:workspace": "playwright test qa/tests/custody-atlas/workspace.spec.ts",
+    "qa:onboarding": "playwright test qa/tests/custody-atlas/auth-and-onboarding.spec.ts -g \"preferred name onboarding\"",
+    "qa:dashboard": "playwright test qa/tests/custody-atlas/case-dashboard.spec.ts",
+    "qa:all": "playwright test qa/tests/custody-atlas",
+    "qa:report": "playwright show-report",
+    "qa:workspace:local": "bash -lc 'npm run dev:local > /tmp/custody-atlas-dev.log 2>&1 & DEV_PID=$!; trap \"kill $DEV_PID\" EXIT; for i in {1..60}; do curl -sf http://127.0.0.1:5000 >/dev/null && break; sleep 1; done; npm run qa:workspace'"
   },
   "dependencies": {
     "@google-cloud/documentai": "^9.5.0",

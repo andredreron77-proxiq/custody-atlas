@@ -8,3 +8,8 @@ vite.config.ts.*
 playwright-report/
 test-results/
 qa/artifacts/
+
+# Local environment files
+.env
+.env.local
+.env.qa
