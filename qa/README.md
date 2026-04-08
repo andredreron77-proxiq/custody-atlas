@@ -9,7 +9,7 @@ Minimal reusable QA foundation for browser-based regression checks.
 - `qa/fixtures/` — env-driven test data wiring.
 - `qa/artifacts/` — captured screenshots.
 
-## Command flow
+## One-time local setup
 
 ### 1) Install dependencies
 
@@ -24,35 +24,55 @@ npm install -D @playwright/test
 npx playwright install chromium
 ```
 
-### 3) Set QA environment variables
+### 3) Create root env files
+
+Create these in the repository root (not inside `qa/`):
+
+`.env.local` (used by the local app server)
 
 ```bash
-export QA_BASE_URL=http://127.0.0.1:5000
-export QA_USER_EMAIL=<returning-user-email>
-export QA_USER_PASSWORD=<returning-user-password>
-export QA_FRESH_USER_EMAIL=<fresh-user-email>
-export QA_FRESH_USER_PASSWORD=<fresh-user-password>
-export QA_FRESH_USER_PREFERRED_NAME=Taylor
-export QA_CASE_ID=<existing-case-id>
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
-### 4) Run tests
+`.env.qa` (used by Playwright)
 
 ```bash
-npm run qa:test
+QA_BASE_URL=http://127.0.0.1:5000
+QA_USER_EMAIL=returning-user@example.com
+QA_USER_PASSWORD=replace-with-password
+QA_FRESH_USER_EMAIL=fresh-user@example.com
+QA_FRESH_USER_PASSWORD=replace-with-password
+QA_FRESH_USER_PREFERRED_NAME=Taylor
+QA_CASE_ID=replace-with-existing-case-id
 ```
 
-Optional:
+No repeated `export ...` commands are required once files are in place.
+
+## QA commands
+
+Run targeted suites:
 
 ```bash
-npm run qa:test:headed
-npm run qa:test:debug
+npm run qa:workspace
+npm run qa:onboarding
+npm run qa:dashboard
+npm run qa:all
 ```
 
-### 5) Open the Playwright HTML report
+Open the report:
 
 ```bash
-npx playwright show-report
+npm run qa:report
+```
+
+## Combined flow (common local loop)
+
+Start app, wait for `http://127.0.0.1:5000`, run workspace QA:
+
+```bash
+npm run qa:workspace:local
 ```
 
 ## Covered MVP flows

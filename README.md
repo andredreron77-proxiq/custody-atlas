@@ -24,14 +24,33 @@ A production-ready web application that identifies a user's state and county bas
 - A Google Maps API key (with Geocoding API enabled)
 - An OpenAI API key (or use Replit's built-in AI integration)
 
-### Environment Variables
+### Local environment files (one-time)
 
-Create a `.env` file or set the following environment variables:
+Create two local-only files in the repo root:
 
+1) `.env.local` (app/server values)
+
+```bash
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+OPENAI_API_KEY=your_openai_api_key
 ```
-GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
+
+2) `.env.qa` (Playwright QA values)
+
+```bash
+QA_BASE_URL=http://127.0.0.1:5000
+QA_USER_EMAIL=returning-user@example.com
+QA_USER_PASSWORD=replace-with-password
+QA_FRESH_USER_EMAIL=fresh-user@example.com
+QA_FRESH_USER_PASSWORD=replace-with-password
+QA_FRESH_USER_PREFERRED_NAME=Taylor
+QA_CASE_ID=replace-with-existing-case-id
 ```
+
+> These files are ignored by git. Use real local secrets only on your machine.
 
 ### Installation
 
@@ -39,13 +58,13 @@ OPENAI_API_KEY=your_openai_api_key_here
 npm install
 ```
 
-### Development
+### Development (no repeated exports)
 
 ```bash
-npm run dev
+npm run dev:local
 ```
 
-The app will be available at `http://localhost:5000`.
+The server automatically loads `.env.local` at startup.
 
 ### Production Build
 
@@ -54,59 +73,22 @@ npm run build
 npm start
 ```
 
-## Project Structure
-
-```
-├── client/
-│   └── src/
-│       ├── components/
-│       │   └── app/
-│       │       ├── Header.tsx          # Navigation header + breadcrumbs
-│       │       ├── Footer.tsx          # Site footer with disclaimer
-│       │       ├── LocationSelector.tsx # GPS + ZIP code input component
-│       │       ├── JurisdictionCard.tsx # Displays detected jurisdiction
-│       │       ├── LawSummarySection.tsx# Expandable law sections
-│       │       └── ChatBox.tsx         # AI chat interface
-│       ├── pages/
-│       │   ├── LandingPage.tsx         # Hero + features + CTA
-│       │   ├── LocationPage.tsx        # Location input page
-│       │   ├── JurisdictionPage.tsx    # Law summary for jurisdiction
-│       │   └── AskAIPage.tsx           # AI Q&A chat interface
-│       └── App.tsx                     # Router setup
-├── server/
-│   ├── routes.ts                       # API endpoints
-│   ├── storage.ts                      # Storage interface
-│   └── index.ts                        # Express server
-├── shared/
-│   └── schema.ts                       # Shared TypeScript types/schemas
-└── data/
-    └── custody_laws.json               # Custody law data for 16 states
-```
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/geocode/coordinates` | Convert lat/lng to jurisdiction |
-| POST | `/api/geocode/zip` | Convert ZIP code to jurisdiction |
-| GET | `/api/custody-laws` | List all states with data |
-| GET | `/api/custody-laws/:state` | Get custody law for a state |
-| POST | `/api/ask` | Ask AI a custody question |
-
-## States Covered
-
-Alabama, Alaska, Arizona, California, Colorado, Florida, Georgia, Illinois, Michigan, New York, North Carolina, Ohio, Pennsylvania, Texas, Virginia, Washington
-
-## Legal Disclaimer
-
-This application provides general legal information for educational purposes only. It does not constitute legal advice. Always consult a licensed family law attorney in your jurisdiction for advice specific to your situation.
-
 ## Browser QA (Playwright)
 
-A minimal reusable Playwright QA foundation is available under `qa/`.
+Playwright automatically loads `.env.qa`.
 
 ```bash
-npm run qa:test
+npm run qa:workspace
+npm run qa:onboarding
+npm run qa:dashboard
+npm run qa:all
+npm run qa:report
 ```
 
-See `qa/README.md` for required test account env vars and flow coverage.
+Combined local flow (start local app → wait → run workspace QA):
+
+```bash
+npm run qa:workspace:local
+```
+
+See `qa/README.md` for detailed QA guidance.
