@@ -18,7 +18,7 @@
     "qa:dashboard": "playwright test qa/tests/custody-atlas/case-dashboard.spec.ts",
     "qa:all": "playwright test qa/tests/custody-atlas",
     "qa:report": "playwright show-report",
-    "qa:workspace:local": "bash -lc 'npm run dev:local > /tmp/custody-atlas-dev.log 2>&1 & DEV_PID=$!; trap \"kill $DEV_PID\" EXIT; for i in {1..60}; do curl -sf http://127.0.0.1:5050 >/dev/null && break; sleep 1; done; npm run qa:workspace'"
+    "qa:workspace:local": "npm run qa:workspace"
   },
   "dependencies": {
     "@google-cloud/documentai": "^9.5.0",
