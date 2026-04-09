@@ -39,7 +39,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 `.env.qa` (used by Playwright)
 
 ```bash
-QA_BASE_URL=http://127.0.0.1:5000
+QA_BASE_URL=http://127.0.0.1:5050
 QA_USER_EMAIL=returning-user@example.com
 QA_USER_PASSWORD=replace-with-password
 QA_FRESH_USER_EMAIL=fresh-user@example.com
@@ -69,7 +69,7 @@ npm run qa:report
 
 ## Combined flow (common local loop)
 
-Start app, wait for `http://127.0.0.1:5000`, run workspace QA:
+Start app, wait for `http://127.0.0.1:5050`, run workspace QA:
 
 ```bash
 npm run qa:workspace:local

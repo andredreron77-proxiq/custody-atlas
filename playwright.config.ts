@@ -14,7 +14,7 @@ function stripWrappingQuotes(value: string): string {
 
 function loadEnvFile(filename: string) {
   const fullPath = path.join(process.cwd(), filename);
-  if (!fs.existsSync(fullPath)) return;
+  if (!fs.existsSync(fullPath)) return false;
 
   const raw = fs.readFileSync(fullPath, 'utf8');
   for (const line of raw.split(/\r?\n/)) {
@@ -31,14 +31,27 @@ function loadEnvFile(filename: string) {
       process.env[key] = value;
     }
   }
+
+  return true;
 }
 
 loadEnvFile('.env');
 loadEnvFile('.env.local');
-loadEnvFile('.env.qa');
+const loadedQaEnvFile = loadEnvFile('.env.qa');
 
-const baseURL = process.env.QA_BASE_URL ?? 'http://127.0.0.1:5000';
+const baseURL = process.env.QA_BASE_URL ?? 'http://127.0.0.1:5050';
 const isCI = Boolean(process.env.CI);
+const missingRequiredQaCreds = ['QA_USER_EMAIL', 'QA_USER_PASSWORD'].filter((name) => !process.env[name]);
+
+if (!loadedQaEnvFile) {
+  console.warn('[playwright] .env.qa not found in repo root; using current process env/defaults.');
+}
+
+if (missingRequiredQaCreds.length > 0) {
+  console.warn(
+    `[playwright] Missing default QA credentials (${missingRequiredQaCreds.join(', ')}). Related tests will be skipped.`,
+  );
+}
 
 export default defineConfig({
   testDir: './qa/tests',

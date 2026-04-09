@@ -41,7 +41,7 @@ OPENAI_API_KEY=your_openai_api_key
 2) `.env.qa` (Playwright QA values)
 
 ```bash
-QA_BASE_URL=http://127.0.0.1:5000
+QA_BASE_URL=http://127.0.0.1:5050
 QA_USER_EMAIL=returning-user@example.com
 QA_USER_PASSWORD=replace-with-password
 QA_FRESH_USER_EMAIL=fresh-user@example.com
