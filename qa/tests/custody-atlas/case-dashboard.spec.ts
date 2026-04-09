@@ -18,6 +18,8 @@ test.describe('Custody Atlas case dashboard intelligence', () => {
     await page.goto(qaProduct.routes.caseDashboard(qaEnv.caseId));
 
     await expectStablePage(page, qaProduct.testIds.pageCaseDashboard);
+    await expect(page.getByTestId(qaProduct.testIds.onboardingModal)).toBeHidden();
+    await expect(page.getByText(/ask my first question/i)).toHaveCount(0);
     await expect(page.getByTestId(qaProduct.testIds.sectionWhatMattersNow)).toBeVisible();
     await expect(page.getByTestId(qaProduct.testIds.sectionTopRisks)).toBeVisible();
     await expect(page.getByTestId(qaProduct.testIds.sectionRecommendedActions)).toBeVisible();

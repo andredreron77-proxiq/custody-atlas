@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   MessageSquare, FileSearch, LayoutDashboard,
@@ -64,17 +65,34 @@ export function OnboardingModal() {
   const [open, setOpen] = useState(false);
   const { user, isLoading } = useCurrentUser();
   const { data: profile, isLoading: isProfileLoading } = useUserProfile();
+  const { data: casesData, isLoading: isCasesLoading } = useQuery<{ cases?: Array<{ id: string; status?: string | null }> }>({
+    queryKey: ["/api/cases", "onboarding-visibility"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
   const [, navigate] = useLocation();
   const [isPersistingDismissal, setIsPersistingDismissal] = useState(false);
   const storageKey = useMemo(() => welcomeStorageKeyForUser(user?.id), [user?.id]);
 
+  const cases = casesData?.cases ?? [];
+  const hasActiveCaseContext = cases.some((caseRecord) => caseRecord.status === "active");
+
   // Auto-open once for first-time authenticated users.
   // Durable source of truth: user_profiles.welcome_dismissed_at.
   // Local storage is a fallback optimization.
+  // Returning users with active case context bypass onboarding entirely.
   useEffect(() => {
     if (isLoading) return;
     if (!user) return;
     if (isProfileLoading) return;
+    if (isCasesLoading) return;
+
+    if (hasActiveCaseContext) {
+      setOpen(false);
+      return;
+    }
+
     const localSeen = localStorage.getItem(storageKey);
     const hasDurableDismissal = Boolean(profile?.welcomeDismissedAt);
     const shouldShow = !hasDurableDismissal && localSeen !== "true";
@@ -84,6 +102,9 @@ export function OnboardingModal() {
       userId: user?.id ?? null,
       profileLoaded: !isProfileLoading,
       profileWelcomeDismissedAt: profile?.welcomeDismissedAt ?? null,
+      casesLoaded: !isCasesLoading,
+      caseCount: cases.length,
+      hasActiveCaseContext,
       storageKey,
       localSeen,
       hasDurableDismissal,
@@ -93,7 +114,16 @@ export function OnboardingModal() {
     if (shouldShow) {
       setOpen(true);
     }
-  }, [user, isLoading, isProfileLoading, profile?.welcomeDismissedAt, storageKey]);
+  }, [
+    user,
+    isLoading,
+    isProfileLoading,
+    isCasesLoading,
+    hasActiveCaseContext,
+    cases.length,
+    profile?.welcomeDismissedAt,
+    storageKey,
+  ]);
 
   // Allow any component to reopen via event dispatch
   useEffect(() => {
