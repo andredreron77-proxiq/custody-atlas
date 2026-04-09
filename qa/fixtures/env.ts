@@ -19,6 +19,7 @@ function missingEnv(...names: string[]): string[] {
 
 export const qaEnv = {
   baseUrl: process.env.QA_BASE_URL ?? 'http://127.0.0.1:5050',
+  resetToken: process.env.QA_RESET_TOKEN,
   defaultUser: {
     email: process.env.QA_USER_EMAIL,
     password: process.env.QA_USER_PASSWORD,
@@ -37,6 +38,10 @@ export function getMissingDefaultUserEnvVars(): string[] {
 
 export function getMissingFreshUserEnvVars(): string[] {
   return missingEnv('QA_FRESH_USER_EMAIL', 'QA_FRESH_USER_PASSWORD');
+}
+
+export function getMissingFreshUserResetEnvVars(): string[] {
+  return missingEnv('QA_FRESH_USER_EMAIL', 'QA_RESET_TOKEN');
 }
 
 export function getDefaultUserCredentials(): QaCredentials {

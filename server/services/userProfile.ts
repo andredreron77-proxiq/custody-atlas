@@ -30,6 +30,17 @@ export interface SetWelcomeDismissedResult {
   };
 }
 
+export interface ResetOnboardingStateResult {
+  ok: boolean;
+  reason?: "SUPABASE_NOT_CONFIGURED" | "SUPABASE_ERROR";
+  error?: {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+  };
+}
+
 export async function getUserProfile(userId: string): Promise<UserProfile> {
   if (!supabaseAdmin) {
     return { id: userId, displayName: null, welcomeDismissedAt: null };
@@ -177,6 +188,50 @@ export async function setWelcomeDismissed(userId: string): Promise<SetWelcomeDis
       error: {
         code: error?.code,
         message: error?.message ?? "Unexpected error while saving welcome dismissal.",
+        details: error?.details,
+        hint: error?.hint,
+      },
+    };
+  }
+}
+
+export async function resetOnboardingState(userId: string): Promise<ResetOnboardingStateResult> {
+  if (!supabaseAdmin) {
+    return { ok: false, reason: "SUPABASE_NOT_CONFIGURED" };
+  }
+  try {
+    const { error } = await supabaseAdmin
+      .from("user_profiles")
+      .upsert(
+        {
+          id: userId,
+          display_name: null,
+          welcome_dismissed_at: null,
+        },
+        { onConflict: "id" },
+      );
+
+    if (error) {
+      return {
+        ok: false,
+        reason: "SUPABASE_ERROR",
+        error: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        },
+      };
+    }
+
+    return { ok: true };
+  } catch (error: any) {
+    return {
+      ok: false,
+      reason: "SUPABASE_ERROR",
+      error: {
+        code: error?.code,
+        message: error?.message ?? "Unexpected error while resetting onboarding state.",
         details: error?.details,
         hint: error?.hint,
       },
