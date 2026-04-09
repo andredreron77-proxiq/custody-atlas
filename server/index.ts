@@ -91,14 +91,7 @@ app.use((req, res, next) => {
   // This serves both the API and the client.
   const port = parseInt(process.env.PORT || "5050", 10);
   const host = process.env.HOST || "127.0.0.1";
-  httpServer.listen(
-    {
-      port,
-      host,
-      reusePort: true,
-    },
-    () => {
-      log(`serving on ${host}:${port}`);
-    },
-  );
+  httpServer.listen(port, host, () => {
+    log(`serving on ${host}:${port}`);
+  });
 })();
