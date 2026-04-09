@@ -75,6 +75,33 @@ export async function listAdminUsers(): Promise<AdminUser[]> {
   }
 }
 
+export async function findAdminUserByEmail(email: string): Promise<AdminUser | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    if (error || !data) return null;
+
+    const lowerEmail = email.trim().toLowerCase();
+    const matched = data.users.find((u) => (u.email ?? "").toLowerCase() === lowerEmail);
+    if (!matched) return null;
+
+    const { data: profile } = await supabaseAdmin
+      .from("user_profiles")
+      .select("tier")
+      .eq("id", matched.id)
+      .maybeSingle();
+
+    return {
+      id: matched.id,
+      email: matched.email ?? null,
+      tier: (profile?.tier as UserTier) ?? "free",
+      createdAt: matched.created_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Upsert the tier for a user in user_profiles.
  * Safe to call even when user_profiles does not yet exist for this user.

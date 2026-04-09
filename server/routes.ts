@@ -29,6 +29,7 @@ import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRi
 import { requireAuth, requireAdmin } from "./services/auth";
 import {
   listAdminUsers,
+  findAdminUserByEmail,
   setUserTier,
   inviteUser,
   listInviteCodes,
@@ -90,7 +91,7 @@ import {
   getRelatedQuestions,
   TOPIC_LABELS,
 } from "./services/publicQuestions";
-import { getUserProfile, setDisplayName, setWelcomeDismissed } from "./services/userProfile";
+import { getUserProfile, setDisplayName, setWelcomeDismissed, resetOnboardingState } from "./services/userProfile";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -1137,6 +1138,74 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/custody-laws", (_req, res) => {
     return res.json({ states: listStates() });
+  });
+
+  /**
+   * QA-only route to reset the designated fresh-user onboarding state.
+   *
+   * Guardrails:
+   * - Disabled in production.
+   * - Requires QA_RESET_TOKEN via x-qa-reset-token header.
+   * - Only allows resetting QA_FRESH_USER_EMAIL.
+   */
+  app.post("/api/qa/reset-onboarding-user", async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ error: "Not found." });
+    }
+
+    const configuredToken = process.env.QA_RESET_TOKEN?.trim();
+    if (!configuredToken) {
+      return res.status(503).json({ error: "QA reset route not configured." });
+    }
+
+    const providedToken = (req.header("x-qa-reset-token") ?? "").trim();
+    if (!providedToken || providedToken !== configuredToken) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+
+    const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "email is required." });
+    }
+
+    const targetEmail = parsed.data.email.trim().toLowerCase();
+    const designatedFreshEmail = process.env.QA_FRESH_USER_EMAIL?.trim().toLowerCase();
+
+    if (!designatedFreshEmail) {
+      return res.status(503).json({ error: "QA fresh user email not configured." });
+    }
+
+    if (targetEmail !== designatedFreshEmail) {
+      return res.status(403).json({ error: "Only the designated QA fresh user can be reset." });
+    }
+
+    const user = await findAdminUserByEmail(targetEmail);
+    if (!user?.id) {
+      return res.status(404).json({ error: "Fresh user account not found." });
+    }
+
+    const result = await resetOnboardingState(user.id);
+    if (!result.ok) {
+      console.error("[qa/reset-onboarding-user] failed", {
+        reason: result.reason ?? "UNKNOWN",
+        supabaseCode: result.error?.code ?? null,
+        supabaseMessage: result.error?.message ?? null,
+        supabaseDetails: result.error?.details ?? null,
+        supabaseHint: result.error?.hint ?? null,
+        userId: user.id,
+      });
+      return res.status(500).json({ error: "Failed to reset fresh user onboarding state." });
+    }
+
+    return res.json({
+      ok: true,
+      reset: {
+        email: targetEmail,
+        userId: user.id,
+        displayName: null,
+        welcomeDismissedAt: null,
+      },
+    });
   });
 
   /**

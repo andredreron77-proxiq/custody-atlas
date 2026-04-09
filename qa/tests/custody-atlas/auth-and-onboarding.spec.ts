@@ -6,9 +6,10 @@ import {
   getFreshUserCredentials,
   getMissingDefaultUserEnvVars,
   getMissingFreshUserEnvVars,
+  getMissingFreshUserResetEnvVars,
 } from '../../fixtures/env';
 import { qaProduct } from '../../fixtures/product';
-import { loginWithEmail } from '../../utils/auth';
+import { loginWithEmail, resetFreshUserOnboardingState } from '../../utils/auth';
 import { expectStablePage } from '../../utils/assertions';
 
 test.describe('Custody Atlas auth + onboarding', () => {
@@ -35,12 +36,14 @@ test.describe('Custody Atlas auth + onboarding', () => {
 
   test('preferred name onboarding flow saves preferred name for a fresh user', async ({ page }) => {
     const missingFreshUserVars = getMissingFreshUserEnvVars();
+    const missingFreshUserResetVars = getMissingFreshUserResetEnvVars();
     test.skip(
-      missingFreshUserVars.length > 0,
-      `Missing ${missingFreshUserVars.join(', ')} in .env.qa; skipping onboarding coverage.`,
+      missingFreshUserVars.length > 0 || missingFreshUserResetVars.length > 0,
+      `Missing ${[...new Set([...missingFreshUserVars, ...missingFreshUserResetVars])].join(', ')} in .env.qa; skipping onboarding coverage.`,
     );
 
     const freshCreds = getFreshUserCredentials();
+    await resetFreshUserOnboardingState(freshCreds.email);
     await loginWithEmail(page, freshCreds);
 
     await dismissWelcomeModalIfVisible(page);

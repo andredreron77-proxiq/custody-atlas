@@ -45,6 +45,7 @@ QA_USER_PASSWORD=replace-with-password
 QA_FRESH_USER_EMAIL=fresh-user@example.com
 QA_FRESH_USER_PASSWORD=replace-with-password
 QA_FRESH_USER_PREFERRED_NAME=Taylor
+QA_RESET_TOKEN=replace-with-long-random-secret
 QA_CASE_ID=replace-with-existing-case-id
 ```
 
@@ -86,3 +87,24 @@ npm run qa:workspace:local
   - Recommended Actions
   - Key Dates
 - Screenshot capture for case dashboard
+
+## Repeatable onboarding strategy (fresh-user reset)
+
+The onboarding QA test now resets the designated fresh user before each run by calling:
+
+- `POST /api/qa/reset-onboarding-user`
+
+The route is intentionally narrow and test-focused:
+
+- Disabled in production (`NODE_ENV=production` returns 404).
+- Requires `x-qa-reset-token` that matches `QA_RESET_TOKEN`.
+- Only allows resetting `QA_FRESH_USER_EMAIL` (the designated QA fresh account).
+- Resets durable onboarding state in `user_profiles`:
+  - `display_name` → `null`
+  - `welcome_dismissed_at` → `null`
+
+Why this is more reliable:
+
+- The same QA account can be reused forever without manual credential rotation.
+- Every onboarding run starts from a known first-time state.
+- Test runs become deterministic and no longer depend on whoever last executed onboarding.
