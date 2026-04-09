@@ -27,11 +27,16 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  css: {
+    postcss: path.resolve(import.meta.dirname, "postcss.config.cjs"),
+  },
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
   },
   server: {
+    port: 5050,
+    strictPort: true,
     fs: {
       strict: true,
       deny: ["**/.*"],

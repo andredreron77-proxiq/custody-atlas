@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { qaEnv, getDefaultUserCredentials } from '../../fixtures/env';
+import { qaEnv, getDefaultUserCredentials, getMissingDefaultUserEnvVars } from '../../fixtures/env';
 import { qaProduct } from '../../fixtures/product';
 import { loginWithEmail } from '../../utils/auth';
 import { captureQaScreenshot } from '../../utils/screenshot';
@@ -7,7 +7,11 @@ import { expectStablePage } from '../../utils/assertions';
 
 test.describe('Custody Atlas case dashboard intelligence', () => {
   test('shows core intelligence sections and captures a screenshot', async ({ page }) => {
-    test.skip(!qaEnv.defaultUser.email || !qaEnv.defaultUser.password, 'Set QA_USER_EMAIL and QA_USER_PASSWORD.');
+    const missingDefaultUserVars = getMissingDefaultUserEnvVars();
+    test.skip(
+      missingDefaultUserVars.length > 0,
+      `Missing ${missingDefaultUserVars.join(', ')} in .env.qa; skipping authenticated QA flow.`,
+    );
     test.skip(!qaEnv.caseId, 'Set QA_CASE_ID to validate a specific case dashboard.');
 
     await loginWithEmail(page, getDefaultUserCredentials());
