@@ -89,9 +89,10 @@ app.use((req, res, next) => {
   // Serve the app on the port specified in the environment variable PORT.
   // Default to 5050 for local dev + QA consistency.
   // This serves both the API and the client.
-  const port = parseInt(process.env.PORT || "5050", 10);
-  const host = process.env.HOST || "127.0.0.1";
-  httpServer.listen(port, host, () => {
-    log(`serving on ${host}:${port}`);
-  });
+ const port = parseInt(process.env.PORT || "5050", 10);
+const host = process.env.HOST || "127.0.0.1";
+
+httpServer.listen(port, host, () => {
+  log(`serving on port ${port}`);
+});
 })();
