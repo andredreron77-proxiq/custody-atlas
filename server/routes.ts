@@ -1174,10 +1174,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!designatedFreshEmail) {
       return res.status(503).json({ error: "QA fresh user email not configured." });
     }
+const normalizedTargetEmail = targetEmail.trim().toLowerCase();
+const normalizedDesignatedFreshEmail = designatedFreshEmail.trim().toLowerCase();
 
-    if (targetEmail !== designatedFreshEmail) {
-      return res.status(403).json({ error: "Only the designated QA fresh user can be reset." });
-    }
+console.log("targetEmail:", JSON.stringify(normalizedTargetEmail));
+console.log("designatedFreshEmail:", JSON.stringify(normalizedDesignatedFreshEmail));
+
+if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
+  return res.status(403).json({ error: "Only the designated QA fresh user can be reset." });
+}
 
     const user = await findAdminUserByEmail(targetEmail);
     if (!user?.id) {
