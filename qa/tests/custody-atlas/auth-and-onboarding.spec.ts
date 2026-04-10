@@ -48,10 +48,23 @@ test.describe('Custody Atlas auth + onboarding', () => {
 
     await dismissWelcomeModalIfVisible(page);
 
-    await expect(page.getByTestId(qaProduct.testIds.preferredNamePrompt)).toBeVisible();
-    await page.getByTestId(qaProduct.testIds.preferredNameInput).fill(qaEnv.freshUser.preferredName);
+    const preferredNamePrompt = page.getByTestId(qaProduct.testIds.preferredNamePrompt);
+    const preferredNameInput = page.getByTestId(qaProduct.testIds.preferredNameInput);
+    const preferredNameContinueButton = page.getByTestId(qaProduct.testIds.preferredNameSaveButton);
+    const preferredNameSkipButton = page.getByTestId('button-skip-display-name');
+
+    await expect(preferredNamePrompt).toBeVisible();
+    await expect(preferredNameSkipButton).toBeVisible();
+    await expect(preferredNameContinueButton).toBeDisabled();
+
+    await preferredNameInput.click();
+    await preferredNameInput.pressSequentially(qaEnv.freshUser.preferredName);
+    await expect(preferredNameInput).toHaveValue(qaEnv.freshUser.preferredName);
+
     await dismissWelcomeModalIfVisible(page);
-    await page.getByTestId(qaProduct.testIds.preferredNameSaveButton).click();
+    await expect(preferredNamePrompt).toBeVisible();
+    await expect(preferredNameContinueButton).toBeEnabled();
+    await preferredNameContinueButton.click();
 
     await dismissWelcomeModalIfVisible(page);
     await expectStablePage(page, qaProduct.testIds.pageWorkspace);
