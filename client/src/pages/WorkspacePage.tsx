@@ -47,6 +47,8 @@ import {
 } from "@/lib/workspaceState";
 import { WorkspaceHeader } from "@/components/workspace/WorkspaceHeader";
 import { DocumentsPanel } from "@/components/workspace/DocumentsPanel";
+import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
+import type { RawSignal, UserTier } from "@/lib/signals";
 import { classifyDateStatus } from "@shared/dateStatus";
 import { resolveUSStateCode } from "@shared/usStates";
 
@@ -93,6 +95,10 @@ interface WorkspaceTimelineEvent {
   eventDate: string;
   description: string;
   createdAt: string;
+}
+
+interface SignalsResponse {
+  signals: RawSignal[];
 }
 
 interface WorkspaceData {
@@ -1525,6 +1531,7 @@ export default function WorkspacePage() {
   });
 
   const isProUser = usage?.isAuthenticated && usage.tier === "pro";
+  const signalTier: UserTier = usage?.tier === "pro" ? "pro" : "free";
 
   const { data: workspaceData, isLoading: isLoadingWorkspace } = useQuery<WorkspaceData | null>({
     queryKey: ["/api/workspace"],
@@ -1561,6 +1568,19 @@ export default function WorkspacePage() {
     enabled: !!user,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+  });
+  const { data: caseSignalsData, isLoading: isLoadingCaseSignals } = useQuery<SignalsResponse>({
+    queryKey: ["/api/signals", "case", caseIdParam],
+    enabled: !!user && !!caseIdParam,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/signals?caseId=${encodeURIComponent(caseIdParam ?? "")}`);
+      if (res.status === 404) return { signals: [] };
+      if (!res.ok) throw new Error("Failed to load case signals.");
+      return res.json() as Promise<SignalsResponse>;
+    },
   });
 
   const threads: WorkspaceThread[] = workspaceData?.threads ?? [];
@@ -1704,6 +1724,17 @@ export default function WorkspacePage() {
   const latestActivityIso = allTimestamps.length > 0
     ? allTimestamps.reduce((a, b) => (a > b ? a : b))
     : null;
+  const caseScopedDocuments = caseIdParam
+    ? documents.filter((doc) => doc.caseId === caseIdParam)
+    : [];
+  const caseLatestActivityIso = caseScopedDocuments.length > 0
+    ? caseScopedDocuments
+      .map((doc) => doc.createdAt)
+      .reduce((latest, current) => (latest > current ? latest : current))
+    : latestActivityIso;
+  const lastActivityDaysAgo = caseLatestActivityIso
+    ? Math.max(0, Math.floor((Date.now() - new Date(caseLatestActivityIso).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   // Primary state — single source of truth for the whole page
   const derivedCaseActivity = deriveCaseActivityState({
@@ -1959,6 +1990,20 @@ export default function WorkspacePage() {
         </div>
 
         <div className="xl:col-span-4 space-y-4">
+          {caseIdParam && (
+            <Panel>
+              <PanelHeader icon={Activity} label="What Matters Now" />
+              <PanelContent className="p-3">
+                <DismissibleWhatMattersNow
+                  rawSignals={caseSignalsData?.signals ?? []}
+                  tier={signalTier}
+                  totalDocuments={caseScopedDocuments.length}
+                  lastActivityDaysAgo={lastActivityDaysAgo}
+                  loading={isLoadingCaseSignals}
+                />
+              </PanelContent>
+            </Panel>
+          )}
           <div className="rounded-lg border border-border/40 bg-muted/10 px-3 py-2.5 flex items-center gap-2" data-testid="card-privacy-trust">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <p className="text-xs text-muted-foreground leading-snug">

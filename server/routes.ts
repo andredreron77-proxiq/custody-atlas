@@ -85,7 +85,12 @@ import {
   listThreads,
   getRecentMessages,
 } from "./services/threads";
-import { dismissSignalForUser, replaceDocumentSignals } from "./services/signals";
+import {
+  dismissSignalForUser,
+  listSignalsForCase,
+  listSignalsForDocument,
+  replaceDocumentSignals,
+} from "./services/signals";
 import {
   maybePublishQuestion,
   getPublicQuestionsByState,
@@ -3229,6 +3234,46 @@ ${userQuestion}`;
         error,
       });
       return res.status(500).json({ error: "Failed to dismiss signal." });
+    }
+  });
+
+  app.get("/api/signals", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const caseId = typeof req.query.caseId === "string" ? req.query.caseId.trim() : "";
+    const documentId = typeof req.query.documentId === "string" ? req.query.documentId.trim() : "";
+
+    if (!caseId && !documentId) {
+      return res.status(400).json({ error: "caseId or documentId is required." });
+    }
+
+    try {
+      const result = caseId
+        ? await listSignalsForCase(caseId, user.id)
+        : await listSignalsForDocument(documentId, user.id);
+
+      if (!result.ok) {
+        console.error("[signals] list error", {
+          userId: user.id,
+          caseId: caseId || null,
+          documentId: documentId || null,
+          error: result.error,
+        });
+        return res.status(500).json({ error: "Failed to load signals." });
+      }
+
+      if (result.notFound) {
+        return res.status(404).json({ error: "Signal scope not found." });
+      }
+
+      return res.json({ signals: result.signals ?? [] });
+    } catch (error) {
+      console.error("[signals] list exception", {
+        userId: user.id,
+        caseId: caseId || null,
+        documentId: documentId || null,
+        error,
+      });
+      return res.status(500).json({ error: "Failed to load signals." });
     }
   });
 

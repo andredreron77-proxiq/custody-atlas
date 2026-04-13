@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../lib/supabaseAdmin";
 import type { RawSignal } from "../lib/signals";
 import { buildPersistenceErrorDetail, type PersistenceErrorDetail } from "./documents";
 import { getDocumentById } from "./documents";
+import { getCaseById } from "./cases";
 
 export interface ReplaceDocumentSignalsResult {
   ok: boolean;
@@ -13,6 +14,13 @@ export interface DismissSignalResult {
   ok: boolean;
   error?: PersistenceErrorDetail;
   dismissed?: boolean;
+  notFound?: boolean;
+}
+
+export interface ListSignalsResult {
+  ok: boolean;
+  signals?: RawSignal[];
+  error?: PersistenceErrorDetail;
   notFound?: boolean;
 }
 
@@ -172,6 +180,145 @@ export async function dismissSignalForUser(
       ok: false,
       error: buildPersistenceErrorDetail(error, {
         operation: "dismissSignalForUser",
+        table: "signals",
+        writeMode: "update",
+      }),
+    };
+  }
+}
+
+function mapSignalRow(row: Record<string, unknown>): RawSignal {
+  const sourceDocumentIds = Array.isArray(row.source_document_ids)
+    ? row.source_document_ids.filter((id): id is string => typeof id === "string")
+    : undefined;
+
+  return {
+    id: typeof row.id === "string" ? row.id : "",
+    type: row.type as RawSignal["type"],
+    title: typeof row.title === "string" ? row.title : "",
+    detail: typeof row.detail === "string" ? row.detail : "",
+    dueDate: typeof row.due_date === "string" ? row.due_date : undefined,
+    sourceDocumentIds,
+    sourceDocumentId: sourceDocumentIds?.[0],
+    dismissed: Boolean(row.dismissed),
+  };
+}
+
+export async function listSignalsForCase(
+  caseId: string,
+  userId: string,
+): Promise<ListSignalsResult> {
+  if (!supabaseAdmin) {
+    return {
+      ok: false,
+      error: {
+        operation: "listSignalsForCase",
+        table: "signals",
+        writeMode: "update",
+        code: null,
+        message: "Supabase admin client is not configured.",
+        details: null,
+        hint: null,
+        column: null,
+        constraint: null,
+        isRls: false,
+      },
+    };
+  }
+
+  try {
+    const ownedCase = await getCaseById(caseId, userId);
+    if (!ownedCase) {
+      return { ok: true, signals: [], notFound: true };
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("signals")
+      .select("id, type, title, detail, due_date, source_document_ids, dismissed")
+      .eq("case_id", caseId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return {
+        ok: false,
+        error: buildPersistenceErrorDetail(error, {
+          operation: "listSignalsForCase",
+          table: "signals",
+          writeMode: "update",
+        }),
+      };
+    }
+
+    return {
+      ok: true,
+      signals: Array.isArray(data) ? data.map((row) => mapSignalRow(row as Record<string, unknown>)) : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: buildPersistenceErrorDetail(error, {
+        operation: "listSignalsForCase",
+        table: "signals",
+        writeMode: "update",
+      }),
+    };
+  }
+}
+
+export async function listSignalsForDocument(
+  documentId: string,
+  userId: string,
+): Promise<ListSignalsResult> {
+  if (!supabaseAdmin) {
+    return {
+      ok: false,
+      error: {
+        operation: "listSignalsForDocument",
+        table: "signals",
+        writeMode: "update",
+        code: null,
+        message: "Supabase admin client is not configured.",
+        details: null,
+        hint: null,
+        column: null,
+        constraint: null,
+        isRls: false,
+      },
+    };
+  }
+
+  try {
+    const ownedDocument = await getDocumentById(documentId, userId);
+    if (!ownedDocument) {
+      return { ok: true, signals: [], notFound: true };
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("signals")
+      .select("id, type, title, detail, due_date, source_document_ids, dismissed")
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return {
+        ok: false,
+        error: buildPersistenceErrorDetail(error, {
+          operation: "listSignalsForDocument",
+          table: "signals",
+          writeMode: "update",
+        }),
+      };
+    }
+
+    return {
+      ok: true,
+      signals: Array.isArray(data) ? data.map((row) => mapSignalRow(row as Record<string, unknown>)) : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: buildPersistenceErrorDetail(error, {
+        operation: "listSignalsForDocument",
         table: "signals",
         writeMode: "update",
       }),

@@ -18,8 +18,11 @@ import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { TTSControls } from "@/components/app/TTSControls";
+import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
+import { fetchUsageState, type UsageState } from "@/services/usageService";
 import { getAccessToken } from "@/lib/tokenStore";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
+import type { RawSignal, UserTier } from "@/lib/signals";
 import {
   PageContainer, PageIntro, ContextBar,
   HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
@@ -63,6 +66,10 @@ interface AnalyzeDocumentResponse extends DocumentAnalysisResult {
     canContinueUpload?: boolean;
   };
   uploadRecorded?: boolean;
+}
+
+interface SignalsResponse {
+  signals: RawSignal[];
 }
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -1097,6 +1104,12 @@ export default function UploadDocumentPage() {
   const [caseAssignment, setCaseAssignment] = useState<AnalyzeDocumentResponse["caseAssignment"] | null>(null);
   const [pendingCaseSelection, setPendingCaseSelection] = useState<string>("unassigned");
   const queryClient = useQueryClient();
+  const { data: usage } = useQuery<UsageState>({
+    queryKey: ["/api/usage"],
+    queryFn: fetchUsageState,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
   const { data: casesData } = useQuery({
     queryKey: ["/api/cases"],
     queryFn: async () => {
@@ -1108,7 +1121,27 @@ export default function UploadDocumentPage() {
       return res.json() as Promise<{ cases: Array<{ id: string; title: string }> }>;
     },
   });
+  const { data: documentSignalsData, isLoading: isLoadingDocumentSignals } = useQuery<SignalsResponse>({
+    queryKey: ["/api/signals", "document", documentId],
+    enabled: !!documentId,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: false,
+    queryFn: async () => {
+      const headers: Record<string, string> = {};
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`/api/signals?documentId=${encodeURIComponent(documentId ?? "")}`, {
+        credentials: "include",
+        headers,
+      });
+      if (res.status === 404) return { signals: [] };
+      if (!res.ok) throw new Error("Failed to load document signals.");
+      return res.json() as Promise<SignalsResponse>;
+    },
+  });
   const userCases = casesData?.cases ?? [];
+  const signalTier: UserTier = usage?.tier === "pro" ? "pro" : "free";
 
   // Hidden file input refs
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -1838,40 +1871,41 @@ export default function UploadDocumentPage() {
 
           {/* Tabbed results */}
           {result && !isAnalyzing && (
-            <SectionStack gap="md">
-              {caseAssignment && (
-                <Panel>
-                  <PanelHeader icon={FileText} label="Case assignment" />
-                  <PanelContent className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      {caseAssignment.status === "assigned"
-                        ? `Assigned to ${userCases.find((c) => c.id === caseAssignment.assignedCaseId)?.title ?? "selected case"}.`
-                        : caseAssignment.status === "suggested"
-                          ? `Suggested for ${userCases.find((c) => c.id === caseAssignment.suggestedCaseId)?.title ?? "a case"}.`
-                          : "Unassigned."}
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <select
-                        className="h-9 rounded-md border bg-background px-3 text-sm"
-                        value={pendingCaseSelection}
-                        onChange={(e) => setPendingCaseSelection(e.target.value)}
-                      >
-                        <option value="unassigned">Unassigned</option>
-                        {userCases.map((caseItem) => (
-                          <option key={caseItem.id} value={caseItem.id}>{caseItem.title}</option>
-                        ))}
-                      </select>
-                      <Button size="sm" variant="outline" onClick={applyCaseSelection}>
-                        Confirm case selection
-                      </Button>
-                    </div>
-                    {caseAssignment.autoAssigned && (
-                      <p className="text-xs text-muted-foreground">Auto-assigned from document signals. You can change it anytime.</p>
-                    )}
-                  </PanelContent>
-                </Panel>
-              )}
-              <Tabs defaultValue="summary" className="w-full">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+              <SectionStack gap="md" className="xl:col-span-8">
+                {caseAssignment && (
+                  <Panel>
+                    <PanelHeader icon={FileText} label="Case assignment" />
+                    <PanelContent className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        {caseAssignment.status === "assigned"
+                          ? `Assigned to ${userCases.find((c) => c.id === caseAssignment.assignedCaseId)?.title ?? "selected case"}.`
+                          : caseAssignment.status === "suggested"
+                            ? `Suggested for ${userCases.find((c) => c.id === caseAssignment.suggestedCaseId)?.title ?? "a case"}.`
+                            : "Unassigned."}
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <select
+                          className="h-9 rounded-md border bg-background px-3 text-sm"
+                          value={pendingCaseSelection}
+                          onChange={(e) => setPendingCaseSelection(e.target.value)}
+                        >
+                          <option value="unassigned">Unassigned</option>
+                          {userCases.map((caseItem) => (
+                            <option key={caseItem.id} value={caseItem.id}>{caseItem.title}</option>
+                          ))}
+                        </select>
+                        <Button size="sm" variant="outline" onClick={applyCaseSelection}>
+                          Confirm case selection
+                        </Button>
+                      </div>
+                      {caseAssignment.autoAssigned && (
+                        <p className="text-xs text-muted-foreground">Auto-assigned from document signals. You can change it anytime.</p>
+                      )}
+                    </PanelContent>
+                  </Panel>
+                )}
+                <Tabs defaultValue="summary" className="w-full">
                 <TabsList className="w-full grid grid-cols-3 h-9 bg-muted/40 border border-border/40">
                   <TabsTrigger value="summary" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none data-[state=active]:font-semibold">Summary</TabsTrigger>
                   <TabsTrigger value="risks" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none data-[state=active]:font-semibold">Risks &amp; Dates</TabsTrigger>
@@ -2016,36 +2050,52 @@ export default function UploadDocumentPage() {
                     </div>
                   </InsetPanel>
                 </TabsContent>
-              </Tabs>
+                </Tabs>
 
-              {/* Child Support Impact Card */}
-              {(() => {
-                const haystack = [
-                  result.document_type,
-                  result.summary,
-                  ...result.important_terms,
-                  ...result.possible_implications,
-                ].join(" ").toLowerCase();
-                const mentionsSupport =
-                  haystack.includes("child support") ||
-                  haystack.includes("support order") ||
-                  haystack.includes("support payment") ||
-                  haystack.includes("support obligation") ||
-                  haystack.includes("support modification") ||
-                  haystack.includes("financial support");
-                if (!mentionsSupport) return null;
-                return (
-                  <ChildSupportImpactCard
-                    state={jurisdiction?.state}
-                    county={jurisdiction?.county}
-                    country={jurisdiction?.country ?? "United States"}
-                  />
-                );
-              })()}
+                {/* Child Support Impact Card */}
+                {(() => {
+                  const haystack = [
+                    result.document_type,
+                    result.summary,
+                    ...result.important_terms,
+                    ...result.possible_implications,
+                  ].join(" ").toLowerCase();
+                  const mentionsSupport =
+                    haystack.includes("child support") ||
+                    haystack.includes("support order") ||
+                    haystack.includes("support payment") ||
+                    haystack.includes("support obligation") ||
+                    haystack.includes("support modification") ||
+                    haystack.includes("financial support");
+                  if (!mentionsSupport) return null;
+                  return (
+                    <ChildSupportImpactCard
+                      state={jurisdiction?.state}
+                      county={jurisdiction?.county}
+                      country={jurisdiction?.country ?? "United States"}
+                    />
+                  );
+                })()}
 
-              {/* Document Q&A */}
-              <DocumentQASection result={result} jurisdiction={jurisdiction} />
-            </SectionStack>
+                {/* Document Q&A */}
+                <DocumentQASection result={result} jurisdiction={jurisdiction} />
+              </SectionStack>
+
+              <div className="xl:col-span-4">
+                <Panel>
+                  <PanelHeader icon={FileSearch} label="What Matters Now" />
+                  <PanelContent className="p-3">
+                    <DismissibleWhatMattersNow
+                      rawSignals={documentSignalsData?.signals ?? []}
+                      tier={signalTier}
+                      totalDocuments={1}
+                      lastActivityDaysAgo={0}
+                      loading={isLoadingDocumentSignals}
+                    />
+                  </PanelContent>
+                </Panel>
+              </div>
+            </div>
           )}
 
         </div>
