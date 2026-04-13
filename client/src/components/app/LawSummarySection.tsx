@@ -105,7 +105,7 @@ export function LawSummarySection({ law, state }: LawSummarySectionProps) {
           <SectionCard
             key={section.key}
             section={section}
-            content={law[section.key]}
+            content={law[section.key] ?? ""}
           />
         ))}
       </div>

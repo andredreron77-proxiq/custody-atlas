@@ -1,4 +1,4 @@
-import mammoth from "mammoth";
+import * as mammoth from "mammoth";
 import { extractTextFromDocument } from "./documentai";
 
 export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -27,7 +27,7 @@ export async function extractText(fileBuffer: Buffer, mimeType: string): Promise
 }
 
 async function extractDocxText(buffer: Buffer): Promise<string> {
-  let result: { value: string; messages: mammoth.Message[] };
+  let result: Awaited<ReturnType<typeof mammoth.extractRawText>>;
   try {
     result = await mammoth.extractRawText({ buffer });
   } catch (err: any) {

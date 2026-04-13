@@ -118,11 +118,12 @@ export async function createThread(
 
     // Best-effort: set title (ignored if column does not exist)
     if (opts.title) {
-      await supabaseAdmin
-        .from("threads")
-        .update({ title: opts.title.slice(0, 200) })
-        .eq("id", data.id)
-        .catch(() => {});
+      try {
+        await supabaseAdmin
+          .from("threads")
+          .update({ title: opts.title.slice(0, 200) })
+          .eq("id", data.id);
+      } catch {}
     }
 
     return mapThread({ ...data, title: opts.title ?? null });

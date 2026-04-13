@@ -24,6 +24,7 @@ import { planUploadAssociation } from "./lib/documentIdentity";
 import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
 import { buildDuplicateFingerprints, classifyDuplicate, type DuplicateDecisionType } from "./lib/documentDuplicateIntake";
 import { decideCaseAssignment, type AssignmentCandidate } from "./lib/documentCaseAssignment";
+import { extractSignalsFromDocument } from "./lib/extractSignals";
 import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
 import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRiskScoring";
 import { requireAuth, requireAdmin } from "./services/auth";
@@ -84,6 +85,7 @@ import {
   listThreads,
   getRecentMessages,
 } from "./services/threads";
+import { dismissSignalForUser, replaceDocumentSignals } from "./services/signals";
 import {
   maybePublishQuestion,
   getPublicQuestionsByState,
@@ -105,6 +107,8 @@ import {
 } from "@shared/schema";
 import { classifyDateStatus, type DateStatus } from "@shared/dateStatus";
 import type { CaseTimelineEvent } from "./services/caseTimeline";
+
+const asString = (v: string | string[] | undefined): string => Array.isArray(v) ? v[0] ?? "" : v ?? "";
 
 /** Chat/text model client — routes through the AI Integration proxy when available. */
 function getOpenAIClient(): OpenAI {
@@ -1123,7 +1127,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/custody-laws/:state", (req, res) => {
-    const stateName = req.params.state;
+    const stateName = asString(req.params.state);
     const law = getCustodyLaw(stateName);
 
     if (!law) {
@@ -1227,7 +1231,8 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
    * to displaying state-law-only content.  A 404 here is NORMAL, not an error.
    */
   app.get("/api/county-procedures/:state/:county", (req, res) => {
-    const { state, county } = req.params;
+    const state = asString(req.params.state);
+    const county = asString(req.params.county);
 
     // "general" is the sentinel county used by the map flow.
     // It is never a real county so always return 404.
@@ -2455,6 +2460,29 @@ CRITICAL RULES:
               return generateActionsFromFacts(docCaseId, docUserId!, merged);
             }).catch((err) => console.error("[analyze-document] post-upsert action generation error:", err));
           }
+
+          if (docCaseId) {
+            try {
+              const rawSignals = await extractSignalsFromDocument({
+                documentId: savedDoc.id,
+                documentText: truncatedText,
+              });
+              const signalWrite = await replaceDocumentSignals(docCaseId, savedDoc.id, rawSignals);
+              if (!signalWrite.ok) {
+                console.error("[analyze-document] signal persistence failed", {
+                  documentId: savedDoc.id,
+                  caseId: docCaseId,
+                  error: signalWrite.error,
+                });
+              }
+            } catch (signalError) {
+              console.error("[analyze-document] signal extraction failed", {
+                documentId: savedDoc.id,
+                caseId: docCaseId,
+                error: signalError,
+              });
+            }
+          }
         }
         if (!savedDoc && saveOutcome.status === "error") {
           const existingDuplicate = await findDuplicateDocument(docUserId, {
@@ -2800,7 +2828,7 @@ ${userQuestion}`;
    */
   app.get("/api/public-questions/:stateSlug", async (req, res) => {
     try {
-      const { stateSlug } = req.params;
+      const stateSlug = asString(req.params.stateSlug);
       const topic = typeof req.query.topic === "string" ? req.query.topic : undefined;
       const limit = Math.min(Number(req.query.limit) || 20, 50);
       const questions = await getPublicQuestionsByState(stateSlug, topic, limit);
@@ -2817,7 +2845,9 @@ ${userQuestion}`;
    */
   app.get("/api/public-questions/:stateSlug/:topic/:slug", async (req, res) => {
     try {
-      const { stateSlug, topic, slug } = req.params;
+      const stateSlug = asString(req.params.stateSlug);
+      const topic = asString(req.params.topic);
+      const slug = asString(req.params.slug);
       const question = await getPublicQuestionBySlug(stateSlug, topic, slug);
       if (!question) return res.status(404).json({ error: "Question not found." });
       const related = await getRelatedQuestions(stateSlug, topic, slug, 4);
@@ -3067,7 +3097,7 @@ ${userQuestion}`;
    */
   app.post("/api/threads/:threadId/messages", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { threadId } = req.params;
+    const threadId = asString(req.params.threadId);
 
     // Verify thread ownership before appending
     const thread = await getThread(threadId, user.id);
@@ -3103,7 +3133,7 @@ ${userQuestion}`;
    */
   app.get("/api/threads/:threadId", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { threadId } = req.params;
+    const threadId = asString(req.params.threadId);
     try {
       const [thread, messages] = await Promise.all([
         getThread(threadId, user.id),
@@ -3164,13 +3194,41 @@ ${userQuestion}`;
    */
   app.delete("/api/timeline/:eventId", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { eventId } = req.params;
+    const eventId = asString(req.params.eventId);
     try {
       await deleteTimelineEvent(eventId, user.id);
       return res.json({ ok: true });
     } catch (err) {
       console.error("[timeline] DELETE error:", err);
       return res.status(500).json({ error: "Failed to delete timeline event." });
+    }
+  });
+
+  app.post("/api/signals/:id/dismiss", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const id = asString(req.params.id);
+
+    try {
+      const result = await dismissSignalForUser(id, user.id);
+      if (!result.ok) {
+        console.error("[signals] dismiss error", {
+          signalId: id,
+          userId: user.id,
+          error: result.error,
+        });
+        return res.status(500).json({ error: "Failed to dismiss signal." });
+      }
+      if (result.notFound) {
+        return res.status(404).json({ error: "Signal not found." });
+      }
+      return res.json({ ok: true, id, dismissed: true });
+    } catch (error) {
+      console.error("[signals] dismiss exception", {
+        signalId: id,
+        userId: user.id,
+        error,
+      });
+      return res.status(500).json({ error: "Failed to dismiss signal." });
     }
   });
 
@@ -3218,7 +3276,7 @@ ${userQuestion}`;
    */
   app.post("/api/documents/:documentId/reanalyze", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { documentId } = req.params;
+    const documentId = asString(req.params.documentId);
     try {
       const doc = await getDocumentById(documentId, user.id);
       if (!doc) return res.status(404).json({ error: "Document not found." });
@@ -3330,7 +3388,7 @@ CRITICAL RULES:
    */
   app.get("/api/documents/:documentId", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { documentId } = req.params;
+    const documentId = asString(req.params.documentId);
     try {
       console.info(`[documents] detail request user=${user.id} documentId=${documentId}`);
       const doc = await getDocumentById(documentId, user.id);
@@ -3412,7 +3470,7 @@ CRITICAL RULES:
    */
   app.get("/api/documents/:documentId/view", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { documentId } = req.params;
+    const documentId = asString(req.params.documentId);
     try {
       const result = await createDocumentSignedUrl(documentId, user.id, "view");
       if (!result) {
@@ -3441,7 +3499,7 @@ CRITICAL RULES:
    */
   app.get("/api/documents/:documentId/download", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { documentId } = req.params;
+    const documentId = asString(req.params.documentId);
     try {
       const result = await createDocumentSignedUrl(documentId, user.id, "download");
       if (!result) {
@@ -3463,7 +3521,7 @@ CRITICAL RULES:
 
   app.patch("/api/documents/:documentId/type", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { documentId } = req.params;
+    const documentId = asString(req.params.documentId);
     const schema = z.object({
       docType: z.enum(["custody_order", "communication", "financial", "other"]),
     });
@@ -3483,7 +3541,7 @@ CRITICAL RULES:
 
   async function patchDocumentCaseAssignment(req: any, res: any) {
     const user = (req as any).user;
-    const { documentId } = req.params;
+    const documentId = asString(req.params.documentId);
     const schema = z.object({
       caseId: z.string().uuid().nullable(),
     });
@@ -3528,7 +3586,7 @@ CRITICAL RULES:
    */
   app.delete("/api/documents/:documentId", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { documentId } = req.params;
+    const documentId = asString(req.params.documentId);
     try {
       const result = await deleteDocument(documentId, user.id);
       if (!result.success) {
@@ -3873,7 +3931,7 @@ Do not add facts not present in the provided evidence.`,
 
   // PATCH /api/admin/users/:userId/tier — change a user's tier
   app.patch("/api/admin/users/:userId/tier", requireAdmin, async (req, res) => {
-    const { userId } = req.params;
+    const userId = asString(req.params.userId);
     const { tier } = req.body;
     if (!tier || !["free", "pro"].includes(tier)) {
       return res.status(400).json({ error: "tier must be 'free' or 'pro'." });
@@ -3920,7 +3978,7 @@ Do not add facts not present in the provided evidence.`,
 
   // PATCH /api/admin/invite-codes/:codeId/deactivate — deactivate a code
   app.patch("/api/admin/invite-codes/:codeId/deactivate", requireAdmin, async (req, res) => {
-    const { codeId } = req.params;
+    const codeId = asString(req.params.codeId);
     const ok = await deactivateInviteCode(codeId);
     if (!ok) return res.status(500).json({ error: "Failed to deactivate code." });
     return res.json({ ok: true });
@@ -3974,7 +4032,7 @@ Do not add facts not present in the provided evidence.`,
         caseType: parsed.data.caseType ?? "custody",
         status: "active",
         stateCode: resolvedStateCode,
-        authToken: req.headers.authorization?.replace("Bearer ", "").trim() ?? null,
+        authToken: asString(req.headers.authorization).replace("Bearer ", "").trim() || null,
       });
       const newCase = createCaseResult.createdCase;
       if (!newCase) {
@@ -4062,7 +4120,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.post("/api/cases/:caseId/conversations", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     const schema = z.object({
       title: z.string().max(200).optional(),
       threadType: z.enum(["general", "document", "comparison"]).default("general"),
@@ -4090,7 +4148,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/cases/:caseId", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4107,7 +4165,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/cases/:caseId/dashboard", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4488,7 +4546,7 @@ Do not add facts not present in the provided evidence.`,
 
   app.get("/api/cases/:caseId/alerts", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4502,7 +4560,8 @@ Do not add facts not present in the provided evidence.`,
 
   app.post("/api/cases/:caseId/alerts/:alertId/actions", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId, alertId } = req.params;
+    const caseId = asString(req.params.caseId);
+    const alertId = asString(req.params.alertId);
     const schema = z.object({
       actionId: z.string(),
       resolutionNote: z.string().max(1000).optional(),
@@ -4557,7 +4616,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/cases/:caseId/documents", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4575,7 +4634,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/cases/:caseId/conversations", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const conversations = await listConversations(caseId, user.id);
       return res.json({ conversations });
@@ -4592,7 +4651,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/cases/:caseId/facts", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4614,7 +4673,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.post("/api/cases/:caseId/facts/confirm", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     const { fact_type, value, source_name } = req.body ?? {};
 
     if (!fact_type || typeof fact_type !== "string") {
@@ -4664,7 +4723,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/cases/:caseId/actions", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4714,7 +4773,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.post("/api/cases/:caseId/actions", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     const { action_type, title, description } = req.body ?? {};
 
     if (!action_type || !title || !description) {
@@ -4746,7 +4805,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/cases/:caseId/timeline", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4769,7 +4828,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.post("/api/cases/:caseId/intelligence", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { caseId } = req.params;
+    const caseId = asString(req.params.caseId);
     try {
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
@@ -4793,7 +4852,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.patch("/api/case-actions/:actionId", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const actionId = parseInt(req.params.actionId, 10);
+    const actionId = parseInt(asString(req.params.actionId), 10);
     const { status } = req.body ?? {};
 
     if (isNaN(actionId)) return res.status(400).json({ error: "Invalid action ID." });
@@ -4816,7 +4875,7 @@ Do not add facts not present in the provided evidence.`,
    */
   app.get("/api/conversations/:conversationId/messages", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { conversationId } = req.params;
+    const conversationId = asString(req.params.conversationId);
     try {
       const messages = await listMessages(conversationId, user.id);
       return res.json({ messages });

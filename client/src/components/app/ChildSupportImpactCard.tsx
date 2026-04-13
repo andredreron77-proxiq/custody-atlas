@@ -62,7 +62,7 @@ export function ChildSupportImpactCard({
     // Otherwise navigate to /ask with the question pre-filled.
     const handled = triggerAIEntry(params);
     if (!handled) {
-      navigate(buildAskURL({ ...params, country }));
+      navigate(buildAskURL({ ...params, county }));
     }
   };
 

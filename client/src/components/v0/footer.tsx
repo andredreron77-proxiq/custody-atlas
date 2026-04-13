@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Logo } from "@/components/navigation"
+import { Logo } from "@/components/v0/navigation"
 
 const footerLinks = {
   product: [

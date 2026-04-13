@@ -712,7 +712,7 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
                   {!hasDataA ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawA ? (
-                    <ExpandableText text={lawA[key]} maxLen={150} testId={`cell-a-${key}`} />
+                    <ExpandableText text={lawA[key] ?? ""} maxLen={150} testId={`cell-a-${key}`} />
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
@@ -721,7 +721,7 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
                   {!hasDataB ? (
                     <span className="text-xs text-muted-foreground italic">Data coming soon</span>
                   ) : lawB ? (
-                    <ExpandableText text={lawB[key]} maxLen={150} testId={`cell-b-${key}`} />
+                    <ExpandableText text={lawB[key] ?? ""} maxLen={150} testId={`cell-b-${key}`} />
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
@@ -1139,8 +1139,8 @@ export default function CustodyMapPage() {
               data-testid="svg-map"
             >
               <Geographies geography={GEO_URL}>
-                {({ geographies }) =>
-                  geographies.map((geo) => {
+                {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
+                  geographies.map((geo: { rsmKey: string; properties: { name: string } }) => {
                     const stateName: string = geo.properties.name;
                     const fill = getStateFill({
                       mode,

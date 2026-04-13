@@ -20,6 +20,9 @@ export async function generateImageBuffer(
     prompt,
     size,
   });
+  if (!response.data?.[0]) {
+    throw new Error("Image generation returned no data.");
+  }
   const base64 = response.data[0]?.b64_json ?? "";
   return Buffer.from(base64, "base64");
 }
@@ -46,6 +49,9 @@ export async function editImages(
     image: images,
     prompt,
   });
+  if (!response.data?.[0]) {
+    throw new Error("Image edit returned no data.");
+  }
 
   const imageBase64 = response.data[0]?.b64_json ?? "";
   const imageBytes = Buffer.from(imageBase64, "base64");
@@ -56,4 +62,3 @@ export async function editImages(
 
   return imageBytes;
 }
-
