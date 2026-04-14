@@ -22,42 +22,17 @@ import { useSpeechRecording } from "@/hooks/useSpeechRecording";
 import { useCurrentUser } from "@/hooks/use-auth";
 
 interface ChatBoxProps {
-  /** Pre-populate the active conversation ID (for case conversation resume). */
   initialConversationId?: string;
   jurisdiction: Jurisdiction;
-  /**
-   * If provided, the ChatBox will auto-submit this question once on mount.
-   * Used by the AI Entry Funnel when navigating from a CTA button on another page.
-   */
   initialQuestion?: string;
-  /** Pre-populated messages when resuming a saved conversation thread. */
   initialMessages?: ChatMessage[];
-  /** The thread ID to continue saving into when resuming a thread. */
   initialThreadId?: string;
-  /**
-   * When provided, messages are saved to the case's conversations/messages
-   * tables instead of (and NOT also into) the legacy threads/thread_messages.
-   * The server enforces ownership — this value is only used to route the request.
-   */
   caseId?: string;
-  /**
-   * When provided, scopes every /api/ask request to this specific document.
-   * The server loads the document, verifies ownership, and injects its full
-   * text + extracted facts into the system prompt before jurisdiction law.
-   * Answers for date/fact questions come from this document first.
-   */
   documentId?: string;
-  /**
-   * IDs of documents selected by the user in the DocumentContextPanel.
-   * The server uses only these documents for context injection.
-   * Empty array = no documents → general response (server skips doc context).
-   * Undefined = use all user documents (backward compat / legacy).
-   */
   selectedDocumentIds?: string[];
-  /** Ask page callback to switch the active case after ambiguity detection. */
   onSelectCase?: (caseId: string) => void;
-  /** Optional scope label shown near input for visual clarity. */
   answeringScopeLabel?: string;
+  className?: string;
 }
 
 type CaseSelectionRequiredResponse = {
@@ -180,7 +155,7 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
         setConfirmedValues((prev) => new Set([...prev, value]));
       }
     } catch {
-      // silent — user can retry
+      // silent
     } finally {
       setConfirmingValue(null);
     }
@@ -190,7 +165,6 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
 
   return (
     <div className="space-y-4">
-      {/* ── FACT mode: direct answer banner (3 states: found / conflict / not-found) ── */}
       {isFact && (
         <div
           className={`rounded-md p-3 flex items-start gap-2.5 ${
@@ -223,7 +197,6 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
                 }
               </p>
             )}
-            {/* Confirm button — found state, only for document-derived (not already confirmed) */}
             {data.factSource && !data.factConflict && canConfirm && !data.factUserConfirmed && data.factValue && (
               <button
                 className={`mt-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors ${
@@ -231,23 +204,14 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
                     ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 cursor-default"
                     : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60"
                 }`}
-                onClick={() => !confirmedValues.has(data.factValue!) && confirmFact(
-                  data.factTypeKey ?? "",
-                  data.factValue!,
-                )}
+                onClick={() => !confirmedValues.has(data.factValue!) && confirmFact(data.factTypeKey ?? "", data.factValue!)}
                 disabled={confirmedValues.has(data.factValue) || confirmingValue === data.factValue}
                 data-testid="button-confirm-fact"
               >
-                {confirmingValue === data.factValue
-                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                  : confirmedValues.has(data.factValue)
-                    ? <CheckCheck className="w-3 h-3" />
-                    : <CheckCheck className="w-3 h-3" />
-                }
+                {confirmingValue === data.factValue ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCheck className="w-3 h-3" />}
                 {confirmedValues.has(data.factValue) ? "Confirmed" : "Confirm this value"}
               </button>
             )}
-            {/* Conflict state: per-option confirm buttons */}
             {data.factConflict && data.conflictOptions && canConfirm && (
               <div className="mt-2 space-y-1.5">
                 {data.conflictOptions.map((opt, i) => (
@@ -265,10 +229,7 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
                       disabled={confirmedValues.has(opt.value) || confirmingValue === opt.value}
                       data-testid={`button-confirm-conflict-${i}`}
                     >
-                      {confirmingValue === opt.value
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <CheckCheck className="w-3 h-3" />
-                      }
+                      {confirmingValue === opt.value ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCheck className="w-3 h-3" />}
                       {confirmedValues.has(opt.value) ? "Confirmed" : "Confirm"}
                     </button>
                   </div>
@@ -279,12 +240,10 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
         </div>
       )}
 
-      {/* ── Default summary (non-FACT) ── */}
       {!isFact && (
         <div className="text-[14.5px] leading-[1.75] text-foreground">{data.summary}</div>
       )}
 
-      {/* ── ACTION mode: numbered steps header ── */}
       {isAction && data.key_points.length > 0 && (
         <div className="space-y-2.5">
           <div className="flex items-center justify-between gap-2">
@@ -294,7 +253,6 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
                 Steps to Take
               </span>
             </div>
-            {/* Save as action — only visible when a case is linked */}
             {caseId && (
               <SaveAsActionButton
                 caseId={caseId}
@@ -313,7 +271,6 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
         </div>
       )}
 
-      {/* ── FACT / EXPLANATION: bullet key points ── */}
       {!isAction && data.key_points.length > 0 && (
         <div className="space-y-2.5">
           <div className="flex items-center gap-1.5">
@@ -345,11 +302,7 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
           </div>
           <ul className="space-y-2.5">
             {data.questions_to_ask_attorney.map((q, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2.5"
-                data-testid={`attorney-question-${i}`}
-              >
+              <li key={i} className="flex items-start gap-2.5" data-testid={`attorney-question-${i}`}>
                 <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
                 <span className="text-[14.5px] leading-[1.75] text-blue-900 dark:text-blue-100">{q}</span>
               </li>
@@ -407,6 +360,7 @@ export function ChatBox({
   selectedDocumentIds,
   onSelectCase,
   answeringScopeLabel,
+  className,
 }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
@@ -419,23 +373,21 @@ export function ChatBox({
     cases: Array<{ id: string; name: string }>;
   } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const lastAssistantRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const latestAssistantRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const _sendRef = useRef<(q: string) => void>(() => {});
+  const sendRef = useRef<(q: string, forcedCaseId?: string) => void>(() => {});
   const threadIdRef = useRef<string | undefined>(initialThreadId);
-  // Tracks the active conversation ID when using the case-based path
-  // When resuming a case conversation, pre-seed the ref so the next message
-  // is appended to the correct conversation instead of creating a new one.
   const conversationIdRef = useRef<string | undefined>(initialConversationId);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
 
-  // Voice recording (speech-to-text)
   const { state: micState, startRecording, stopRecording, cancelRecording } =
     useSpeechRecording({
       onTranscribed: (text) => {
-        setInput((prev) => (prev.trim() ? prev + " " + text : text));
+        setInput((prev) => (prev.trim() ? `${prev} ${text}` : text));
         setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
       },
       onError: (msg) => {
@@ -443,23 +395,28 @@ export function ChatBox({
       },
     });
 
-  // After a new assistant message renders, scroll it into view via the page.
   useEffect(() => {
     if (messages.length === 0) return;
     const last = messages[messages.length - 1];
-    if (last.role !== "assistant") return;
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        lastAssistantRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    });
+    const timer = setTimeout(() => {
+      if (last.role === "assistant") {
+        latestAssistantRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
   }, [messages]);
 
-  /**
-   * Fire-and-forget: create thread if needed, then append both messages.
-   * All errors are silently swallowed — saves never block the UI.
-   */
+  useEffect(() => {
+    if (isLoading) return;
+    if (messages.length === 0) return;
+    const timer = setTimeout(() => {
+      latestAssistantRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
+
   const ensureAndSave = async (
     userText: string,
     assistantText: string,
@@ -467,7 +424,6 @@ export function ChatBox({
   ) => {
     if (!user) return;
 
-    // Create thread on first message of a new conversation
     if (!threadIdRef.current) {
       try {
         const res = await apiRequestRaw("POST", "/api/threads", {
@@ -483,13 +439,12 @@ export function ChatBox({
           queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
         }
       } catch {
-        return; // thread creation failed — skip saving messages
+        return;
       }
     }
 
     if (!threadIdRef.current) return;
 
-    // Append user message then assistant message (order matters)
     try {
       await apiRequestRaw("POST", `/api/threads/${threadIdRef.current}/messages`, {
         role: "user",
@@ -500,10 +455,9 @@ export function ChatBox({
         messageText: assistantText,
         structuredResponseJson: structured,
       });
-      // Refresh workspace cache so it reflects the new thread
       queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
     } catch {
-      // silently ignore save errors
+      // ignore
     }
   };
 
@@ -529,8 +483,7 @@ export function ChatBox({
       return;
     }
 
-    const userMessage: ChatMessage = { role: "user", content: trimmed };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setInput("");
     setIsLoading(true);
 
@@ -545,15 +498,9 @@ export function ChatBox({
           county: jurisdiction.county,
         },
         userQuestion: trimmed,
-        // When using a case, the server loads history from the messages table.
-        // We still send client history on the legacy path (no caseId).
         history: (forcedCaseId ?? caseId) ? undefined : historySnapshot.length > 0 ? historySnapshot : undefined,
-        // Case context — when present, the server handles persistence
         ...((forcedCaseId ?? caseId) ? { caseId: (forcedCaseId ?? caseId), conversationId: conversationIdRef.current } : {}),
-        // Document scope — when present, the server loads this specific document
-        // and answers from its text/analysis before falling back to jurisdiction law.
         ...(documentId ? { documentId } : {}),
-        // Multi-document context selection — when provided, server uses only these docs.
         ...(selectedDocumentIds !== undefined ? { selectedDocumentIds } : {}),
       });
 
@@ -578,29 +525,25 @@ export function ChatBox({
           question: trimmed,
           cases: selection.cases,
         });
-        // Remove the just-added user message until they choose a case and retry.
         setMessages((prev) => prev.slice(0, -1));
         return;
       }
+
       const data = rawData as AILegalResponse & { conversationId?: string };
 
-      // Track conversation ID returned by the server for subsequent messages
       if ((forcedCaseId ?? caseId) && data.conversationId && !conversationIdRef.current) {
         conversationIdRef.current = data.conversationId;
         setSavedToWorkspace(true);
         queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
       }
 
-      const assistantMessage: ChatMessage = {
+      setMessages((prev) => [...prev, {
         role: "assistant",
         content: data.summary,
         structured: data,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      }]);
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
 
-      // When using a case, the server has already persisted the messages.
-      // Only call ensureAndSave on the legacy (no-case) path.
       if (!(forcedCaseId ?? caseId)) {
         ensureAndSave(trimmed, data.summary, data as unknown as Record<string, unknown>);
       }
@@ -626,41 +569,39 @@ export function ChatBox({
     }
   };
 
-  _sendRef.current = sendMessage;
+  sendRef.current = sendMessage;
 
   useEffect(() => {
     registerChatBoxHandler(
-      (q) => _sendRef.current(q),
+      (q) => sendRef.current(q),
       () => wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
     );
     return () => unregisterChatBoxHandler();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!initialQuestion) return;
-    const timer = setTimeout(() => _sendRef.current(initialQuestion), 300);
+    const timer = setTimeout(() => sendRef.current(initialQuestion), 300);
     return () => clearTimeout(timer);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    // When switching cases on the Ask page, force a fresh case conversation.
     conversationIdRef.current = initialConversationId;
   }, [caseId, initialConversationId]);
 
-  // Auto-focus input on mount so users can type immediately
   useEffect(() => {
     if (!initialQuestion) {
       setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 150);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearConversation = () => {
     setMessages([]);
     setLimitReached(false);
-    setSavedToWorkspace(!!caseId); // keep "Saved" indicator when a case is still active
+    setSavedToWorkspace(!!caseId);
     threadIdRef.current = undefined;
     conversationIdRef.current = undefined;
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    messageListRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 350);
   };
 
@@ -668,221 +609,87 @@ export function ChatBox({
   const hasMessages = messages.length > 0;
 
   return (
-    <div ref={wrapperRef} className="flex flex-col gap-4">
-
-      {/* ── Sticky zone: context bar + input (pinned below nav when active) ─── */}
-      <div className={hasMessages ? "sticky top-16 z-20 bg-background pb-3 flex flex-col gap-2" : "contents"}>
-
-      {/* ── Conversation context bar ───────────────────────────────────────── */}
-      {hasMessages && (
-        <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3">
-          <div className="space-y-1 min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Conversation</span>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <MessageSquare className="w-3 h-3 text-primary/70 flex-shrink-0" />
-                <span className="text-xs font-medium text-foreground">General Custody Conversation</span>
-                <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal flex-shrink-0">
-                  {Math.ceil(messages.length / 2)} Q&amp;A
-                </Badge>
-              </div>
-            </div>
-            {jurisdictionLabel && (
+    <div ref={wrapperRef} className={`flex min-h-0 flex-1 flex-col gap-4 ${className ?? ""}`}>
+      <div
+        ref={messageListRef}
+        className="min-h-0 flex-1 overflow-y-auto pr-1"
+        style={{ paddingBottom: "1rem" }}
+      >
+        {hasMessages && (
+          <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3 mb-4">
+            <div className="space-y-1 min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Jurisdiction</span>
+                <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Conversation</span>
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <MapPin className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                  <span className="text-xs font-medium text-foreground">{jurisdictionLabel}</span>
+                  <MessageSquare className="w-3 h-3 text-primary/70 flex-shrink-0" />
+                  <span className="text-xs font-medium text-foreground">General Custody Conversation</span>
+                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal flex-shrink-0">
+                    {Math.ceil(messages.length / 2)} Q&amp;A
+                  </Badge>
                 </div>
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2.5 flex-shrink-0">
-            {savedToWorkspace && (
-              <span
-                className="hidden sm:flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400"
-                data-testid="badge-saved-to-workspace"
-                title="This conversation is saved to your Case Workspace"
-              >
-                <BookmarkCheck className="w-3 h-3" />
-                Saved
-              </span>
-            )}
-            <button
-              onClick={clearConversation}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="button-new-conversation"
-              title="Start a new conversation"
-            >
-              <RotateCcw className="w-3 h-3" />
-              New
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Input card — always at the top, the primary interaction ───────── */}
-      <Card className="border-2 border-primary/15 shadow-md bg-card">
-        <CardContent className="p-4 space-y-3">
-          {/* Heading row — only on empty state */}
-          {!hasMessages && (
-            <div className="flex items-start justify-between gap-2 pb-1">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Sparkles className="w-4 h-4 text-primary" />
+              {jurisdictionLabel && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground w-[72px] flex-shrink-0">Jurisdiction</span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <MapPin className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                    <span className="text-xs font-medium text-foreground">{jurisdictionLabel}</span>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    Ask Atlas
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Plain-English custody law answers for {jurisdiction.state}
-                  </p>
-                </div>
-              </div>
-              {user && (
+              )}
+            </div>
+            <div className="flex items-center gap-2.5 flex-shrink-0">
+              {savedToWorkspace && (
                 <span
-                  className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5"
-                  data-testid="badge-workspace-autosave"
-                  title="Conversations are automatically saved to your Case Workspace"
+                  className="hidden sm:flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400"
+                  data-testid="badge-saved-to-workspace"
+                  title="This conversation is saved to your Case Workspace"
                 >
                   <BookmarkCheck className="w-3 h-3" />
-                  Auto-saved
+                  Saved
                 </span>
               )}
-            </div>
-          )}
-
-          {/* Upgrade prompt if limit hit */}
-          {limitReached && <UpgradePromptCard type="question" />}
-
-          <div className="text-xs text-muted-foreground" data-testid="label-answering-scope">
-            {answeringScopeLabel ?? "Answering from: General workspace (no case selected)"}
-          </div>
-
-          {pendingCaseSelection && (
-            <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                {pendingCaseSelection.message}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {pendingCaseSelection.cases.map((c) => (
-                  <Button
-                    key={c.id}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      onSelectCase?.(c.id);
-                      setPendingCaseSelection(null);
-                      setTimeout(() => sendMessage(pendingCaseSelection.question, c.id), 0);
-                    }}
-                    data-testid={`button-case-required-${c.id}`}
-                  >
-                    {c.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Textarea + controls */}
-          <form onSubmit={handleSubmit} className="space-y-2">
-            <div className="relative">
-              <Textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  hasMessages
-                    ? "Ask a follow-up question about your situation..."
-                    : jurisdiction.state
-                    ? `Ask a question about custody in ${jurisdiction.state}...`
-                    : "Ask a question about child custody laws..."
-                }
-                disabled={isLoading || limitReached || !!pendingCaseSelection}
-                className="resize-none min-h-[72px] max-h-40 pr-3 text-sm"
-                rows={hasMessages ? 2 : 3}
-                data-testid="input-question"
-              />
-              {input.length > 0 && (
-                <span className="absolute bottom-2 right-3 text-xs text-muted-foreground/60 select-none">
-                  {input.length}/2000
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              {/* Disclaimer */}
-              <div className="flex items-center gap-1.5 min-w-0">
-                <AlertTriangle className="w-3 h-3 text-amber-500 dark:text-amber-400 flex-shrink-0" />
-                <span className="text-[11px] text-muted-foreground leading-tight">
-                  General information only — not legal advice
-                </span>
-              </div>
-
-              {/* Mic + Send */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <MicButton
-                  state={micState}
-                  onStart={startRecording}
-                  onStop={stopRecording}
-                  onCancel={cancelRecording}
-                  disabled={isLoading || limitReached || !!pendingCaseSelection}
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached || !!pendingCaseSelection}
-                  data-testid="button-send"
-                  title="Send message"
-                  className="h-10 w-10"
-                >
-                  {isLoading
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <Send className="w-4 h-4" />}
-                </Button>
-              </div>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      </div>{/* end sticky zone */}
-
-      {/* ── Suggested questions — visible on empty state, hidden when case is active ─ */}
-      {!hasMessages && !caseId && (
-        <div className="space-y-2" data-testid="suggested-questions">
-          <p className="text-[11px] text-foreground/50 font-semibold uppercase tracking-wider px-0.5">
-            Common questions
-          </p>
-          <div className="flex flex-col gap-1.5">
-            {getSuggestedQuestions(jurisdiction.state).map((q, i) => (
               <button
-                key={i}
-                onClick={() => sendMessage(q)}
-                disabled={isLoading}
-                className="text-left text-[14px] leading-snug px-4 py-2.5 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors text-foreground/70 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 group"
-                data-testid={`button-suggested-${i}`}
+                onClick={clearConversation}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="button-new-conversation"
+                title="Start a new conversation"
               >
-                <ChevronRight className="w-3.5 h-3.5 text-foreground/30 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
-                {q}
+                <RotateCcw className="w-3 h-3" />
+                New
               </button>
-            ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Conversation thread — grows downward below the input ───────────── */}
-      {hasMessages && (
-        <div className="space-y-4 pb-8">
-          {messages.map((msg, i) => {
-            const isLastAssistant = msg.role === "assistant" && i === messages.length - 1;
-            return (
+        {!hasMessages && !caseId && (
+          <div className="space-y-2" data-testid="suggested-questions">
+            <p className="text-[11px] text-foreground/50 font-semibold uppercase tracking-wider px-0.5">
+              Common questions
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {getSuggestedQuestions(jurisdiction.state).map((q, i) => (
+                <button
+                  key={i}
+                  onClick={() => sendMessage(q)}
+                  disabled={isLoading}
+                  className="text-left text-[14px] leading-snug px-4 py-2.5 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors text-foreground/70 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 group"
+                  data-testid={`button-suggested-${i}`}
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-foreground/30 group-hover:text-primary/60 flex-shrink-0 transition-colors" />
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hasMessages && (
+          <div className="space-y-4 pb-4">
+            {messages.map((msg, i) => (
               <div
                 key={i}
-                ref={isLastAssistant ? lastAssistantRef : null}
+                ref={i === messages.length - 1 && msg.role === "assistant" ? latestAssistantRef : null}
                 className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
                 data-testid={`message-${msg.role}-${i}`}
               >
@@ -922,7 +729,6 @@ export function ChatBox({
                     {i === messages.length - 1 && !isLoading && (
                       <>
                         <FollowUpChips onSelect={sendMessage} disabled={isLoading} />
-                        {/* Attorney bridge — shown after 2+ questions */}
                         {Math.ceil(messages.length / 2) >= 2 && (
                           <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3.5 py-3" data-testid="attorney-bridge">
                             <UserCheck className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
@@ -942,28 +748,153 @@ export function ChatBox({
                   </Card>
                 )}
               </div>
-            );
-          })}
+            ))}
 
-          {isLoading && (
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                <Bot className="w-4 h-4 text-muted-foreground" />
+            {isLoading && (
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <Card>
+                  <CardContent className="p-3.5">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        Generating your answer…
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-              <Card>
-                <CardContent className="p-3.5">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Generating your answer…
-                    </span>
+            )}
+            <div ref={bottomRef} className="h-px" />
+          </div>
+        )}
+      </div>
+
+      <div className="sticky bottom-0 z-20 bg-background pb-2 pt-2">
+        <Card className="border-2 border-primary/15 shadow-md bg-card">
+          <CardContent className="p-4 space-y-3">
+            {!hasMessages && (
+              <div className="flex items-start justify-between gap-2 pb-1">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-4 h-4 text-primary" />
                   </div>
-                </CardContent>
-              </Card>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      Ask Atlas
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Plain-English custody law answers for {jurisdiction.state}
+                    </p>
+                  </div>
+                </div>
+                {user && (
+                  <span
+                    className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5"
+                    data-testid="badge-workspace-autosave"
+                    title="Conversations are automatically saved to your Case Workspace"
+                  >
+                    <BookmarkCheck className="w-3 h-3" />
+                    Auto-saved
+                  </span>
+                )}
+              </div>
+            )}
+
+            {limitReached && <UpgradePromptCard type="question" />}
+
+            <div className="text-xs text-muted-foreground" data-testid="label-answering-scope">
+              {answeringScopeLabel ?? "Answering from: General workspace (no case selected)"}
             </div>
-          )}
-        </div>
-      )}
+
+            {pendingCaseSelection && (
+              <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  {pendingCaseSelection.message}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {pendingCaseSelection.cases.map((c) => (
+                    <Button
+                      key={c.id}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        onSelectCase?.(c.id);
+                        setPendingCaseSelection(null);
+                        setTimeout(() => sendMessage(pendingCaseSelection.question, c.id), 0);
+                      }}
+                      data-testid={`button-case-required-${c.id}`}
+                    >
+                      {c.name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-2">
+              <div className="relative">
+                <Textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    hasMessages
+                      ? "Ask a follow-up question about your situation..."
+                      : jurisdiction.state
+                      ? `Ask a question about custody in ${jurisdiction.state}...`
+                      : "Ask a question about child custody laws..."
+                  }
+                  disabled={isLoading || limitReached || !!pendingCaseSelection}
+                  className="resize-none min-h-[72px] max-h-40 pr-3 text-sm"
+                  rows={hasMessages ? 2 : 3}
+                  data-testid="input-question"
+                />
+                {input.length > 0 && (
+                  <span className="absolute bottom-2 right-3 text-xs text-muted-foreground/60 select-none">
+                    {input.length}/2000
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <AlertTriangle className="w-3 h-3 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+                  <span className="text-[11px] text-muted-foreground leading-tight">
+                    General information only — not legal advice
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <MicButton
+                    state={micState}
+                    onStart={startRecording}
+                    onStop={stopRecording}
+                    onCancel={cancelRecording}
+                    disabled={isLoading || limitReached || !!pendingCaseSelection}
+                  />
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached || !!pendingCaseSelection}
+                    data-testid="button-send"
+                    title="Send message"
+                    className="h-10 w-10"
+                  >
+                    {isLoading
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Send className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
