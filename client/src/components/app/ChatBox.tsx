@@ -30,9 +30,10 @@ interface ChatBoxProps {
   caseId?: string;
   documentId?: string;
   selectedDocumentIds?: string[];
-  onSelectCase?: (caseId: string) => void;
+  onSelectCase?: (caseId?: string) => void;
   answeringScopeLabel?: string;
   className?: string;
+  onHasMessagesChange?: (hasMessages: boolean) => void;
 }
 
 type CaseSelectionRequiredResponse = {
@@ -40,6 +41,16 @@ type CaseSelectionRequiredResponse = {
   message: string;
   cases: Array<{ id: string; name: string }>;
 };
+
+type JurisdictionMismatchInfo = {
+  jurisdictionMismatch?: boolean;
+  caseJurisdiction?: { state: string; county: string };
+  askJurisdiction?: { state: string; county: string };
+};
+
+type AskAssistantResponse = AILegalResponse & {
+  conversationId?: string;
+} & JurisdictionMismatchInfo;
 
 function getSuggestedQuestions(state: string): string[] {
   const s = state || "my state";
@@ -361,12 +372,15 @@ export function ChatBox({
   onSelectCase,
   answeringScopeLabel,
   className,
+  onHasMessagesChange,
 }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [savedToWorkspace, setSavedToWorkspace] = useState(!!initialThreadId || !!caseId);
+  const [jurisdictionPreference, setJurisdictionPreference] = useState<"case" | "ask" | null>(null);
+  const [dismissedMismatchMessageIds, setDismissedMismatchMessageIds] = useState<Set<string>>(new Set());
   const [pendingCaseSelection, setPendingCaseSelection] = useState<{
     message: string;
     question: string;
@@ -516,7 +530,7 @@ export function ChatBox({
         throw new Error(errData.error || `Server error (${res.status})`);
       }
 
-      const rawData: (AILegalResponse & { conversationId?: string }) | CaseSelectionRequiredResponse = await res.json();
+      const rawData: AskAssistantResponse | CaseSelectionRequiredResponse = await res.json();
 
       if ((rawData as CaseSelectionRequiredResponse).type === "case_selection_required") {
         const selection = rawData as CaseSelectionRequiredResponse;
@@ -529,7 +543,7 @@ export function ChatBox({
         return;
       }
 
-      const data = rawData as AILegalResponse & { conversationId?: string };
+      const data = rawData as AskAssistantResponse;
 
       if ((forcedCaseId ?? caseId) && data.conversationId && !conversationIdRef.current) {
         conversationIdRef.current = data.conversationId;
@@ -594,6 +608,10 @@ export function ChatBox({
       setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 150);
     }
   }, []);
+
+  useEffect(() => {
+    onHasMessagesChange?.(messages.length > 0);
+  }, [messages.length, onHasMessagesChange]);
 
   const clearConversation = () => {
     setMessages([]);
@@ -711,6 +729,55 @@ export function ChatBox({
                   </Card>
                 ) : msg.structured ? (
                   <div className="max-w-[88%] space-y-2 flex-1 min-w-0">
+                    {(() => {
+                      const structuredResponse = msg.structured as AskAssistantResponse;
+                      return structuredResponse.jurisdictionMismatch &&
+                        structuredResponse.caseJurisdiction &&
+                        structuredResponse.askJurisdiction &&
+                      !dismissedMismatchMessageIds.has(`${i}`) &&
+                      jurisdictionPreference !== "ask" && (
+                        <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 px-3.5 py-3">
+                          <div className="flex items-start gap-2.5">
+                            <MapPin className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-amber-900 dark:text-amber-100 leading-relaxed">
+                                This question was answered using your case jurisdiction ({structuredResponse.caseJurisdiction.county}, {structuredResponse.caseJurisdiction.state}) which differs from your Ask Atlas location ({structuredResponse.askJurisdiction.county}, {structuredResponse.askJurisdiction.state}).
+                              </p>
+                              <p className="mt-1 text-[11px] text-amber-800/80 dark:text-amber-200/80">
+                                Is this correct?
+                              </p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setJurisdictionPreference("case");
+                                    setDismissedMismatchMessageIds((prev) => new Set(prev).add(`${i}`));
+                                  }}
+                                >
+                                  Yes, use case location
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-amber-800 hover:text-amber-900 dark:text-amber-200 dark:hover:text-amber-100"
+                                  onClick={() => {
+                                    setJurisdictionPreference("ask");
+                                    setDismissedMismatchMessageIds((prev) => new Set(prev).add(`${i}`));
+                                    onSelectCase?.(undefined);
+                                  }}
+                                >
+                                  Switch to {structuredResponse.askJurisdiction.county}, {structuredResponse.askJurisdiction.state}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <Card className="border-border shadow-sm" data-testid={`card-response-${i}`}>
                       <CardHeader className="pb-2 pt-3.5 px-4">
                         <div className="flex items-center justify-between gap-2">
@@ -725,6 +792,21 @@ export function ChatBox({
                         <StructuredResponse data={msg.structured} caseId={caseId} />
                       </CardContent>
                     </Card>
+
+                    {msg.structured.resourcesAvailable && (
+                      <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950/30 px-3.5 py-3">
+                        <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                          Free and low-cost help may be available in your area.
+                        </p>
+                        <a
+                          href={`/resources?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}`}
+                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+                        >
+                          See resources for {formatJurisdictionLabel(jurisdiction.state, jurisdiction.county)}
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    )}
 
                     {i === messages.length - 1 && !isLoading && (
                       <>

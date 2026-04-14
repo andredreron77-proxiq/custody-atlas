@@ -168,6 +168,8 @@ export default function AskAIPage() {
   const [showCasePicker, setShowCasePicker] = useState(false);
   const [contextExpanded, setContextExpanded] = useState(false);
   const [showDocSelector, setShowDocSelector] = useState(false);
+  const [showLinkCaseNudge, setShowLinkCaseNudge] = useState(true);
+  const [hasChatMessages, setHasChatMessages] = useState(Boolean(initialQuestion));
   const { user } = useCurrentUser();
 
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
@@ -335,6 +337,12 @@ export default function AskAIPage() {
       structured: (m.structuredResponseJson as any) ?? undefined,
     }));
 
+  useEffect(() => {
+    if ((initialMessages?.length ?? 0) > 0) {
+      setHasChatMessages(true);
+    }
+  }, [initialMessages]);
+
   if (awaitingCaseJurisdiction) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
@@ -500,6 +508,41 @@ export default function AskAIPage() {
 
       <div className="flex-shrink-0">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-3 sm:px-6">
+          {!activeCaseId && cases.length > 0 && !hasChatMessages && showLinkCaseNudge && (
+            <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/20">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <div className="mt-0.5 rounded-md bg-amber-100 p-1.5 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                    <FolderOpen className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm text-foreground">
+                      Link a case to get answers specific to your court, judge, and documents.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="mt-2 h-7 px-0 text-xs text-amber-800 hover:text-amber-900 dark:text-amber-200 dark:hover:text-amber-100"
+                      onClick={() => setShowCasePicker(true)}
+                    >
+                      Link case
+                      <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLinkCaseNudge(false)}
+                  className="rounded-md p-1 text-muted-foreground hover:bg-background/70 hover:text-foreground transition-colors"
+                  aria-label="Dismiss case link nudge"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeCaseId && contextExpanded && (
             <div className="rounded-lg border bg-card px-4 py-3">
               <div className="flex items-start justify-between gap-3">
@@ -601,6 +644,7 @@ export default function AskAIPage() {
         onSelectCase={(id) => setActiveCaseId(id)}
         answeringScopeLabel={answeringScopeLabel}
         className="flex-1 min-h-0"
+        onHasMessagesChange={setHasChatMessages}
       />
     </div>
   );

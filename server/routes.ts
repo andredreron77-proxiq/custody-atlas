@@ -1120,6 +1120,10 @@ function buildResourcesPrompt(params: { state: string; county: string }): string
   ].join("\n");
 }
 
+function normalizeJurisdictionValue(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
   // ── Usage state ────────────────────────────────────────────────────────────
@@ -1530,6 +1534,15 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId, documentId, selectedDocumentIds } = parsed.data;
       const userId = (req as any).user?.id as string | undefined;
       let effectiveIntent: "FACT" | "EXPLANATION" | "ACTION" = "EXPLANATION";
+      let effectiveJurisdiction = { ...jurisdiction };
+      let activeCaseRecord: Awaited<ReturnType<typeof getCaseById>> | null = null;
+      let jurisdictionMismatchPayload:
+        | {
+            jurisdictionMismatch: true;
+            caseJurisdiction: { state: string; county: string };
+            askJurisdiction: { state: string; county: string };
+          }
+        | null = null;
 
       if (!jurisdiction.state || !jurisdiction.county) {
         return res.status(400).json({ error: "Jurisdiction must include both state and county." });
@@ -1572,10 +1585,29 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
 
       if (effectiveCaseId && userId) {
         // 1. Ownership check — server enforces this, never trust client claims
-        const caseRecord = await getCaseById(effectiveCaseId, userId);
-        if (!caseRecord) {
+        activeCaseRecord = await getCaseById(effectiveCaseId, userId);
+        if (!activeCaseRecord) {
           console.warn(`[ask] Case not found or unauthorized. caseId=${effectiveCaseId} userId=${userId}`);
           return res.status(403).json({ error: "Case not found or access denied." });
+        }
+
+        const caseState = activeCaseRecord.jurisdictionState?.trim();
+        const caseCounty = activeCaseRecord.jurisdictionCounty?.trim();
+        if (caseState && caseCounty) {
+          const sameState = normalizeJurisdictionValue(caseState) === normalizeJurisdictionValue(jurisdiction.state);
+          const sameCounty = normalizeJurisdictionValue(caseCounty) === normalizeJurisdictionValue(jurisdiction.county);
+          effectiveJurisdiction = {
+            ...jurisdiction,
+            state: caseState,
+            county: caseCounty,
+          };
+          if (!sameState || !sameCounty) {
+            jurisdictionMismatchPayload = {
+              jurisdictionMismatch: true,
+              caseJurisdiction: { state: caseState, county: caseCounty },
+              askJurisdiction: { state: jurisdiction.state, county: jurisdiction.county },
+            };
+          }
         }
 
         // 2. Resolve conversation: use the one sent by the client, or create a new one
@@ -1590,8 +1622,8 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
           const newConv = await createConversation(userId, effectiveCaseId, {
             title: userQuestion.slice(0, 120),
             threadType: "general",
-            jurisdictionState: jurisdiction.state,
-            jurisdictionCounty: jurisdiction.county,
+            jurisdictionState: effectiveJurisdiction.state,
+            jurisdictionCounty: effectiveJurisdiction.county,
           });
           if (!newConv) {
             console.warn(`[ask] Failed to create conversation for caseId=${effectiveCaseId}`);
@@ -1603,7 +1635,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       }
 
       // ── Load state law ───────────────────────────────────────────────────────
-      const stateLaw = getCustodyLaw(jurisdiction.state);
+      const stateLaw = getCustodyLaw(effectiveJurisdiction.state);
       const isUnsupportedState = !stateLaw;
 
       const legalContextText = stateLaw
@@ -1617,7 +1649,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
           ].join("\n\n")
         : legalContext
           ? JSON.stringify(legalContext, null, 2)
-          : `No specific custody law data is available for ${jurisdiction.state}. Apply general US family law principles and clearly flag that the user must verify with a local ${jurisdiction.state} attorney.`;
+          : `No specific custody law data is available for ${effectiveJurisdiction.state}. Apply general US family law principles and clearly flag that the user must verify with a local ${effectiveJurisdiction.state} attorney.`;
 
       const openai = getOpenAIClient();
 
@@ -1758,19 +1790,20 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
             earlyResponse = buildConflictResponse(resolverResult, factFields);
           }
 
-          const enrichedEarlyResponse: Record<string, unknown> & { resourcesAvailable: boolean } = {
-            ...earlyResponse,
-            resourcesAvailable: shouldSurfaceResources({
-              intent: effectiveIntent,
-              userQuestion,
-            }),
-          };
+        const enrichedEarlyResponse: Record<string, unknown> & { resourcesAvailable: boolean } = {
+          ...earlyResponse,
+          resourcesAvailable: shouldSurfaceResources({
+            intent: effectiveIntent,
+            userQuestion,
+          }),
+          ...(jurisdictionMismatchPayload ?? {}),
+        };
 
           await trackQuestion(req);
           if (userId) {
             saveQuestion(userId, {
-              jurisdictionState: jurisdiction.state,
-              jurisdictionCounty: jurisdiction.county,
+              jurisdictionState: effectiveJurisdiction.state,
+              jurisdictionCounty: effectiveJurisdiction.county,
               questionText: userQuestion,
               responseJson: enrichedEarlyResponse,
             }).catch(() => {});
@@ -1818,7 +1851,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
           : allRecentDocs;
         if (recentDocs.length > 0) {
           if (effectiveCaseId) {
-            caseDocumentTextAddendum = buildCaseDocumentTextAddendum(recentDocs, jurisdiction.state);
+            caseDocumentTextAddendum = buildCaseDocumentTextAddendum(recentDocs, effectiveJurisdiction.state);
           }
           const docSummaries = recentDocs.slice(0, 5).map((doc, i) => {
             const analysis = doc.analysisJson as any;
@@ -1877,6 +1910,26 @@ RULES:
 
       // ── System prompt addenda based on intent ────────────────────────────────
       let factModeAddendum = "";
+      const officialContactAddendum = `
+
+---
+OFFICIAL CONTACT INFORMATION RULE
+When a user asks for a specific website, phone number, address, or contact information for a government agency, court, or official organization — provide it directly and specifically. Do not describe what the website contains without giving the actual URL. For official government resources (courts, child support agencies, clerk offices, state agencies) you are permitted and expected to provide:
+- The actual website URL
+- Phone number if known
+- Physical address if relevant
+Always prefer specific actionable information over general descriptions.
+If you are not certain of the exact URL, say so clearly and provide the closest known official source plus suggest they verify.`;
+      const caseJurisdictionAddendum = activeCaseRecord?.jurisdictionState && activeCaseRecord?.jurisdictionCounty
+        ? `
+
+---
+CASE JURISDICTION PRIORITY
+This question is about a case in ${activeCaseRecord.jurisdictionCounty}, ${activeCaseRecord.jurisdictionState}.
+Answer specifically for that jurisdiction — name the actual courts, agencies, and offices in ${activeCaseRecord.jurisdictionCounty}, ${activeCaseRecord.jurisdictionState}.
+Do not give generic statewide answers when county-specific information exists.
+Use the case jurisdiction as the primary jurisdiction for this answer, even if the Ask Atlas location differs.`
+        : "";
 
       if (intent === "FACT") {
         const factsText = buildDocumentFactsText(intentUserDocs);
@@ -1927,7 +1980,9 @@ The user is asking what they should do or how to take a specific action. Focus y
       }
 
       const systemPrompt =
-        buildSystemPrompt(jurisdiction.state) +
+        buildSystemPrompt(effectiveJurisdiction.state) +
+        officialContactAddendum +
+        caseJurisdictionAddendum +
         caseMemoryText +
         documentContextAddendum +
         caseDocumentTextAddendum +
@@ -1941,8 +1996,8 @@ The user is asking what they should do or how to take a specific action. Focus y
         {
           role: "user" as const,
           content: buildUserPrompt({
-            state: jurisdiction.state,
-            county: jurisdiction.county,
+            state: effectiveJurisdiction.state,
+            county: effectiveJurisdiction.county,
             isUnsupportedState,
             legalContextText,
             userQuestion,
@@ -1984,6 +2039,7 @@ The user is asking what they should do or how to take a specific action. Focus y
           intent: effectiveIntent,
           userQuestion,
         }),
+        ...(jurisdictionMismatchPayload ?? {}),
       };
 
       // ── Persist messages when using a case conversation ──────────────────────
@@ -2003,8 +2059,8 @@ The user is asking what they should do or how to take a specific action. Focus y
       await trackQuestion(req);
       if (userId) {
         saveQuestion(userId, {
-          jurisdictionState: jurisdiction.state,
-          jurisdictionCounty: jurisdiction.county,
+          jurisdictionState: effectiveJurisdiction.state,
+          jurisdictionCounty: effectiveJurisdiction.county,
           questionText: userQuestion,
           responseJson: enrichedResponse as Record<string, unknown>,
         }).catch(() => {});
@@ -2012,8 +2068,8 @@ The user is asking what they should do or how to take a specific action. Focus y
 
       // Auto-publish safe questions to the public SEO repository (fire-and-forget).
       maybePublishQuestion({
-        state: jurisdiction.state,
-        county: jurisdiction.county,
+        state: effectiveJurisdiction.state,
+        county: effectiveJurisdiction.county,
         questionText: userQuestion,
         responseJson: enrichedResponse as Record<string, unknown>,
       }).catch((err) => console.error("[publicQuestions] maybePublishQuestion error:", err));
