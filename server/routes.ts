@@ -92,6 +92,14 @@ import {
   replaceDocumentSignals,
 } from "./services/signals";
 import {
+  addAttorneyWaitlistEntry,
+  cacheResources,
+  getCachedResources,
+  getEmptyResourcesResponse,
+  normalizeResourcesResponse,
+  type ResourcesResponse,
+} from "./services/resources";
+import {
   maybePublishQuestion,
   getPublicQuestionsByState,
   getPublicQuestionBySlug,
@@ -113,7 +121,7 @@ import {
 import { classifyDateStatus, type DateStatus } from "@shared/dateStatus";
 import type { CaseTimelineEvent } from "./services/caseTimeline";
 
-const asString = (v: string | string[] | undefined): string => Array.isArray(v) ? v[0] ?? "" : v ?? "";
+const asString = (v: unknown): string => Array.isArray(v) ? (typeof v[0] === "string" ? v[0] : "") : typeof v === "string" ? v : "";
 
 /** Chat/text model client — routes through the AI Integration proxy when available. */
 function getOpenAIClient(): OpenAI {
@@ -179,6 +187,75 @@ function getFileExtension(name: string): string {
   const idx = trimmed.lastIndexOf(".");
   if (idx <= 0 || idx === trimmed.length - 1) return "";
   return trimmed.slice(idx + 1).toLowerCase();
+}
+
+function countWords(input: string): number {
+  const trimmed = input.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+function buildCaseDocumentTextAddendum(
+  docs: SavedDocument[],
+  stateName: string,
+  maxWords = 6000,
+): string {
+  if (docs.length === 0) return "";
+
+  const recentFirst = [...docs].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const sections: string[] = [];
+  const trimmedDocs: string[] = [];
+  let usedWords = 0;
+
+  for (const doc of recentFirst) {
+    const rawText = doc.extractedText.trim();
+    if (!rawText) continue;
+
+    const remainingWords = maxWords - usedWords;
+    if (remainingWords <= 0) {
+      trimmedDocs.push(doc.fileName);
+      continue;
+    }
+
+    const docWords = rawText.split(/\s+/);
+    const includeAll = docWords.length <= remainingWords;
+    const includedWords = includeAll ? docWords : docWords.slice(0, remainingWords);
+    const includedText = includedWords.join(" ").trim();
+
+    if (!includedText) {
+      trimmedDocs.push(doc.fileName);
+      continue;
+    }
+
+    sections.push(`[${doc.fileName}]: ${includedText}${includeAll ? "" : "\n[Document truncated to fit context window.]"}`);
+    usedWords += countWords(includedText);
+
+    if (!includeAll) {
+      trimmedDocs.push(doc.fileName);
+    }
+  }
+
+  if (sections.length === 0) return "";
+
+  const trimmedNote = trimmedDocs.length > 0
+    ? `\n\nSome older or longer documents were trimmed to stay within the model context window: ${trimmedDocs.join(", ")}.`
+    : "";
+
+  return `
+
+---
+ACTUAL CASE DOCUMENT TEXT
+The following are the actual case documents for this case. Answer the user's question using these documents specifically, not general legal knowledge.
+
+${sections.join("\n\n")}
+${trimmedNote}
+
+RULES FOR CASE DOCUMENT USE:
+1. Answer from these documents first whenever they contain relevant information.
+2. Cite the document name when you rely on a document-specific fact.
+3. Only fall back to general ${stateName} custody law if the documents do not address the question.
+4. Do not give a generic answer when the documents contain relevant information.
+5. If the documents are silent or incomplete, say so clearly before providing any general guidance.`;
 }
 
 function findSimilarWorkspaceDocument(
@@ -987,6 +1064,62 @@ function extractDashboardDocumentTags(analysisJson: Record<string, unknown>): st
   return tags.slice(0, 3);
 }
 
+const RESOURCE_HELP_PATTERNS = [
+  /who can help/i,
+  /find an attorney/i,
+  /legal aid/i,
+  /free help/i,
+  /can't afford/i,
+  /cannot afford/i,
+  /represent me/i,
+  /lawyer/i,
+  /child support/i,
+  /dfcs/i,
+  /dhs/i,
+  /government help/i,
+  /state program/i,
+  /enforcement/i,
+] as const;
+
+function shouldSurfaceResources(params: {
+  intent: "FACT" | "EXPLANATION" | "ACTION";
+  userQuestion: string;
+}): boolean {
+  if (params.intent === "ACTION") return true;
+  return RESOURCE_HELP_PATTERNS.some((pattern) => pattern.test(params.userQuestion));
+}
+
+function buildResourcesPrompt(params: { state: string; county: string }): string {
+  return [
+    "You are a legal aid resource specialist. Return ONLY a valid JSON object with no preamble.",
+    "Find real, currently operating legal aid organizations, court self-help centers, and mediation services",
+    "for the specified US state and county. Only include organizations you are confident exist.",
+    "Never invent organizations. If unsure, return fewer results rather than guessing.",
+    "",
+    "For government_resources: include the state child support enforcement agency,",
+    "Department of Human Services or equivalent state agency, CASA (Court Appointed",
+    "Special Advocates) program if present in the county, state bar lawyer referral",
+    "service, family court facilitator or self-help coordinator office, and any",
+    "state-funded mediation programs run through the court system. These must be",
+    "government or government-funded entities. Include phone numbers prominently —",
+    "these offices are often more reachable by phone than online.",
+    "",
+    "Return this exact shape:",
+    "{",
+    '  "legal_aid": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }],',
+    '  "government_resources": [{ "name": string, "description": string, "url": string, "phone": string, "tags": string[] }],',
+    '  "court_self_help": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }],',
+    '  "mediation": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }]',
+    "}",
+    "",
+    "tags must be from: free, income-qualified, in-person, remote, government, family-law, custody-specialist",
+    "Maximum 4 results per category.",
+    "",
+    `State: ${params.state}`,
+    `County: ${params.county}`,
+  ].join("\n");
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
   // ── Usage state ────────────────────────────────────────────────────────────
@@ -1265,6 +1398,99 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
     return res.json(validated.data);
   });
 
+  app.get("/api/resources", requireAuth, async (req, res) => {
+    try {
+      const state = asString(req.query.state).trim();
+      const county = asString(req.query.county).trim();
+
+      if (!state || !county) {
+        return res.status(400).json({ error: "state and county are required." });
+      }
+
+      const cached = await getCachedResources(state, county);
+      if (cached && "government_resources" in cached) {
+        return res.json(cached);
+      }
+
+      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!hasAI) {
+        return res.json(getEmptyResourcesResponse());
+      }
+
+      const openai = getOpenAIClient();
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: buildResourcesPrompt({ state, county }),
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1200,
+        temperature: 0.2,
+      });
+
+      const rawContent = completion.choices[0]?.message?.content;
+      if (!rawContent) {
+        return res.json(getEmptyResourcesResponse());
+      }
+
+      let parsedResponse: unknown;
+      try {
+        parsedResponse = JSON.parse(rawContent);
+      } catch {
+        console.error("[resources] OpenAI returned invalid JSON.");
+        return res.json(getEmptyResourcesResponse());
+      }
+
+      let normalized: ResourcesResponse;
+      try {
+        normalized = normalizeResourcesResponse(parsedResponse);
+      } catch (error) {
+        console.error("[resources] OpenAI resources validation failed:", error);
+        return res.json(getEmptyResourcesResponse());
+      }
+
+      await cacheResources(state, county, normalized);
+      return res.json(normalized);
+    } catch (err) {
+      console.error("[resources] GET error:", err);
+      return res.status(500).json({ error: "Failed to load resources." });
+    }
+  });
+
+  app.post("/api/resources/attorney-waitlist", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string; email: string | null };
+      const parsed = z.object({
+        state: z.string().min(1),
+        county: z.string().min(1),
+        email: z.string().email().optional(),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "state and county are required." });
+      }
+
+      if (!user?.email) {
+        return res.status(400).json({ error: "Authenticated user email is required." });
+      }
+
+      await addAttorneyWaitlistEntry({
+        userId: user.id,
+        email: parsed.data.email ?? user.email,
+        state: parsed.data.state.trim(),
+        county: parsed.data.county.trim(),
+      });
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("[resources] waitlist error:", err);
+      return res.status(500).json({ error: "Failed to join attorney waitlist." });
+    }
+  });
+
   app.post("/api/ask", requireAuth, checkQuestionLimit, async (req, res) => {
     try {
       // Extend the base schema with optional case context fields
@@ -1283,6 +1509,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
 
       const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId, documentId, selectedDocumentIds } = parsed.data;
       const userId = (req as any).user?.id as string | undefined;
+      let effectiveIntent: "FACT" | "EXPLANATION" | "ACTION" = "EXPLANATION";
 
       if (!jurisdiction.state || !jurisdiction.county) {
         return res.status(400).json({ error: "Jurisdiction must include both state and county." });
@@ -1475,6 +1702,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
       // If not resolved → fall through to LLM with injected fact context.
       // ACTION questions: inject action-guidance addendum into system prompt.
       const { intent, factFields } = detectIntent(userQuestion);
+      effectiveIntent = intent;
       console.log(`[ask] intent="${intent}"${factFields.length ? ` fields=[${factFields.join(",")}]` : ""} documentScoped=${!!scopedDocument}`);
 
       let intentUserDocs: Awaited<ReturnType<typeof getDocuments>> = [];
@@ -1510,24 +1738,35 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
             earlyResponse = buildConflictResponse(resolverResult, factFields);
           }
 
+          const enrichedEarlyResponse: Record<string, unknown> & { resourcesAvailable: boolean } = {
+            ...earlyResponse,
+            resourcesAvailable: shouldSurfaceResources({
+              intent: effectiveIntent,
+              userQuestion,
+            }),
+          };
+
           await trackQuestion(req);
           if (userId) {
             saveQuestion(userId, {
               jurisdictionState: jurisdiction.state,
               jurisdictionCounty: jurisdiction.county,
               questionText: userQuestion,
-              responseJson: earlyResponse,
+              responseJson: enrichedEarlyResponse,
             }).catch(() => {});
           }
           if (activeConversationId) {
+            const earlySummary = typeof enrichedEarlyResponse.summary === "string"
+              ? enrichedEarlyResponse.summary
+              : "";
             Promise.all([
               appendConversationMessage(activeConversationId, "user", userQuestion),
-              appendConversationMessage(activeConversationId, "assistant", earlyResponse.summary as string, earlyResponse),
+              appendConversationMessage(activeConversationId, "assistant", earlySummary, enrichedEarlyResponse),
             ]).catch((err) => console.error("[ask] Failed to persist deterministic fact messages:", err));
           }
 
           return res.json({
-            ...earlyResponse,
+            ...enrichedEarlyResponse,
             ...(activeConversationId ? { conversationId: activeConversationId } : {}),
           });
         }
@@ -1540,6 +1779,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
       // For EXPLANATION/ACTION intents without a documentId scope, load recent docs now
       // so we can inject a compact summary block into the system prompt.
       let generalDocSummaryAddendum = "";
+      let caseDocumentTextAddendum = "";
       let retainedChunkAddendum = "";
 
       // When selectedDocumentIds is an empty array, the user has deselected all docs —
@@ -1557,6 +1797,9 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
           ? allRecentDocs.filter((d) => selectedDocumentIds.includes(d.id))
           : allRecentDocs;
         if (recentDocs.length > 0) {
+          if (effectiveCaseId) {
+            caseDocumentTextAddendum = buildCaseDocumentTextAddendum(recentDocs, jurisdiction.state);
+          }
           const docSummaries = recentDocs.slice(0, 5).map((doc, i) => {
             const analysis = doc.analysisJson as any;
             const summary = analysis?.summary ? `Summary: ${analysis.summary}` : "";
@@ -1663,24 +1906,35 @@ ACTION GUIDANCE MODE
 The user is asking what they should do or how to take a specific action. Focus your response on concrete next steps. Keep steps numbered and clear. Distinguish between actions they can take themselves and actions that require an attorney.`;
       }
 
-      const systemPrompt = buildSystemPrompt(jurisdiction.state) + caseMemoryText + documentContextAddendum + generalDocSummaryAddendum + retainedChunkAddendum + factModeAddendum;
+      const systemPrompt =
+        buildSystemPrompt(jurisdiction.state) +
+        caseMemoryText +
+        documentContextAddendum +
+        caseDocumentTextAddendum +
+        generalDocSummaryAddendum +
+        retainedChunkAddendum +
+        factModeAddendum;
+
+      const openAIMessages = [
+        { role: "system" as const, content: systemPrompt },
+        ...historyTurns,
+        {
+          role: "user" as const,
+          content: buildUserPrompt({
+            state: jurisdiction.state,
+            county: jurisdiction.county,
+            isUnsupportedState,
+            legalContextText,
+            userQuestion,
+          }),
+        },
+      ];
+
+      console.log("[ask] OpenAI messages payload:", JSON.stringify(openAIMessages, null, 2));
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...historyTurns,
-          {
-            role: "user",
-            content: buildUserPrompt({
-              state: jurisdiction.state,
-              county: jurisdiction.county,
-              isUnsupportedState,
-              legalContextText,
-              userQuestion,
-            }),
-          },
-        ],
+        messages: openAIMessages,
         response_format: { type: "json_object" },
         max_tokens: 1400,
         temperature: 0.4,
@@ -1704,6 +1958,14 @@ The user is asking what they should do or how to take a specific action. Focus y
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
+      const enrichedResponse = {
+        ...validated.data,
+        resourcesAvailable: shouldSurfaceResources({
+          intent: effectiveIntent,
+          userQuestion,
+        }),
+      };
+
       // ── Persist messages when using a case conversation ──────────────────────
       if (activeConversationId) {
         // Fire-and-forget — do not let persistence failures block the response
@@ -1712,8 +1974,8 @@ The user is asking what they should do or how to take a specific action. Focus y
           appendConversationMessage(
             activeConversationId,
             "assistant",
-            validated.data.summary,
-            validated.data as unknown as Record<string, unknown>,
+            enrichedResponse.summary,
+            enrichedResponse as unknown as Record<string, unknown>,
           ),
         ]).catch((err) => console.error("[ask] Failed to persist case messages:", err));
       }
@@ -1724,7 +1986,7 @@ The user is asking what they should do or how to take a specific action. Focus y
           jurisdictionState: jurisdiction.state,
           jurisdictionCounty: jurisdiction.county,
           questionText: userQuestion,
-          responseJson: validated.data as Record<string, unknown>,
+          responseJson: enrichedResponse as Record<string, unknown>,
         }).catch(() => {});
       }
 
@@ -1733,13 +1995,13 @@ The user is asking what they should do or how to take a specific action. Focus y
         state: jurisdiction.state,
         county: jurisdiction.county,
         questionText: userQuestion,
-        responseJson: validated.data as Record<string, unknown>,
+        responseJson: enrichedResponse as Record<string, unknown>,
       }).catch((err) => console.error("[publicQuestions] maybePublishQuestion error:", err));
 
       // Return the AI response, plus intent (always) and conversationId (when case is active)
       // so the client can apply intent-aware rendering and thread subsequent messages.
       return res.json({
-        ...validated.data,
+        ...enrichedResponse,
         intent,
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       });
