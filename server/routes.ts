@@ -8,6 +8,7 @@ import { tmpdir } from "os";
 import { createHash } from "crypto";
 import multer from "multer";
 import OpenAI from "openai";
+import { supabaseAdmin } from "./lib/supabaseAdmin";
 import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtractor";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
@@ -92,7 +93,6 @@ import {
   replaceDocumentSignals,
 } from "./services/signals";
 import {
-  addAttorneyWaitlistEntry,
   cacheResources,
   getCachedResources,
   getEmptyResourcesResponse,
@@ -1473,20 +1473,40 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
         return res.status(400).json({ error: "state and county are required." });
       }
 
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated user is required." });
+      }
+
       if (!user?.email) {
         return res.status(400).json({ error: "Authenticated user email is required." });
       }
 
-      await addAttorneyWaitlistEntry({
-        userId: user.id,
-        email: parsed.data.email ?? user.email,
+      if (!supabaseAdmin) {
+        return res.status(503).json({ error: "Supabase admin client is not configured." });
+      }
+
+      const payload = {
+        user_id: user.id,
+        email: user.email,
         state: parsed.data.state.trim(),
         county: parsed.data.county.trim(),
-      });
+      };
+
+      const { error } = await supabaseAdmin
+        .from("attorney_waitlist")
+        .upsert(payload, {
+          onConflict: "user_id",
+          ignoreDuplicates: false,
+        });
+
+      if (error) {
+        console.error("[attorney-waitlist] error:", JSON.stringify(error, null, 2));
+        return res.status(500).json({ error: "Failed to join attorney waitlist." });
+      }
 
       return res.json({ success: true });
-    } catch (err) {
-      console.error("[resources] waitlist error:", err);
+    } catch (error) {
+      console.error("[attorney-waitlist] error:", JSON.stringify(error, null, 2));
       return res.status(500).json({ error: "Failed to join attorney waitlist." });
     }
   });
