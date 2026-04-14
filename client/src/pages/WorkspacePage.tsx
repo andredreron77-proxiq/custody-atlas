@@ -7,6 +7,7 @@ import {
   Clock, Loader2, CalendarDays, PlusCircle, Trash2,
   Sparkles, ChevronDown, TriangleAlert, Zap, AlertCircle,
   Activity,
+  FolderOpen,
 } from "lucide-react";
 import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
@@ -136,6 +137,9 @@ interface CaseRecord {
   id: string;
   title: string;
   name?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface RetroactiveDocumentReviewItem {
@@ -189,6 +193,107 @@ function formatEventDate(dateStr: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, {
     month: "short", day: "numeric", year: "numeric",
   });
+}
+
+function formatLongDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getDaysUntil(dateStr: string): number | null {
+  const target = new Date(dateStr);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function CaseMemoryStrip({
+  firstName,
+  activeCase,
+  nextHearingDate,
+  lastThread,
+}: {
+  firstName: string;
+  activeCase: CaseRecord;
+  nextHearingDate: string | null;
+  lastThread: WorkspaceThread | null;
+}) {
+  const caseName = (activeCase.name ?? activeCase.title)?.trim() || "Unnamed Case";
+  const caseStatus = (activeCase.status ?? "active").replace(/[_-]+/g, " ").trim();
+  const statusTone = caseStatus.toLowerCase() === "active"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+    : "border-border bg-muted/40 text-muted-foreground";
+  const hearingDays = nextHearingDate ? getDaysUntil(nextHearingDate) : null;
+  const showHearingRow = hearingDays !== null && hearingDays >= 0 && hearingDays <= 30;
+  const hearingTone = hearingDays !== null && hearingDays <= 7
+    ? "text-red-700 dark:text-red-300"
+    : hearingDays !== null && hearingDays <= 14
+      ? "text-amber-700 dark:text-amber-300"
+      : "text-foreground";
+  const followUpHref = lastThread
+    ? `/ask?case=${encodeURIComponent(activeCase.id)}&thread=${encodeURIComponent(lastThread.id)}`
+    : null;
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/[0.22] px-4 py-3.5 shadow-sm" data-testid="card-case-memory-strip">
+      <p className="text-sm font-semibold text-foreground">
+        Welcome back, {firstName}
+      </p>
+
+      <div className="mt-3 space-y-2.5">
+        <Link href={`/case/${activeCase.id}`}>
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-background/70 transition-colors cursor-pointer" data-testid="case-memory-active-case">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <FolderOpen className="w-4 h-4 text-primary" />
+            </div>
+            <div className="min-w-0 flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-foreground truncate">{caseName}</span>
+              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusTone}`}>
+                {caseStatus}
+              </Badge>
+            </div>
+          </div>
+        </Link>
+
+        {showHearingRow && nextHearingDate && hearingDays !== null && (
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2" data-testid="case-memory-next-hearing">
+            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+              <CalendarDays className={`w-4 h-4 ${hearingTone}`} />
+            </div>
+            <p className={`text-sm ${hearingTone}`}>
+              Your next hearing is in {hearingDays} day{hearingDays === 1 ? "" : "s"} — {formatLongDate(nextHearingDate)}
+            </p>
+          </div>
+        )}
+
+        {lastThread && followUpHref && (
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2" data-testid="case-memory-last-thread">
+            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+              <MessageSquare className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-foreground truncate">
+                Last time you asked: &quot;{lastThread.title ?? "Custody conversation"}&quot;
+              </p>
+            </div>
+            <Link href={followUpHref}>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 shrink-0" data-testid="button-case-memory-follow-up">
+                Ask a follow-up
+                <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ── Workspace state ──────────────────────────────────────────────────────────
@@ -1412,7 +1517,14 @@ export default function WorkspacePage() {
   const cases = casesData?.cases ?? [];
   const firstCaseId = cases[0]?.id ?? null;
   const activeCase = caseIdParam ? cases.find((c) => c.id === caseIdParam) ?? null : null;
+  const latestCase = [...cases].sort((a, b) => {
+    const left = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+    const right = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+    return left - right;
+  })[0] ?? null;
+  const memoryCase = activeCase ?? latestCase;
   const activeCaseName = (activeCase?.name ?? activeCase?.title)?.trim() || (caseIdParam ? "Unnamed Case" : null);
+  const lastThread = threads[0] ?? null;
   const caseNameById = cases.reduce<Record<string, string>>((acc, c) => {
     acc[c.id] = (c.name ?? c.title)?.trim() || "Unnamed Case";
     return acc;
@@ -1667,6 +1779,18 @@ export default function WorkspacePage() {
   const uploadEmptyMessage = preferredName
     ? `${preferredName}, upload your first custody document`
     : "Upload your first custody document";
+  const greetingName = preferredName || (user?.email?.split("@")[0] ?? "there");
+  const { data: memoryCaseActions } = useQuery<{ actions: Array<unknown>; hearingDate: string | null }>({
+    queryKey: ["/api/cases", "memory-strip", memoryCase?.id, "actions"],
+    enabled: !!user && !!memoryCase?.id,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${encodeURIComponent(memoryCase?.id ?? "")}/actions`);
+      if (!res.ok) return { actions: [], hearingDate: null };
+      return res.json() as Promise<{ actions: Array<unknown>; hearingDate: string | null }>;
+    },
+  });
 
   return (
     <PageContainer size="wide" className="max-w-[1320px] py-4 space-y-4" testId="page-workspace">
@@ -1791,6 +1915,15 @@ export default function WorkspacePage() {
 
       <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         <div className="xl:col-span-8 space-y-4">
+          {memoryCase && (
+            <CaseMemoryStrip
+              firstName={greetingName}
+              activeCase={memoryCase}
+              nextHearingDate={memoryCaseActions?.hearingDate ?? null}
+              lastThread={lastThread}
+            />
+          )}
+
           <Panel>
             <PanelHeader icon={Activity} label="What Matters Now" />
             <PanelContent className="p-3">
