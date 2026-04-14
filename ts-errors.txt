@@ -1,0 +1,165 @@
+client/src/components/app/ChatBox.tsx(180,50): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+client/src/components/app/ChildSupportImpactCard.tsx(65,41): error TS2561: Object literal may only specify known properties, but 'country' does not exist in type 'AIEntryParams'. Did you mean to write 'county'?
+client/src/components/app/LawSummarySection.tsx(108,13): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+client/src/components/v0/app-sidebar.tsx(3,18): error TS2307: Cannot find module 'next/link' or its corresponding type declarations.
+client/src/components/v0/app-sidebar.tsx(4,29): error TS2307: Cannot find module 'next/navigation' or its corresponding type declarations.
+client/src/components/v0/footer.tsx(1,18): error TS2307: Cannot find module 'next/link' or its corresponding type declarations.
+client/src/components/v0/footer.tsx(2,22): error TS2307: Cannot find module '@/components/navigation' or its corresponding type declarations.
+client/src/components/v0/navigation.tsx(3,18): error TS2307: Cannot find module 'next/link' or its corresponding type declarations.
+client/src/components/v0/navigation.tsx(4,29): error TS2307: Cannot find module 'next/navigation' or its corresponding type declarations.
+client/src/components/v0/ui/calendar.tsx(9,10): error TS2724: '"react-day-picker"' has no exported member named 'DayButton'. Did you mean 'Button'?
+client/src/components/v0/ui/calendar.tsx(9,32): error TS2305: Module '"react-day-picker"' has no exported member 'getDefaultClassNames'.
+client/src/components/v0/ui/calendar.tsx(18,3): error TS2322: Type '"label"' is not assignable to type 'CaptionLayout'.
+client/src/components/v0/ui/calendar.tsx(39,9): error TS2353: Object literal may only specify known properties, and 'formatMonthDropdown' does not exist in type 'Partial<Formatters>'.
+client/src/components/v0/ui/calendar.tsx(39,31): error TS7006: Parameter 'date' implicitly has an 'any' type.
+client/src/components/v0/ui/calendar.tsx(54,9): error TS2561: Object literal may only specify known properties, but 'button_previous' does not exist in type 'Partial<StyledElement<string>>'. Did you mean to write 'nav_button_previous'?
+client/src/components/v0/ui/calendar.tsx(82,11): error TS2367: This comparison appears to be unintentional because the types 'CaptionLayout' and '"label"' have no overlap.
+client/src/components/v0/ui/calendar.tsx(128,9): error TS2353: Object literal may only specify known properties, and 'Root' does not exist in type 'CustomComponents'.
+client/src/components/v0/ui/calendar.tsx(128,18): error TS7031: Binding element 'className' implicitly has an 'any' type.
+client/src/components/v0/ui/calendar.tsx(128,29): error TS7031: Binding element 'rootRef' implicitly has an 'any' type.
+client/src/components/v0/ui/calendar.tsx(138,21): error TS7031: Binding element 'className' implicitly has an 'any' type.
+client/src/components/v0/ui/calendar.tsx(138,32): error TS7031: Binding element 'orientation' implicitly has an 'any' type.
+client/src/components/v0/ui/calendar.tsx(159,24): error TS2339: Property 'children' does not exist on type 'WeekNumberProps'.
+client/src/components/v0/ui/command.tsx(53,9): error TS2322: Type '{ children: Element; className: string; showCloseButton: boolean; }' is not assignable to type 'IntrinsicAttributes & Omit<DialogContentProps & RefAttributes<HTMLDivElement>, "ref"> & RefAttributes<...>'.
+  Property 'showCloseButton' does not exist on type 'IntrinsicAttributes & Omit<DialogContentProps & RefAttributes<HTMLDivElement>, "ref"> & RefAttributes<...>'.
+client/src/components/v0/ui/sonner.tsx(4,49): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+client/src/pages/CustodyMapPage.tsx(3,55): error TS7016: Could not find a declaration file for module 'react-simple-maps'. '/Users/andreoliver/custody-atlas/node_modules/react-simple-maps/dist/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/react-simple-maps` if it exists or add a new declaration (.d.ts) file containing `declare module 'react-simple-maps';`
+client/src/pages/CustodyMapPage.tsx(715,37): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+client/src/pages/CustodyMapPage.tsx(724,37): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+client/src/pages/CustodyMapPage.tsx(1142,21): error TS7031: Binding element 'geographies' implicitly has an 'any' type.
+client/src/pages/CustodyMapPage.tsx(1143,36): error TS7006: Parameter 'geo' implicitly has an 'any' type.
+client/src/pages/CustodyMapPage.tsx(1192,38): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+client/src/pages/CustodyMapPage.tsx(1237,24): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+client/src/pages/LandingPage.tsx(8,55): error TS7016: Could not find a declaration file for module 'react-simple-maps'. '/Users/andreoliver/custody-atlas/node_modules/react-simple-maps/dist/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/react-simple-maps` if it exists or add a new declaration (.d.ts) file containing `declare module 'react-simple-maps';`
+client/src/pages/LandingPage.tsx(71,15): error TS7031: Binding element 'geographies' implicitly has an 'any' type.
+client/src/pages/LandingPage.tsx(72,30): error TS7006: Parameter 'geo' implicitly has an 'any' type.
+server/documentExtractor.ts(30,42): error TS2503: Cannot find namespace 'mammoth'.
+server/replit_integrations/audio/routes.ts(23,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/replit_integrations/audio/routes.ts(51,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/replit_integrations/audio/routes.ts(65,39): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/replit_integrations/batch/utils.ts(110,30): error TS2339: Property 'AbortError' does not exist on type '<T>(input: (attemptNumber: number) => T | PromiseLike<T>, options?: Options | undefined) => Promise<T>'.
+server/replit_integrations/batch/utils.ts(159,32): error TS2339: Property 'AbortError' does not exist on type '<T>(input: (attemptNumber: number) => T | PromiseLike<T>, options?: Options | undefined) => Promise<T>'.
+server/replit_integrations/chat/routes.ts(25,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/replit_integrations/chat/routes.ts(53,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/replit_integrations/chat/routes.ts(65,39): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/replit_integrations/chat/storage.ts(2,10): error TS2305: Module '"@shared/schema"' has no exported member 'conversations'.
+server/replit_integrations/chat/storage.ts(2,25): error TS2305: Module '"@shared/schema"' has no exported member 'messages'.
+server/replit_integrations/image/client.ts(23,18): error TS18048: 'response.data' is possibly 'undefined'.
+server/replit_integrations/image/client.ts(50,23): error TS18048: 'response.data' is possibly 'undefined'.
+server/replit_integrations/image/routes.ts(20,25): error TS18048: 'response.data' is possibly 'undefined'.
+server/routes.ts(704,28): error TS2802: Type 'MapIterator<{ value: string; sourceName: string | null; confidence: string; userConfirmed?: boolean | undefined; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(3098,36): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3112,9): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3134,19): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3135,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3194,33): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3207,49): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3276,41): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3283,45): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3357,52): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3359,47): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3368,45): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3389,41): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3470,52): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3499,52): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3528,43): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3586,43): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3934,34): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(3977,43): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4131,62): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4148,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4165,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4169,28): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4170,28): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4171,24): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4420,52): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4546,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4548,52): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4569,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4572,9): error TS2322: Type 'string | string[]' is not assignable to type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4574,9): error TS2322: Type 'string | string[]' is not assignable to type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4615,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4617,50): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4633,53): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4650,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4652,40): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4681,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4685,9): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4699,20): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4703,43): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4722,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4726,43): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4737,39): error TS2802: Type 'Map<string, { value: string; source: string; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(4741,34): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4748,47): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4777,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4779,45): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4804,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4807,47): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4827,44): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4830,59): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4849,31): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/routes.ts(4874,43): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+server/services/threads.ts(125,10): error TS2551: Property 'catch' does not exist on type 'PostgrestFilterBuilder<any, any, any, null, "threads", unknown, "PATCH">'. Did you mean 'match'?

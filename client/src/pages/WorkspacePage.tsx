@@ -328,186 +328,6 @@ function getTopPriorityItems({
   return deduped.slice(0, 3);
 }
 
-/* ── What Matters Now Panel ───────────────────────────────────────────────────
- * PRIMARY panel — the first thing users see.
- * loading:              skeleton, prevents flash of onboarding
- * empty:                guided NextBestStepPanel + supporting action rows
- * all other states:     context header + inline recommended action
- * ─────────────────────────────────────────────────────────────────────────── */
-
-function WhatMattersNowPanel({
-  workspaceState,
-  scenario,
-  ctaHref,
-  documents,
-  timelineEvents,
-  resumeHref,
-  askAIPath,
-  conversationCount,
-  analyzedCount,
-  activeCaseName,
-  preferredName,
-  caseIdParam,
-  onOpenDocumentSafely,
-}: {
-  workspaceState: WorkspaceState;
-  scenario: StepScenario;
-  ctaHref: string;
-  documents: WorkspaceDocument[];
-  timelineEvents: WorkspaceTimelineEvent[];
-  resumeHref: string;
-  askAIPath: string;
-  conversationCount: number;
-  analyzedCount: number;
-  activeCaseName: string | null;
-  preferredName?: string | null;
-  caseIdParam?: string;
-  onOpenDocumentSafely: (documentId: string) => Promise<void>;
-}) {
-  const askLabel = conversationCount > 0
-    ? "Ask a follow-up question"
-    : analyzedCount > 0
-      ? "Ask about your documents"
-      : "Ask Atlas";
-
-  const priorityItems = getTopPriorityItems({ workspaceState, scenario, documents, timelineEvents });
-  const scopedDocuments = caseIdParam ? documents.filter((doc) => doc.caseId === caseIdParam) : documents;
-  const scopedAnalyzedCount = scopedDocuments.filter((doc) => doc.isAnalysisAvailable).length;
-  const scopedRiskDoc = scopedDocuments
-    .filter((doc) => doc.isAnalysisAvailable && docHasRiskSignals(doc))
-    .sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a))[0];
-  const upcomingDeadlines = timelineEvents
-    .filter((ev) => {
-      const status = classifyDateStatus(ev.eventDate);
-      return status === "upcoming" || status === "today";
-    })
-    .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
-    .slice(0, 2);
-  const currentStatus = scopedAnalyzedCount > 0
-    ? `${scopedAnalyzedCount} analyzed document${scopedAnalyzedCount === 1 ? "" : "s"} in ${activeCaseName ?? "this workspace"}`
-    : `No analyzed documents yet in ${activeCaseName ?? "this workspace"}`;
-  const recommendedAction = STEP_CONFIGS[scenario].title;
-  const watchItem = scopedRiskDoc ? (getTopDocumentSignal(scopedRiskDoc) ?? scopedRiskDoc.fileName) : "No immediate risk signals detected.";
-
-  if (workspaceState === "loading") {
-    return (
-      <HeroPanel testId="panel-what-matters-now">
-        <HeroPanelContent className="space-y-3 py-4 px-4 sm:px-5">
-          <div className="h-5 w-48 rounded bg-muted animate-pulse" />
-          <div className="space-y-2">
-            <div className="h-12 rounded-lg bg-muted animate-pulse" />
-            <div className="h-12 rounded-lg bg-muted animate-pulse" />
-          </div>
-        </HeroPanelContent>
-      </HeroPanel>
-    );
-  }
-
-  if (workspaceState === "empty") {
-    return (
-      <HeroPanel testId="panel-what-matters-now">
-        <HeroPanelHeader>
-          <h2 className="text-base font-semibold text-foreground leading-tight">
-            {preferredName ? `What Matters Now, ${preferredName}` : "What Matters Now"}
-          </h2>
-        </HeroPanelHeader>
-        <HeroPanelContent className="pb-5">
-          <NextBestStepPanel scenario={scenario} ctaHref={ctaHref} />
-        </HeroPanelContent>
-      </HeroPanel>
-    );
-  }
-
-  return (
-    <HeroPanel testId="panel-what-matters-now">
-      <HeroPanelHeader className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 pb-3">
-        <div>
-          <h2 className="text-base font-semibold text-foreground leading-tight">What Matters Now</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Top priorities to keep your case moving forward.</p>
-        </div>
-        {conversationCount > 0 && (
-          <Link href={resumeHref}>
-            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs flex-shrink-0" data-testid="button-wmn-resume">
-              <Sparkles className="w-3.5 h-3.5" />
-              Resume last
-            </Button>
-          </Link>
-        )}
-      </HeroPanelHeader>
-
-      <HeroPanelContent className="space-y-2.5 px-4 sm:px-5 py-3.5">
-        <div className="rounded-lg border border-border/70 bg-background px-3.5 py-3" data-testid="wmn-case-snapshot">
-          <h3 className="text-sm font-semibold text-foreground mb-2">Case snapshot</h3>
-          <dl className="space-y-2">
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Current status</dt>
-              <dd className="text-sm text-foreground mt-0.5">{currentStatus}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Next critical deadlines</dt>
-              <dd className="text-sm text-foreground mt-0.5">
-                {upcomingDeadlines.length > 0
-                  ? upcomingDeadlines.map((event) => `${formatEventDate(event.eventDate)} · ${event.description}`).join(" • ")
-                  : "No upcoming deadlines captured yet."}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Top watch item</dt>
-              <dd className="text-sm text-foreground mt-0.5 line-clamp-2">{watchItem}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Recommended next action</dt>
-              <dd className="text-sm font-medium text-foreground mt-0.5">{recommendedAction}</dd>
-            </div>
-          </dl>
-        </div>
-        {priorityItems.map((item) => {
-          const docMatch = item.href.match(/^\/document\/(.+)$/);
-          const card = (
-            <div className={`rounded-lg border px-3 py-2.5 transition-colors cursor-pointer ${item.tone === "urgent" ? "border-amber-300 bg-amber-50/60 dark:border-amber-700/50 dark:bg-amber-950/20" : "border-border/70 bg-background hover:bg-muted/30"}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] mb-0.5 ${item.tone === "urgent" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
-                    {item.tone === "urgent" ? "Urgent" : "Priority"}
-                  </p>
-                  <p className="text-sm font-semibold text-foreground leading-snug">{item.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.detail}</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
-              </div>
-            </div>
-          );
-          if (docMatch?.[1]) {
-            return (
-              <button key={item.id} type="button" className="w-full text-left" onClick={() => onOpenDocumentSafely(docMatch[1])}>
-                {card}
-              </button>
-            );
-          }
-          return <Link key={item.id} href={item.href}>{card}</Link>;
-        })}
-      </HeroPanelContent>
-
-      <HeroPanelFooter className="py-3 px-4 sm:px-5">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <Link href={askAIPath}>
-            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" data-testid="wmn-footer-ask">
-              <MessageSquare className="w-3.5 h-3.5" />
-              {askLabel}
-            </Button>
-          </Link>
-          <Link href="/upload-document">
-            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" data-testid="wmn-footer-analyze">
-              <FileSearch className="w-3.5 h-3.5" />
-              Analyze a document
-            </Button>
-          </Link>
-        </div>
-      </HeroPanelFooter>
-    </HeroPanel>
-  );
-}
-
 /* ── Next Best Step ───────────────────────────────────────────────────────── */
 
 type StepScenario =
@@ -1571,11 +1391,12 @@ export default function WorkspacePage() {
   });
   const { data: caseSignalsData, isLoading: isLoadingCaseSignals } = useQuery<SignalsResponse>({
     queryKey: ["/api/signals", "case", caseIdParam],
-    enabled: !!user && !!caseIdParam,
+    enabled: !!user,
     staleTime: 0,
     refetchOnWindowFocus: true,
     retry: false,
     queryFn: async () => {
+      if (!caseIdParam) return { signals: [] };
       const res = await apiRequestRaw("GET", `/api/signals?caseId=${encodeURIComponent(caseIdParam ?? "")}`);
       if (res.status === 404) return { signals: [] };
       if (!res.ok) throw new Error("Failed to load case signals.");
@@ -1970,40 +1791,23 @@ export default function WorkspacePage() {
 
       <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         <div className="xl:col-span-8 space-y-4">
-          <WhatMattersNowPanel
-            workspaceState={workspaceState}
-            scenario={scenario}
-            ctaHref={scenarioCta}
-            documents={documents}
-            timelineEvents={timelineEvents}
-            resumeHref={resumeHref}
-            askAIPath={askAIPath}
-            conversationCount={conversationCount}
-            analyzedCount={analyzedCount}
-            activeCaseName={activeCaseName}
-            preferredName={preferredName}
-            caseIdParam={caseIdParam}
-            onOpenDocumentSafely={openDocumentSafely}
-          />
+          <Panel>
+            <PanelHeader icon={Activity} label="What Matters Now" />
+            <PanelContent className="p-3">
+              <DismissibleWhatMattersNow
+                rawSignals={caseSignalsData?.signals ?? []}
+                tier={signalTier}
+                totalDocuments={caseScopedDocuments.length || documents.length}
+                lastActivityDaysAgo={lastActivityDaysAgo}
+                loading={isLoadingCaseSignals}
+              />
+            </PanelContent>
+          </Panel>
 
           <QuickActionsPanel askAIPath={askAIPath} />
         </div>
 
         <div className="xl:col-span-4 space-y-4">
-          {caseIdParam && (
-            <Panel>
-              <PanelHeader icon={Activity} label="What Matters Now" />
-              <PanelContent className="p-3">
-                <DismissibleWhatMattersNow
-                  rawSignals={caseSignalsData?.signals ?? []}
-                  tier={signalTier}
-                  totalDocuments={caseScopedDocuments.length}
-                  lastActivityDaysAgo={lastActivityDaysAgo}
-                  loading={isLoadingCaseSignals}
-                />
-              </PanelContent>
-            </Panel>
-          )}
           <div className="rounded-lg border border-border/40 bg-muted/10 px-3 py-2.5 flex items-center gap-2" data-testid="card-privacy-trust">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
             <p className="text-xs text-muted-foreground leading-snug">
