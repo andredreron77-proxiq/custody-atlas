@@ -7,11 +7,11 @@ import { useQuery } from "@tanstack/react-query";
 import { AuthButton } from "./AuthButton";
 import { UsageIndicator } from "./UsageIndicator";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { getQueryFn } from "@/lib/queryClient";
+import { apiRequestRaw } from "@/lib/queryClient";
 
 // Desktop nav omits "Home" — the logo lockup serves that purpose.
 // All items remain in the mobile drawer for full discoverability.
-const DESKTOP_NAV_LABELS = new Set(["Workspace", "Custody Map", "Ask Atlas", "Analyze Document"]);
+const DESKTOP_NAV_LABELS = new Set(["Workspace", "Custody Map", "Ask Atlas", "Resources", "Analyze Document"]);
 
 interface NavItem {
   label: string;
@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Workspace",        href: "/workspace",       icon: LayoutDashboard, gated: true },
   { label: "Custody Map",      href: "/custody-map",     icon: Map },
   { label: "Ask Atlas",         href: "/ask",             icon: MessageSquare,   gated: true },
+  { label: "Resources",        href: "/resources",       icon: HelpCircle,      gated: true },
   { label: "Analyze Document", href: "/upload-document", icon: FileSearch,      gated: true },
 ];
 
@@ -39,8 +40,12 @@ export function Header() {
   // Admin status — only queried once the user is confirmed signed-in.
   // Uses the same query key as AdminPage so the result is shared from cache.
   const { data: adminStatus } = useQuery<{ isAdmin: boolean }>({
-    queryKey: ["/api/admin/status"],
-    queryFn: getQueryFn({ on401: "throw" }),
+    queryKey: ["admin-status", user?.id ?? "anonymous"],
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/admin/status");
+      if (!res.ok) return { isAdmin: false };
+      return res.json() as Promise<{ isAdmin: boolean }>;
+    },
     enabled: !authLoading && !!user,
     retry: false,
     staleTime: 30_000,

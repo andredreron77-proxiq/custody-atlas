@@ -58,17 +58,6 @@ export function parseStoredJurisdiction(raw: string, activeUserId: string | null
     entry = { jurisdiction: parsed as Jurisdiction, savedAt: Date.now() };
   }
 
-  // Logged-in users should only ever consume a location they explicitly set in
-  // their own account context. This prevents cross-account county bleed.
-  if (activeUserId) {
-    if (!entry.userId || entry.userId !== activeUserId) {
-      return { entry, shouldClearStorage: true };
-    }
-  } else if (entry.userId) {
-    // Signed-out/new visitors should not inherit prior signed-in context.
-    return { entry, shouldClearStorage: true };
-  }
-
   return { entry, shouldClearStorage };
 }
 

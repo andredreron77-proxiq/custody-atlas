@@ -202,8 +202,6 @@ export default function JurisdictionPage() {
   // Persist to sessionStorage so other pages (e.g. Workspace) can read it back
   useJurisdiction(match && params ? jurisdiction : null);
 
-  if (!match || !params) return null;
-
   // ── State custody law (legal rules set by state statute) ─────────────────
   const { data: law, isLoading, error } = useQuery<CustodyLawRecord>({
     queryKey: ["/api/custody-laws", state],
@@ -215,6 +213,7 @@ export default function JurisdictionPage() {
       }
       return res.json();
     },
+    enabled: !!state,
   });
 
   // ── County court procedures (local operational details) ───────────────────
@@ -234,6 +233,8 @@ export default function JurisdictionPage() {
     staleTime: 5 * 60 * 1000,
     retry: false, // Don't retry 404s
   });
+
+  if (!match || !params) return null;
 
   const isUnsupported = error instanceof Error && error.message === "unsupported_state";
 
