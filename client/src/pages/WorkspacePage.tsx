@@ -515,6 +515,7 @@ const STEP_CONFIGS: Record<StepScenario, StepConfig> = {
 };
 
 function NextBestStepPanel({ scenario, ctaHref }: { scenario: StepScenario; ctaHref: string }) {
+  // hooks — all unconditional, called in same order every render
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
   const { icon: Icon, iconBg, iconColor, title, description, ctaLabel, secondaryLabel } = STEP_CONFIGS[scenario];
@@ -607,6 +608,7 @@ function CaseBriefSection({
   firstCaseId: string | null;
   onCreateCase: () => void;
 }) {
+  // hooks — all unconditional, called in same order every render
   const [, navigate] = useLocation();
   const [brief, setBrief] = useState<CaseBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -850,6 +852,7 @@ function DocumentsSection({
   uploadEmptyMessage?: string;
   currentUserId?: string;
 }) {
+  // hooks — all unconditional, called in same order every render
   const qc = useQueryClient();
   const { toast } = useToast();
   const [location] = useLocation();
@@ -1179,6 +1182,7 @@ function TimelineAndActivityPanel({
   askAIPath: string;
   onOpenDocumentSafely: (documentId: string) => Promise<void>;
 }) {
+  // hooks — all unconditional, called in same order every render
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [eventDate, setEventDate] = useState("");
@@ -1428,6 +1432,7 @@ function TimelineAndActivityPanel({
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export default function WorkspacePage() {
+  // hooks — all unconditional, called in same order every render
   const [location] = useLocation();
   const [, navigate] = useLocation();
   const { jurisdiction } = useJurisdiction();
@@ -1506,6 +1511,26 @@ export default function WorkspacePage() {
       if (res.status === 404) return { signals: [] };
       if (!res.ok) throw new Error("Failed to load case signals.");
       return res.json() as Promise<SignalsResponse>;
+    },
+  });
+  const memoryCaseId = (() => {
+    if (caseIdParam) return caseIdParam;
+    const latest = [...(casesData?.cases ?? [])].sort((a, b) => {
+      const left = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+      const right = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+      return left - right;
+    })[0];
+    return latest?.id ?? null;
+  })();
+  const { data: memoryCaseActions } = useQuery<{ actions: Array<unknown>; hearingDate: string | null }>({
+    queryKey: ["/api/cases", "memory-strip", memoryCaseId, "actions"],
+    enabled: !!user && !!memoryCaseId,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${encodeURIComponent(memoryCaseId ?? "")}/actions`);
+      if (!res.ok) return { actions: [], hearingDate: null };
+      return res.json() as Promise<{ actions: Array<unknown>; hearingDate: string | null }>;
     },
   });
 
@@ -1780,17 +1805,6 @@ export default function WorkspacePage() {
     ? `${preferredName}, upload your first custody document`
     : "Upload your first custody document";
   const greetingName = preferredName || (user?.email?.split("@")[0] ?? "there");
-  const { data: memoryCaseActions } = useQuery<{ actions: Array<unknown>; hearingDate: string | null }>({
-    queryKey: ["/api/cases", "memory-strip", memoryCase?.id, "actions"],
-    enabled: !!user && !!memoryCase?.id,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${encodeURIComponent(memoryCase?.id ?? "")}/actions`);
-      if (!res.ok) return { actions: [], hearingDate: null };
-      return res.json() as Promise<{ actions: Array<unknown>; hearingDate: string | null }>;
-    },
-  });
 
   return (
     <PageContainer size="wide" className="max-w-[1320px] py-4 space-y-4" testId="page-workspace">

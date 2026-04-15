@@ -18,6 +18,7 @@ import LandingPage from "@/pages/LandingPage";
 import LocationPage from "@/pages/LocationPage";
 import JurisdictionPage from "@/pages/JurisdictionPage";
 import AskAIPage from "@/pages/AskAIPage";
+import ResourcesPage from "@/pages/ResourcesPage";
 import UploadDocumentPage from "@/pages/UploadDocumentPage";
 import CustodyMapPage from "@/pages/CustodyMapPage";
 import WorkspacePage from "@/pages/WorkspacePage";
@@ -40,6 +41,7 @@ import type { ComponentType } from "react";
 const NO_FOOTER_PREFIXES = [
   "/ask",
   "/workspace",
+  "/resources",
   "/upload-document",
   "/case/",
   "/document/",
@@ -130,6 +132,9 @@ function Router() {
       <Route path="/ask">
         {() => <ProtectedRoute component={AskAIPage} feature="ask-ai" />}
       </Route>
+      <Route path="/resources">
+        {() => <ProtectedRoute component={ResourcesPage} feature="ask-ai" />}
+      </Route>
       <Route path="/upload-document">
         {() => <ProtectedRoute component={UploadDocumentPage} feature="analyze-document" />}
       </Route>
@@ -202,6 +207,9 @@ function HomeRoute() {
 }
 
 function App() {
+  const { user, isLoading } = useCurrentUser();
+  const authKey = isLoading ? "loading" : user ? user.id : "unauthenticated";
+
   return (
     <ThemeProvider>
     <QueryClientProvider client={queryClient}>
@@ -210,7 +218,9 @@ function App() {
         <div className="min-h-screen flex flex-col">
           <Header />
           <main className="flex-1 flex flex-col min-h-0">
-            <Router />
+            <div key={authKey} className="flex-1 flex flex-col min-h-0">
+              <Router />
+            </div>
           </main>
           <AppFooter />
         </div>

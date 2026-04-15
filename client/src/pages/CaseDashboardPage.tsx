@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "wouter";
+import { FormEvent, KeyboardEvent, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Lightbulb, Scale, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -207,12 +207,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
+  const [, navigate] = useLocation();
   const [expanded, setExpanded] = useState(false);
   const [showFullTimeline, setShowFullTimeline] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [showAskAtlasPanel, setShowAskAtlasPanel] = useState(false);
+  const [askAtlasQuestion, setAskAtlasQuestion] = useState("");
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventDate, setNewEventDate] = useState("");
   const alertRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -326,6 +328,27 @@ export default function CaseDashboardPage() {
     "Which deadline needs attention first?",
     "What document should I upload next?",
   ], []);
+
+  const submitAskAtlasQuestion = (question?: string) => {
+    if (!caseId) return;
+    const params = new URLSearchParams({ case: caseId });
+    const trimmedQuestion = question?.trim();
+    if (trimmedQuestion) {
+      params.set("q", trimmedQuestion);
+    }
+    navigate(`/ask?${params.toString()}`);
+  };
+
+  const handleAskAtlasSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitAskAtlasQuestion(askAtlasQuestion);
+  };
+
+  const handleAskAtlasKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    submitAskAtlasQuestion(askAtlasQuestion);
+  };
 
   const suggestedFocus = useMemo(() => {
     if (!data) return null;
@@ -769,7 +792,18 @@ export default function CaseDashboardPage() {
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">Ask Atlas</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <Input placeholder="Ask about this case…" aria-label="Ask about this case" />
+          <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleAskAtlasSubmit}>
+            <Input
+              placeholder="Ask about this case…"
+              aria-label="Ask about this case"
+              value={askAtlasQuestion}
+              onChange={(event) => setAskAtlasQuestion(event.target.value)}
+              onKeyDown={handleAskAtlasKeyDown}
+            />
+            <Button type="submit" disabled={!askAtlasQuestion.trim()} className="sm:self-start">
+              Ask Atlas
+            </Button>
+          </form>
           <div className="flex flex-wrap gap-1.5">
             {suggestedPrompts.map((prompt) => (
               <Link key={prompt} href={`/ask?case=${data.case.id}&q=${encodeURIComponent(prompt)}`}>

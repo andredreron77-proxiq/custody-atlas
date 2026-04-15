@@ -74,6 +74,8 @@ export async function requireAdmin(
 ): Promise<void> {
   const token = req.headers.authorization?.replace("Bearer ", "").trim();
   const user = await getCurrentUser(req);
+  console.log("[requireAdmin] ADMIN_EMAIL:", process.env.ADMIN_EMAIL);
+  console.log("[requireAdmin] user email:", user?.email);
 
   // ── Debug logging (temporary) ─────────────────────────────────────────────
   const adminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
