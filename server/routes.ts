@@ -1533,6 +1533,13 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
 
       const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId, documentId, selectedDocumentIds } = parsed.data;
       const userId = (req as any).user?.id as string | undefined;
+      const usageOverage = (req as any).usageOverage as
+        | {
+            overageWarning: true;
+            questionsUsed: number;
+            questionsLimit: number;
+          }
+        | undefined;
       let effectiveIntent: "FACT" | "EXPLANATION" | "ACTION" = "EXPLANATION";
       let effectiveJurisdiction = { ...jurisdiction };
       let activeCaseRecord: Awaited<ReturnType<typeof getCaseById>> | null = null;
@@ -1796,6 +1803,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
             intent: effectiveIntent,
             userQuestion,
           }),
+          ...(usageOverage ?? {}),
           ...(jurisdictionMismatchPayload ?? {}),
         };
 
@@ -2039,6 +2047,7 @@ The user is asking what they should do or how to take a specific action. Focus y
           intent: effectiveIntent,
           userQuestion,
         }),
+        ...(usageOverage ?? {}),
         ...(jurisdictionMismatchPayload ?? {}),
       };
 

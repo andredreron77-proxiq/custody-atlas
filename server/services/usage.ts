@@ -28,8 +28,8 @@ export interface UsageState {
 }
 
 export const TIER_LIMITS: Record<"free" | "pro", { questions: number; documents: number }> = {
-  free: { questions: 5,  documents: 1 },
-  pro:  { questions: 25, documents: 10 },
+  free: { questions: 25,  documents: 1 },
+  pro:  { questions: 200, documents: 10 },
 };
 
 function todayDate(): string {
@@ -108,8 +108,19 @@ export async function checkQuestionLimit(
   const { questionsUsed } = await getTodayUsage(user.id);
 
   if (questionsUsed >= limit) {
+    if (tier === "pro") {
+      (req as any).usageOverage = {
+        overageWarning: true,
+        questionsUsed,
+        questionsLimit: limit,
+      };
+      console.warn(`[usage] pro question overage user=${user.id} used=${questionsUsed} limit=${limit}`);
+      next();
+      return;
+    }
+
     res.status(429).json({
-      error: `Daily question limit of ${limit} reached. Upgrade to Pro for more.`,
+      error: `Monthly question limit of ${limit} reached. Upgrade to Pro for more.`,
       code: "QUESTION_LIMIT_REACHED",
       limit,
       used: questionsUsed,

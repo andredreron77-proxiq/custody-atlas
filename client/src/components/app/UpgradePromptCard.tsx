@@ -4,6 +4,7 @@
 
 import { Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useUsage } from "@/hooks/use-usage";
 import { cn } from "@/lib/utils";
 
 type LimitType = "question" | "document";
@@ -27,7 +28,12 @@ const COPY: Record<LimitType, { title: string; description: string }> = {
 };
 
 export function UpgradePromptCard({ type, className }: UpgradePromptCardProps) {
+  const { usage } = useUsage();
   const copy = COPY[type];
+
+  if (usage?.tier === "pro") {
+    return null;
+  }
 
   return (
     <Card className={cn("border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30", className)}>

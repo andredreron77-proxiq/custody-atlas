@@ -50,6 +50,9 @@ type JurisdictionMismatchInfo = {
 
 type AskAssistantResponse = AILegalResponse & {
   conversationId?: string;
+  overageWarning?: boolean;
+  questionsUsed?: number;
+  questionsLimit?: number;
 } & JurisdictionMismatchInfo;
 
 function getSuggestedQuestions(state: string): string[] {
@@ -378,6 +381,10 @@ export function ChatBox({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [proOverageNotice, setProOverageNotice] = useState<{
+    questionsUsed: number;
+    questionsLimit: number;
+  } | null>(null);
   const [savedToWorkspace, setSavedToWorkspace] = useState(!!initialThreadId || !!caseId);
   const [jurisdictionPreference, setJurisdictionPreference] = useState<"case" | "ask" | null>(null);
   const [dismissedMismatchMessageIds, setDismissedMismatchMessageIds] = useState<Set<string>>(new Set());
@@ -500,6 +507,7 @@ export function ChatBox({
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setInput("");
     setIsLoading(true);
+    setProOverageNotice(null);
 
     const historySnapshot: ConversationHistoryItem[] = messages
       .slice(-16)
@@ -549,6 +557,13 @@ export function ChatBox({
         conversationIdRef.current = data.conversationId;
         setSavedToWorkspace(true);
         queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      }
+
+      if (data.overageWarning && typeof data.questionsUsed === "number" && typeof data.questionsLimit === "number") {
+        setProOverageNotice({
+          questionsUsed: data.questionsUsed,
+          questionsLimit: data.questionsLimit,
+        });
       }
 
       setMessages((prev) => [...prev, {
@@ -616,6 +631,7 @@ export function ChatBox({
   const clearConversation = () => {
     setMessages([]);
     setLimitReached(false);
+    setProOverageNotice(null);
     setSavedToWorkspace(!!caseId);
     threadIdRef.current = undefined;
     conversationIdRef.current = undefined;
@@ -886,6 +902,16 @@ export function ChatBox({
             )}
 
             {limitReached && <UpgradePromptCard type="question" />}
+            {proOverageNotice && (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 px-3.5 py-3">
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  You've used {proOverageNotice.questionsLimit} questions this month.
+                </p>
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                  Additional questions are billed at $0.10 each. Your usage is tracked automatically.
+                </p>
+              </div>
+            )}
 
             <div className="text-xs text-muted-foreground" data-testid="label-answering-scope">
               {answeringScopeLabel ?? "Answering from: General workspace (no case selected)"}
