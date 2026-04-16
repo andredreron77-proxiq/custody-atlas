@@ -2,14 +2,15 @@
  * server/services/usage.ts
  *
  * Supabase-backed usage tracking service.
- * Tracks daily question and document usage per user in the usage_limits table.
+ * Tracks monthly question and document usage per user in the usage_limits table.
  *
  * Expected usage_limits table schema:
  *   user_id        uuid  NOT NULL (FK → auth.users)
  *   date           date  NOT NULL
+ *   billing_period date  NULL/NOT NULL after migration
  *   questions_used int   NOT NULL DEFAULT 0
  *   documents_used int   NOT NULL DEFAULT 0
- *   PRIMARY KEY (user_id, date)
+ *   UNIQUE (user_id, billing_period)
  */
 
 import type { Request, Response, NextFunction } from "express";
@@ -32,21 +33,24 @@ export const TIER_LIMITS: Record<"free" | "pro", { questions: number; documents:
   pro:  { questions: 200, documents: 10 },
 };
 
-function todayDate(): string {
-  return new Date().toISOString().split("T")[0];
+function currentBillingPeriod(): string {
+  const billingPeriod = new Date();
+  billingPeriod.setDate(1);
+  billingPeriod.setHours(0, 0, 0, 0);
+  return billingPeriod.toISOString().split("T")[0];
 }
 
 /**
- * Fetch today's usage counts for a user from the usage_limits table.
+ * Fetch current billing-period usage counts for a user from the usage_limits table.
  */
-async function getTodayUsage(userId: string): Promise<{ questionsUsed: number; documentsUsed: number }> {
+async function getCurrentUsage(userId: string): Promise<{ questionsUsed: number; documentsUsed: number }> {
   if (!supabaseAdmin) return { questionsUsed: 0, documentsUsed: 0 };
   try {
     const { data } = await supabaseAdmin
       .from("usage_limits")
       .select("questions_used, documents_used")
       .eq("user_id", userId)
-      .eq("date", todayDate())
+      .eq("billing_period", currentBillingPeriod())
       .single();
     return {
       questionsUsed: data?.questions_used ?? 0,
@@ -76,7 +80,7 @@ export async function getUsageState(req: Request): Promise<UsageState> {
 
   const tier = await getUserTier(user.id);
   const limits = TIER_LIMITS[tier];
-  const { questionsUsed, documentsUsed } = await getTodayUsage(user.id);
+  const { questionsUsed, documentsUsed } = await getCurrentUsage(user.id);
 
   return {
     isAuthenticated: true,
@@ -90,7 +94,7 @@ export async function getUsageState(req: Request): Promise<UsageState> {
 
 /**
  * Middleware: reject the request if the authenticated user has hit their
- * daily question limit. Must be placed AFTER requireAuth.
+ * monthly question limit. Must be placed AFTER requireAuth.
  */
 export async function checkQuestionLimit(
   req: Request,
@@ -105,7 +109,7 @@ export async function checkQuestionLimit(
 
   const tier = await getUserTier(user.id);
   const limit = TIER_LIMITS[tier].questions;
-  const { questionsUsed } = await getTodayUsage(user.id);
+  const { questionsUsed } = await getCurrentUsage(user.id);
 
   if (questionsUsed >= limit) {
     if (tier === "pro") {
@@ -133,7 +137,7 @@ export async function checkQuestionLimit(
 
 /**
  * Middleware: reject the request if the authenticated user has hit their
- * daily document limit. Must be placed AFTER requireAuth.
+ * document limit for the current billing period. Must be placed AFTER requireAuth.
  */
 export async function checkDocumentLimit(
   req: Request,
@@ -148,7 +152,7 @@ export async function checkDocumentLimit(
 
   const tier = await getUserTier(user.id);
   const limit = TIER_LIMITS[tier].documents;
-  const { documentsUsed } = await getTodayUsage(user.id);
+  const { documentsUsed } = await getCurrentUsage(user.id);
 
   if (documentsUsed >= limit) {
     res.status(429).json({
@@ -164,52 +168,55 @@ export async function checkDocumentLimit(
 }
 
 /**
- * Increment the question counter for the current user (upsert today's row).
+ * Increment the question counter for the current user (upsert current billing-period row).
  */
 export async function trackQuestion(req: Request): Promise<void> {
   const user = (req as any).user;
   if (!user || !supabaseAdmin) return;
   try {
-    const today = todayDate();
+    const billingPeriodStr = currentBillingPeriod();
+    const userId = user.id;
     const { data: existing } = await supabaseAdmin
       .from("usage_limits")
       .select("questions_used")
-      .eq("user_id", user.id)
-      .eq("date", today)
+      .eq("user_id", userId)
+      .eq("billing_period", billingPeriodStr)
       .single();
 
     await supabaseAdmin.from("usage_limits").upsert({
-      user_id: user.id,
-      date: today,
+      user_id: userId,
+      date: billingPeriodStr,
+      billing_period: billingPeriodStr,
       questions_used: (existing?.questions_used ?? 0) + 1,
       documents_used: 0,
-    }, { onConflict: "user_id,date" });
+    }, { onConflict: "user_id,billing_period" });
   } catch (err) {
     console.error("[usage] trackQuestion error:", err);
   }
 }
 
 /**
- * Increment the document counter for the current user (upsert today's row).
+ * Increment the document counter for the current user (upsert current billing-period row).
  */
 export async function trackDocument(req: Request): Promise<void> {
   const user = (req as any).user;
   if (!user || !supabaseAdmin) return;
   try {
-    const today = todayDate();
+    const billingPeriodStr = currentBillingPeriod();
     const { data: existing } = await supabaseAdmin
       .from("usage_limits")
       .select("documents_used")
       .eq("user_id", user.id)
-      .eq("date", today)
+      .eq("billing_period", billingPeriodStr)
       .single();
 
     await supabaseAdmin.from("usage_limits").upsert({
       user_id: user.id,
-      date: today,
+      date: billingPeriodStr,
+      billing_period: billingPeriodStr,
       questions_used: 0,
       documents_used: (existing?.documents_used ?? 0) + 1,
-    }, { onConflict: "user_id,date" });
+    }, { onConflict: "user_id,billing_period" });
   } catch (err) {
     console.error("[usage] trackDocument error:", err);
   }

@@ -124,28 +124,34 @@ export async function maybePublishQuestion(opts: {
   questionText: string;
   responseJson: Record<string, unknown>;
 }): Promise<void> {
-  const { state, county, questionText, responseJson } = opts;
+  if (!process.env.DATABASE_URL) return;
 
-  if (!isSafeToPublish(questionText)) return;
+  try {
+    const { state, county, questionText, responseJson } = opts;
 
-  const stateSlug = buildStateSlug(state);
-  const topic = inferTopic(questionText);
-  const baseSlug = generateSlug(questionText);
-  const slug = await findUniqueSlug(baseSlug);
-  const isStateOnly = !county || county.toLowerCase() === "general";
+    if (!isSafeToPublish(questionText)) return;
 
-  await db.insert(publicQuestionsTable).values({
-    state,
-    stateSlug,
-    county: isStateOnly ? "" : county,
-    topic,
-    slug,
-    questionText,
-    responseJson,
-    seoTitle: buildSEOTitle(questionText, state),
-    seoDescription: buildSEODescription(questionText, responseJson),
-    isPublic: true,
-  });
+    const stateSlug = buildStateSlug(state);
+    const topic = inferTopic(questionText);
+    const baseSlug = generateSlug(questionText);
+    const slug = await findUniqueSlug(baseSlug);
+    const isStateOnly = !county || county.toLowerCase() === "general";
+
+    await db.insert(publicQuestionsTable).values({
+      state,
+      stateSlug,
+      county: isStateOnly ? "" : county,
+      topic,
+      slug,
+      questionText,
+      responseJson,
+      seoTitle: buildSEOTitle(questionText, state),
+      seoDescription: buildSEODescription(questionText, responseJson),
+      isPublic: true,
+    });
+  } catch {
+    // Best-effort SEO publishing should never interfere with /api/ask.
+  }
 }
 
 /** List public questions for a state (for state page sidebar). */
