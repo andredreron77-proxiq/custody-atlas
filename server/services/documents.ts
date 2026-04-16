@@ -382,7 +382,7 @@ export async function getDocumentsByCase(
 ): Promise<SavedDocument[]> {
   if (!supabaseAdmin) return [];
   try {
-    const linkedDocumentIds: string[] = [];
+    const explicitlyLinkedDocumentIds: string[] = [];
     const legacyDocumentIds: string[] = [];
 
     // New canonical model: association table (document_case_links) handles case linkage.
@@ -394,7 +394,7 @@ export async function getDocumentsByCase(
       .limit(100);
 
     if (!linksError && links?.length) {
-      linkedDocumentIds.push(...links
+      explicitlyLinkedDocumentIds.push(...links
         .map((l: any) => l.document_id as string | null)
         .filter((id): id is string => typeof id === "string" && id.length > 0));
     }
@@ -418,7 +418,7 @@ export async function getDocumentsByCase(
       );
     }
 
-    const caseScopedDocumentIds = mergeCaseScopedDocumentIds(linkedDocumentIds, legacyDocumentIds);
+    const caseScopedDocumentIds = mergeCaseScopedDocumentIds(explicitlyLinkedDocumentIds, legacyDocumentIds);
     if (!caseScopedDocumentIds.length) {
       return [];
     }
@@ -430,7 +430,7 @@ export async function getDocumentsByCase(
       .in("id", caseScopedDocumentIds)
       .order("created_at", { ascending: false })
       .limit(50);
-    const { data, error } = await applyCanonicalOnlyFilter(baseDocumentsQuery);
+    const { data, error } = await baseDocumentsQuery;
 
     if (error) {
       console.error("[documents] getDocumentsByCase documents fetch error:", error.message);

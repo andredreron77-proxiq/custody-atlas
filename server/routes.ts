@@ -2610,6 +2610,7 @@ CRITICAL RULES:
         const documentName = req.file.originalname || "document";
         const retentionTier = resolveRetentionTierFromRequest(req);
         const retentionWindow = buildRetentionWindow(retentionTier);
+        const suppressDuplicateMarker = Boolean(docCaseId);
         const analysisWithSourceHash = {
           ...(validated.data as Record<string, unknown>),
           analysis_status: "completed",
@@ -2683,8 +2684,8 @@ CRITICAL RULES:
             sourceKind: sourceType,
             intakeTextHash: createHash("sha256").update(truncatedText.toLowerCase().replace(/\s+/g, " ").trim()).digest("hex"),
             intakeTextPreview: truncatedText.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 500),
-            duplicateOfDocumentId: duplicateDecisionType === "NEW_DOCUMENT" ? null : duplicateOfDocumentId,
-            duplicateConfidence: duplicateDecisionConfidence,
+            duplicateOfDocumentId: suppressDuplicateMarker || duplicateDecisionType === "NEW_DOCUMENT" ? null : duplicateOfDocumentId,
+            duplicateConfidence: suppressDuplicateMarker ? null : duplicateDecisionConfidence,
             retentionTier,
             originalExpiresAt: retentionWindow.originalExpiresAt,
             intelligenceExpiresAt: retentionWindow.intelligenceExpiresAt,
