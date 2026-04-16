@@ -100,6 +100,11 @@ import {
   type ResourcesResponse,
 } from "./services/resources";
 import {
+  createCheckoutSession,
+  createPortalSession,
+  handleWebhookEvent,
+} from "./services/billing";
+import {
   maybePublishQuestion,
   getPublicQuestionsByState,
   getPublicQuestionBySlug,
@@ -1134,6 +1139,83 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (err) {
       console.error("Usage state error:", err);
       res.status(500).json({ error: "Could not retrieve usage state." });
+    }
+  });
+
+  app.post("/api/billing/create-checkout-session", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string; email: string | null };
+    const parsed = z.object({
+      priceId: z.string().min(1),
+      plan: z.enum(["monthly", "annual"]),
+    }).safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid billing payload." });
+    }
+
+    const monthlyPriceId = process.env.STRIPE_PRO_MONTHLY_PRICE_ID;
+    const annualPriceId = process.env.STRIPE_PRO_ANNUAL_PRICE_ID;
+    const expectedPriceId = parsed.data.plan === "monthly" ? monthlyPriceId : annualPriceId;
+    const clientUrl = process.env.CLIENT_URL ?? req.get("origin") ?? "http://127.0.0.1:5050";
+
+    const priceIdMatches = parsed.data.priceId === expectedPriceId || parsed.data.priceId === parsed.data.plan;
+    if (!expectedPriceId || !priceIdMatches) {
+      return res.status(400).json({ error: "Invalid Stripe price selected." });
+    }
+
+    if (!user.email) {
+      return res.status(400).json({ error: "A verified email address is required for billing." });
+    }
+
+    try {
+      const url = await createCheckoutSession({
+        userId: user.id,
+        userEmail: user.email,
+        priceId: expectedPriceId,
+        successUrl: `${clientUrl}/billing/success`,
+        cancelUrl: `${clientUrl}/billing/cancel`,
+      });
+      return res.json({ url });
+    } catch (err: any) {
+      console.error("[billing] create checkout session error:", err);
+      return res.status(500).json({ error: err?.message ?? "Failed to create checkout session." });
+    }
+  });
+
+  app.post("/api/billing/portal", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const clientUrl = process.env.CLIENT_URL ?? req.get("origin") ?? "http://127.0.0.1:5050";
+
+    try {
+      const url = await createPortalSession({
+        userId: user.id,
+        returnUrl: `${clientUrl}/settings`,
+      });
+      return res.json({ url });
+    } catch (err: any) {
+      console.error("[billing] create portal session error:", err);
+      return res.status(500).json({ error: err?.message ?? "Failed to create billing portal session." });
+    }
+  });
+
+  app.post("/api/webhooks/stripe", async (req, res) => {
+    const signature = asString(req.headers["stripe-signature"]);
+    const rawPayload = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.isBuffer(req.rawBody)
+        ? (req.rawBody as Buffer)
+        : Buffer.from([]);
+
+    if (!signature) {
+      return res.status(400).json({ error: "Missing Stripe signature." });
+    }
+
+    try {
+      await handleWebhookEvent(rawPayload, signature);
+      return res.status(200).json({ received: true });
+    } catch (err: any) {
+      console.error("[billing] stripe webhook error:", err);
+      return res.status(400).json({ error: err?.message ?? "Invalid Stripe webhook." });
     }
   });
 

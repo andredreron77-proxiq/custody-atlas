@@ -13,6 +13,8 @@ declare module "http" {
   }
 }
 
+app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }));
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {

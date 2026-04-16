@@ -29,6 +29,8 @@ import CustodyQuestionsPage from "@/pages/CustodyQuestionsPage";
 import PublicQAPage from "@/pages/PublicQAPage";
 import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import RedeemCodePage from "@/pages/RedeemCodePage";
+import BillingSuccessPage from "@/pages/BillingSuccessPage";
+import BillingCancelPage from "@/pages/BillingCancelPage";
 import AdminPage from "@/pages/admin/AdminPage";
 import CaseDashboardPage from "@/pages/CaseDashboardPage";
 import DocumentDetailPage from "@/pages/DocumentDetailPage";
@@ -125,6 +127,8 @@ function Router() {
       <Route path="/terms" component={TermsPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/redeem" component={RedeemCodePage} />
+      <Route path="/billing/success" component={BillingSuccessPage} />
+      <Route path="/billing/cancel" component={BillingCancelPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/admin/users" component={AdminPage} />
 
