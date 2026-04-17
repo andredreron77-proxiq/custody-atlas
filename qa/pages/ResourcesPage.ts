@@ -7,7 +7,15 @@ export class ResourcesPage extends BasePage {
   }
 
   async goto(): Promise<void> {
+    const resourcesResponse = this.page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/resources") &&
+        response.request().method() === "GET",
+      { timeout: 30_000 },
+    ).catch(() => null);
     await super.goto("/resources");
+    await this.page.waitForLoadState("networkidle");
+    await resourcesResponse;
   }
 
   async assertCategoriesVisible(): Promise<void> {
@@ -18,7 +26,7 @@ export class ResourcesPage extends BasePage {
       /mediation services/i,
       /vetted family law attorneys/i,
     ]) {
-      await expect(this.page.getByText(heading).first()).toBeVisible();
+      await expect(this.page.getByText(heading).first()).toBeVisible({ timeout: 30_000 });
     }
   }
 

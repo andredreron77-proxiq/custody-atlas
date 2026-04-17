@@ -70,7 +70,14 @@ export async function seedCase<T = { id: string }>(
   token: string,
   caseData: Record<string, unknown>,
 ): Promise<T> {
-  return apiRequest<T>("POST", "/api/cases", caseData, token);
+  const data = await apiRequest<{ case?: { id?: string }; id?: string }>(
+    "POST",
+    "/api/cases",
+    caseData,
+    token,
+  );
+  const caseId = data.case?.id ?? data.id;
+  return { id: caseId } as T;
 }
 
 export async function deleteCase(token: string, caseId: string): Promise<void> {

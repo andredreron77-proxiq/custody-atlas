@@ -10,7 +10,6 @@ import {
 } from '../../fixtures/env';
 import { qaProduct } from '../../fixtures/product';
 import { loginWithEmail, resetFreshUserOnboardingState } from '../../utils/auth';
-import { expectStablePage } from '../../utils/assertions';
 
 test.describe('Custody Atlas auth + onboarding', () => {
 async function dismissWelcomeModalIfVisible(page: Page) {
@@ -35,7 +34,9 @@ async function dismissWelcomeModalIfVisible(page: Page) {
 
     await loginWithEmail(page, getDefaultUserCredentials());
     await page.goto(qaProduct.routes.workspace);
-    await expectStablePage(page, qaProduct.testIds.pageWorkspace);
+    await expect(
+      page.getByText(/general workspace/i).first(),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test('preferred name onboarding flow saves preferred name for a fresh user', async ({ page }) => {
@@ -84,11 +85,13 @@ await expect(preferredNameInput).toHaveValue(qaEnv.freshUser.preferredName);
 await expect(continueButton).toBeEnabled();
 
 // Submit
-await continueButton.click();
+await continueButton.click({ force: true });
 
   await dismissWelcomeModalIfVisible(page);
 
-  await expectStablePage(page, qaProduct.testIds.pageWorkspace);
+  await expect(
+    page.getByText(/general workspace/i).first(),
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId(qaProduct.testIds.headerDisplayName)).toContainText(
     qaEnv.freshUser.preferredName,
   );

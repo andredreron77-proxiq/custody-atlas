@@ -17,8 +17,31 @@ export async function fillTestCard(page: Page): Promise<void> {
 }
 
 export async function completeCheckout(page: Page): Promise<void> {
-  await fillTestCard(page);
-  await page.getByRole("button", { name: /pay|subscribe|start subscription|complete/i }).click();
+  await page.waitForURL(/checkout\.stripe\.com/, { timeout: 15_000 });
+
+  const testCardBtn = page.getByText(/use test card|test card/i);
+  if (await testCardBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await testCardBtn.click();
+  } else {
+    const cardFrame = page.frameLocator(
+      'iframe[name^="__privateStripeFrame"]',
+    ).first();
+
+    await cardFrame
+      .locator('[placeholder*="1234"], input[autocomplete*="cc-number"]')
+      .fill("4242424242424242", { timeout: 10_000 });
+    await cardFrame
+      .locator('[placeholder*="MM"], input[autocomplete*="cc-exp"]')
+      .fill("12/34");
+    await cardFrame
+      .locator('[placeholder*="CVC"], input[autocomplete*="cc-csc"]')
+      .fill("123");
+  }
+
+  const payBtn = page.getByRole("button", {
+    name: /pay|subscribe|confirm/i,
+  }).first();
+  await payBtn.click({ timeout: 15_000 });
 }
 
 export async function waitForBillingSuccess(page: Page): Promise<void> {

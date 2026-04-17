@@ -7,7 +7,12 @@ const qaUserPassword = process.env.QA_USER_PASSWORD;
 
 test.describe("Custody Atlas resources", () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(!qaUserEmail || !qaUserPassword, "Set QA_USER_EMAIL and QA_USER_PASSWORD to run resource coverage.");
+
     await clearSession(page);
+    await loginUser(page, qaUserEmail!, qaUserPassword!);
+    await page.goto(`${process.env.QA_BASE_URL ?? "http://localhost:5050"}/ask?state=Georgia&county=Fulton`);
+    await page.waitForLoadState("networkidle");
   });
 
   test("Resources page loads with all 5 categories", async ({ page }) => {
@@ -35,18 +40,15 @@ test.describe("Custody Atlas resources", () => {
   });
 
   test("Waitlist join shows success state when logged in", async ({ page }) => {
-    test.skip(!qaUserEmail || !qaUserPassword, "Set QA_USER_EMAIL and QA_USER_PASSWORD to run resource waitlist coverage.");
-
-    await loginUser(page, qaUserEmail!, qaUserPassword!);
     const resourcesPage = new ResourcesPage(page);
     await resourcesPage.goto();
     await resourcesPage.joinWaitlist();
     await resourcesPage.assertWaitlistSuccess();
   });
 
-  test("Waitlist shows sign in prompt when logged out", async ({ page }) => {
-    const resourcesPage = new ResourcesPage(page);
-    await resourcesPage.goto();
-    await expect(page.getByRole("button", { name: /sign in to get notified/i })).toBeVisible();
+  test("Resources route requires sign in when logged out", async ({ page }) => {
+    await clearSession(page);
+    await page.goto(`${process.env.QA_BASE_URL ?? "http://localhost:5050"}/resources`);
+    await expect(page.getByTestId("button-sign-in-gate")).toBeVisible();
   });
 });

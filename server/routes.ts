@@ -1441,6 +1441,75 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
     });
   });
 
+  app.post("/api/qa/reset-billing", async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ error: "Not found." });
+    }
+
+    console.log("[qa/reset-billing] called for email:", req.body?.email);
+
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Supabase admin client not configured." });
+    }
+
+    const configuredToken = process.env.QA_RESET_TOKEN?.trim();
+    if (!configuredToken) {
+      return res.status(503).json({ error: "QA reset route not configured." });
+    }
+
+    const providedToken = (req.header("x-qa-reset-token") ?? "").trim();
+    if (!providedToken || providedToken !== configuredToken) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+
+    const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "email is required." });
+    }
+
+    const user = await findAdminUserByEmail(parsed.data.email.trim().toLowerCase());
+    if (!user?.id) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const billingPeriod = new Date();
+    billingPeriod.setDate(1);
+    billingPeriod.setHours(0, 0, 0, 0);
+    const billingPeriodStr = billingPeriod.toISOString().split("T")[0];
+
+    const { error: profileError } = await supabaseAdmin
+      .from("user_profiles")
+      .upsert({
+        id: user.id,
+        tier: "free",
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+        subscription_status: null,
+      }, { onConflict: "id" });
+
+    if (profileError) {
+      console.error("[qa/reset-billing] profile reset failed", profileError);
+      return res.status(500).json({ error: "Failed to reset billing state." });
+    }
+
+    const { error: usageError } = await supabaseAdmin
+      .from("usage_limits")
+      .upsert({
+        user_id: user.id,
+        date: billingPeriodStr,
+        billing_period: billingPeriodStr,
+        questions_used: 0,
+      }, { onConflict: "user_id,billing_period" });
+
+    if (usageError) {
+      console.error("[qa/reset-billing] usage reset failed", usageError);
+      return res.status(500).json({ error: "Failed to reset billing usage." });
+    }
+
+    console.log("[qa/reset-billing] reset complete, tier set to free");
+    return res.json({ success: true });
+  });
+
   /**
    * GET /api/county-procedures/:state/:county
    *
@@ -1603,6 +1672,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       const extendedAskSchema = askAIRequestSchema.extend({
         caseId: z.string().uuid().optional(),
         conversationId: z.string().uuid().optional(),
+        useGeneralWorkspace: z.boolean().optional(),
       });
 
       const parsed = extendedAskSchema.safeParse(req.body);
@@ -1613,7 +1683,17 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
         });
       }
 
-      const { jurisdiction, legalContext, userQuestion, history, caseId, conversationId: incomingConvId, documentId, selectedDocumentIds } = parsed.data;
+      const {
+        jurisdiction,
+        legalContext,
+        userQuestion,
+        history,
+        caseId,
+        conversationId: incomingConvId,
+        documentId,
+        selectedDocumentIds,
+      } = parsed.data;
+      const useGeneralWorkspace = req.body?.useGeneralWorkspace === true;
       const userId = (req as any).user?.id as string | undefined;
       const usageOverage = (req as any).usageOverage as
         | {
@@ -1652,7 +1732,9 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       let effectiveCaseId = caseId;
       if (userId) {
         const userCases = await listCases(userId, 200);
-        if (!effectiveCaseId) {
+        if (useGeneralWorkspace === true) {
+          effectiveCaseId = undefined;
+        } else if (!effectiveCaseId) {
           if (userCases.length === 1) {
             effectiveCaseId = userCases[0].id;
           } else if (userCases.length > 1) {
