@@ -21,6 +21,7 @@ import { TTSControls } from "@/components/app/TTSControls";
 import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
 import { fetchUsageState, type UsageState } from "@/services/usageService";
 import { getAccessToken } from "@/lib/tokenStore";
+import { trackEvent } from "@/lib/analytics";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import type { RawSignal, UserTier } from "@/lib/signals";
 import {
@@ -1472,6 +1473,10 @@ export default function UploadDocumentPage() {
       setCaseAssignment(data.caseAssignment ?? null);
       setPendingCaseSelection(data.caseAssignment?.assignedCaseId ?? data.caseAssignment?.suggestedCaseId ?? "unassigned");
       if (data.documentId) setDocumentId(data.documentId as string);
+      trackEvent("document_analyzed", {
+        documentType: data.document_type,
+        caseAssigned: Boolean(activeCaseId || data.caseAssignment?.assignedCaseId),
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/workspace"] });
     } catch (err: any) {

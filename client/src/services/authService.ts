@@ -5,6 +5,7 @@
  */
 
 import { supabase } from "@/lib/supabaseClient";
+import { resetAnalytics } from "@/lib/analytics";
 
 export type UserTier = "free" | "pro";
 
@@ -106,6 +107,7 @@ export async function updatePassword(
  */
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
+  resetAnalytics();
 }
 
 /**

@@ -1,8 +1,15 @@
+import { useEffect } from "react";
 import { Link } from "wouter";
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { trackEvent } from "@/lib/analytics";
 
 export default function BillingSuccessPage() {
+  useEffect(() => {
+    const plan = new URLSearchParams(window.location.search).get("plan") ?? "unknown";
+    trackEvent("subscription_started", { plan });
+  }, []);
+
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-xl rounded-2xl border border-emerald-200 bg-emerald-50/70 px-8 py-10 text-center shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/20">

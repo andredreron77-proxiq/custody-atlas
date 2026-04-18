@@ -36,15 +36,16 @@ const STATE_PAGES: { name: string; slug: string }[] = [
 /** Slim legal bar shown on utility/legal pages (Privacy, Terms, etc.). */
 export function MinimalFooter() {
   return (
-    <footer className="border-t border-border/50 py-3 px-4 mt-auto">
-      <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Custody Atlas — for informational purposes only, not legal advice.
-        </p>
-        <div className="flex items-center gap-4">
-          <Link href="/privacy" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</Link>
-          <Link href="/terms" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</Link>
-        </div>
+    <footer className="mt-auto border-t border-white/10 bg-slate-950/90 px-4 py-4 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-5 gap-y-2 text-center text-xs text-slate-400">
+        <span>© 2026 Custody Atlas</span>
+        <Link href="/terms" className="transition-colors hover:text-slate-100">
+          Terms of Service
+        </Link>
+        <Link href="/privacy" className="transition-colors hover:text-slate-100">
+          Privacy Policy
+        </Link>
+        <span>Not legal advice</span>
       </div>
     </footer>
   );

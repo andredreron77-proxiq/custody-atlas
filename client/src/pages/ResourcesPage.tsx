@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink, Loader2, MapPin, Phone, BellRing, ChevronRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { PageHeader, PageShell } from "@/components/app/PageShell";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { apiRequestRaw } from "@/lib/queryClient";
+import { trackEvent } from "@/lib/analytics";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { useToast } from "@/hooks/use-toast";
 import type { Jurisdiction } from "@shared/schema";
@@ -244,6 +245,14 @@ export default function ResourcesPage() {
     : null;
 
   const { jurisdiction, setJurisdiction } = useJurisdiction(urlJurisdiction);
+
+  useEffect(() => {
+    if (!jurisdiction?.state || !jurisdiction?.county) return;
+    trackEvent("resources_viewed", {
+      state: jurisdiction.state,
+      county: jurisdiction.county,
+    });
+  }, [jurisdiction?.state, jurisdiction?.county]);
 
   const resourcesUrl = jurisdiction
     ? `/api/resources?state=${encodeURIComponent(jurisdiction.state)}&county=${encodeURIComponent(jurisdiction.county)}`

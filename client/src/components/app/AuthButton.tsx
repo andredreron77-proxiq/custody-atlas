@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { Link } from "wouter";
 import {
   LogOut, Mail, Loader2, ArrowLeft, Send,
   ShieldCheck, BrainCircuit, BookmarkCheck,
@@ -26,6 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -113,6 +115,7 @@ export function AuthButton() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [message, setMessage]   = useState<string | null>(null);
@@ -121,6 +124,7 @@ export function AuthButton() {
   function resetForm() {
     setEmail("");
     setPassword("");
+    setAcceptedTerms(false);
     setError(null);
     setMessage(null);
   }
@@ -152,6 +156,12 @@ export function AuthButton() {
     setSubmitting(true);
     setError(null);
     setMessage(null);
+
+    if (isSignUp && !acceptedTerms) {
+      setError("Please agree to the Terms of Service, Privacy Policy, and legal disclaimer to create an account.");
+      setSubmitting(false);
+      return;
+    }
 
     if (!isSignUp) {
       const { error } = await signInWithEmail(email, password);
@@ -373,6 +383,7 @@ export function AuthButton() {
                 className="w-full gap-2.5 h-10 font-medium text-sm border-border hover:bg-accent"
                 onClick={handleGoogle}
                 type="button"
+                disabled={isSignUp && !acceptedTerms}
                 data-testid="button-google-auth"
               >
                 <GoogleIcon className="w-4 h-4 text-[#4285F4]" />
@@ -441,11 +452,39 @@ export function AuthButton() {
                   </p>
                 )}
 
+                {isSignUp ? (
+                  <div className="rounded-md border border-border/70 bg-muted/30 p-3">
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id="auth-legal-consent"
+                        checked={acceptedTerms}
+                        onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                        className="mt-0.5"
+                        data-testid="checkbox-signup-consent"
+                      />
+                      <Label
+                        htmlFor="auth-legal-consent"
+                        className="text-xs leading-5 text-muted-foreground"
+                      >
+                        I agree to the{" "}
+                        <Link href="/terms" className="text-primary hover:underline">
+                          Terms of Service
+                        </Link>{" "}
+                        and{" "}
+                        <Link href="/privacy" className="text-primary hover:underline">
+                          Privacy Policy
+                        </Link>{" "}
+                        and understand that Custody Atlas does not provide legal advice.
+                      </Label>
+                    </div>
+                  </div>
+                ) : null}
+
                 <Button
                   type="submit"
                   variant="secondary"
                   className="w-full gap-2 h-9 text-sm"
-                  disabled={submitting}
+                  disabled={submitting || (isSignUp && !acceptedTerms)}
                   data-testid="button-submit-auth"
                 >
                   {submitting

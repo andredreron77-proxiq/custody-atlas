@@ -13,13 +13,15 @@ import { useToast } from "@/hooks/use-toast";
 import type { ChatMessage, AILegalResponse, Jurisdiction, ConversationHistoryItem } from "@shared/schema";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { UpgradePromptCard } from "./UpgradePromptCard";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { registerChatBoxHandler, unregisterChatBoxHandler } from "@/lib/aiEntry";
+import { trackEvent } from "@/lib/analytics";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { MicButton } from "./MicButton";
 import { TTSControls } from "./TTSControls";
 import { useSpeechRecording } from "@/hooks/useSpeechRecording";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { fetchUsageState } from "@/services/usageService";
 
 interface ChatBoxProps {
   initialConversationId?: string;
@@ -404,6 +406,13 @@ export function ChatBox({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
+  const { data: usage } = useQuery({
+    queryKey: ["/api/usage", "chatbox", user?.id ?? "anon"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: fetchUsageState,
+  });
 
   const { state: micState, startRecording, stopRecording, cancelRecording } =
     useSpeechRecording({
@@ -508,6 +517,11 @@ export function ChatBox({
     setInput("");
     setIsLoading(true);
     setProOverageNotice(null);
+    trackEvent("question_asked", {
+      hasCase: Boolean(forcedCaseId ?? caseId),
+      jurisdiction: jurisdiction.state,
+      tier: usage?.tier ?? (user ? "free" : "anonymous"),
+    });
 
     const historySnapshot: ConversationHistoryItem[] = messages
       .slice(-16)

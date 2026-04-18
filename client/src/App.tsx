@@ -12,7 +12,9 @@ import { AuthRequiredCard } from "@/components/app/AuthRequiredCard";
 import { OnboardingModal } from "@/components/app/OnboardingModal";
 import { DisplayNamePromptGate } from "@/components/app/DisplayNamePromptGate";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { identifyUser } from "@/lib/analytics";
 import { apiRequestRaw } from "@/lib/queryClient";
+import { fetchUsageState } from "@/services/usageService";
 
 import LandingPage from "@/pages/LandingPage";
 import LocationPage from "@/pages/LocationPage";
@@ -22,8 +24,8 @@ import ResourcesPage from "@/pages/ResourcesPage";
 import UploadDocumentPage from "@/pages/UploadDocumentPage";
 import CustodyMapPage from "@/pages/CustodyMapPage";
 import WorkspacePage from "@/pages/WorkspacePage";
-import PrivacyPage from "@/pages/PrivacyPage";
-import TermsPage from "@/pages/TermsPage";
+import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
+import TermsOfServicePage from "@/pages/TermsOfServicePage";
 import CustodyLawsStatePage from "@/pages/CustodyLawsStatePage";
 import CustodyQuestionsPage from "@/pages/CustodyQuestionsPage";
 import PublicQAPage from "@/pages/PublicQAPage";
@@ -37,29 +39,7 @@ import DocumentDetailPage from "@/pages/DocumentDetailPage";
 import NotFound from "@/pages/not-found";
 import type { ComponentType } from "react";
 
-/**
- * Routes that show NO footer (authenticated in-app product pages).
- */
-const NO_FOOTER_PREFIXES = [
-  "/ask",
-  "/workspace",
-  "/resources",
-  "/upload-document",
-  "/case/",
-  "/document/",
-  "/admin",
-  "/reset-password",
-  "/redeem",
-];
-
-/** Renders the right footer for the current route. */
 function AppFooter() {
-  const [location] = useLocation();
-  const path = location.split("?")[0];
-
-  if (NO_FOOTER_PREFIXES.some((p) => path === p || path.startsWith(p))) {
-    return null;
-  }
   return <MinimalFooter />;
 }
 
@@ -123,8 +103,8 @@ function Router() {
       <Route path="/custody-laws/:stateSlug" component={CustodyLawsStatePage} />
       <Route path="/custody-questions/:slug" component={CustodyQuestionsPage} />
       <Route path="/q/:stateSlug/:topic/:slug" component={PublicQAPage} />
-      <Route path="/privacy" component={PrivacyPage} />
-      <Route path="/terms" component={TermsPage} />
+      <Route path="/privacy" component={PrivacyPolicyPage} />
+      <Route path="/terms" component={TermsOfServicePage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/redeem" component={RedeemCodePage} />
       <Route path="/billing/success" component={BillingSuccessPage} />
@@ -212,7 +192,22 @@ function HomeRoute() {
 
 function App() {
   const { user, isLoading } = useCurrentUser();
+  const { data: usage } = useQuery({
+    queryKey: ["/api/usage", "analytics-identify", user?.id ?? "anon"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: fetchUsageState,
+  });
   const authKey = isLoading ? "loading" : user ? user.id : "unauthenticated";
+
+  useEffect(() => {
+    if (!user) return;
+    identifyUser(user.id, {
+      email: user.email ?? undefined,
+      tier: usage?.tier ?? user.tier ?? "free",
+    });
+  }, [user, usage?.tier]);
 
   return (
     <ThemeProvider>

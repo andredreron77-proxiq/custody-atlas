@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { trackEvent } from "@/lib/analytics";
 import { apiRequestRaw } from "@/lib/queryClient";
 
 interface UpgradeModalProps {
@@ -45,8 +46,14 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
     { plan: "annual" as const, priceId: ANNUAL_PRICE_ID, ...PLAN_COPY.annual },
   ]), []);
 
+  useEffect(() => {
+    if (!open) return;
+    trackEvent("upgrade_modal_viewed", { trigger: "limit_reached" });
+  }, [open]);
+
   async function handleChoosePlan(plan: BillingPlan, priceId: string) {
     setLoadingPlan(plan);
+    trackEvent("upgrade_plan_selected", { plan });
     try {
       const res = await apiRequestRaw("POST", "/api/billing/create-checkout-session", {
         priceId: priceId || plan,

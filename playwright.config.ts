@@ -58,7 +58,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  workers: isCI ? 1 : undefined,
+  workers: 1,
   timeout: 45_000,
   expect: {
     timeout: 10_000,
