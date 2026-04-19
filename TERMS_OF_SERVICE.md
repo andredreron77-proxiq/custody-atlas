@@ -80,4 +80,5 @@ These Terms are governed by the laws of the State of Georgia, without regard to 
 
 ## 14. Contact
 
-For questions about these Terms, contact us at: andre.dreron@gmail.com
+For questions about these Terms, contact us at: andre@custodyatlas.com
+Phone: (404) 692-2006

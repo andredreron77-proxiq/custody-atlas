@@ -101,7 +101,10 @@ const sections = [
   },
   {
     heading: "14. Contact",
-    body: ["For questions about these Terms, contact us at: andre.dreron@gmail.com"],
+    body: [
+      "For questions about these Terms, contact us at: andre@custodyatlas.com",
+      "Phone: (404) 692-2006",
+    ],
   },
 ];
 

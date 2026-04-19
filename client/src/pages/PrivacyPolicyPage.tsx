@@ -85,7 +85,7 @@ const sections = [
       "Object to certain processing of your information",
       "Export your data in a portable format",
     ],
-    closing: "To exercise these rights, contact us at andre.dreron@gmail.com.",
+    closing: "To exercise these rights, contact us at andre@custodyatlas.com.",
   },
   {
     heading: "9. Children's Privacy",
@@ -102,7 +102,12 @@ const sections = [
   {
     heading: "11. Contact",
     body: ["For privacy-related questions or requests, contact us at:"],
-    contactLines: ["Custody Atlas", "Email: andre.dreron@gmail.com", "Website: custodyatlas.com"],
+    contactLines: [
+      "Custody Atlas",
+      "Email: andre@custodyatlas.com",
+      "Phone: (404) 692-2006",
+      "Website: custodyatlas.com",
+    ],
   },
 ];
 

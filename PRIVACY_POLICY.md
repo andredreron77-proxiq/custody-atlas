@@ -75,7 +75,7 @@ Depending on your location, you may have rights to:
 - Object to certain processing of your information
 - Export your data in a portable format
 
-To exercise these rights, contact us at andre.dreron@gmail.com.
+To exercise these rights, contact us at andre@custodyatlas.com.
 
 ## 9. Children's Privacy
 
@@ -90,5 +90,6 @@ We may update this Privacy Policy from time to time. We will notify you of mater
 For privacy-related questions or requests, contact us at:
 
 **Custody Atlas**
-Email: andre.dreron@gmail.com
+Email: andre@custodyatlas.com
+Phone: (404) 692-2006
 Website: custodyatlas.com
