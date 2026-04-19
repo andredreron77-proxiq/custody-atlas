@@ -632,7 +632,6 @@ export function ChatBox({
       }
 
       const data = rawData as AskAssistantResponse;
-
       if ((forcedCaseId ?? caseId) && data.conversationId && !conversationIdRef.current) {
         conversationIdRef.current = data.conversationId;
         setSavedToWorkspace(true);
