@@ -10,6 +10,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { supabaseAdmin } from "./lib/supabaseAdmin";
 import { addLegalDisclaimer, analyzeUserSignals, buildAdaptiveSystemPrompt } from "./lib/adaptiveIntelligence";
+import { analyzeCaseStrength, type CaseStrengthReport } from "./lib/caseStrength";
 import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtractor";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
@@ -27,6 +28,7 @@ import { buildDocumentUploadOutcome } from "./lib/documentUploadOutcome";
 import { buildDuplicateFingerprints, classifyDuplicate, type DuplicateDecisionType } from "./lib/documentDuplicateIntake";
 import { decideCaseAssignment, type AssignmentCandidate } from "./lib/documentCaseAssignment";
 import { extractSignalsFromDocument } from "./lib/extractSignals";
+import { generateProactiveInsights } from "./lib/proactiveIntelligence";
 import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
 import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRiskScoring";
 import { requireAuth, requireAdmin } from "./services/auth";
@@ -179,6 +181,29 @@ type DocumentDuplicateKind = "exact" | "semantic" | "likely" | "new";
 
 function normalizeText(v: unknown): string {
   return typeof v === "string" ? v.trim().toLowerCase() : "";
+}
+
+function buildCaseStrengthSourceSignature(
+  documents: SavedDocument[],
+  signals: Array<{ id: string; title: string; detail: string; dueDate?: string }>,
+): string {
+  const digest = createHash("sha256");
+  digest.update(JSON.stringify({
+    documents: documents.map((doc) => ({
+      id: doc.id,
+      createdAt: doc.createdAt,
+      fileName: doc.fileName,
+      summary: typeof doc.analysisJson?.summary === "string" ? doc.analysisJson.summary : null,
+      extractedTextLength: doc.extractedText.length,
+    })),
+    signals: signals.map((signal) => ({
+      id: signal.id,
+      title: signal.title,
+      detail: signal.detail,
+      dueDate: signal.dueDate ?? null,
+    })),
+  }));
+  return digest.digest("hex");
 }
 
 function hasOverlap(a: unknown, b: unknown): boolean {
@@ -1928,6 +1953,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       // jurisdiction law content.  This is the primary fix for document-scoped Q&A.
       let scopedDocument: SavedDocument | null = null;
       let documentContextAddendum = "";
+      let contextDocumentsForInsights: SavedDocument[] = [];
 
       if (documentId && userId) {
         scopedDocument = await getDocumentById(documentId, userId);
@@ -2012,6 +2038,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
             ? (selectedDocumentIds.length === 0 ? [] : allDocs.filter((d) => selectedDocumentIds.includes(d.id)))
             : allDocs;
         }
+        contextDocumentsForInsights = intentUserDocs;
         const resolverResult = await resolveFactDeterministically(
           factFields, intentUserDocs, resolvedCaseMemories, effectiveCaseId, userId,
         );
@@ -2088,6 +2115,7 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
         const recentDocs = selectedDocumentIds !== undefined && selectedDocumentIds.length > 0
           ? allRecentDocs.filter((d) => selectedDocumentIds.includes(d.id))
           : allRecentDocs;
+        contextDocumentsForInsights = recentDocs;
         if (recentDocs.length > 0) {
           if (effectiveCaseId) {
             caseDocumentTextAddendum = buildCaseDocumentTextAddendum(recentDocs, effectiveJurisdiction.state);
@@ -2309,10 +2337,29 @@ COMMUNICATION PREFERENCES
       }
 
       const summary = addLegalDisclaimer(validated.data.summary);
+      let proactiveInsights: Array<{
+        type: "suggested_question" | "contradiction" | "assumption_challenge";
+        text: string;
+        reason: string;
+      }> = [];
+
+      try {
+        proactiveInsights = await generateProactiveInsights(
+          userQuestion,
+          [summary, ...validated.data.key_points].join("\n"),
+          contextDocumentsForInsights
+            .map((doc) => doc.extractedText || JSON.stringify(doc.analysisJson ?? {}))
+            .slice(0, 5),
+          historyTurns,
+        );
+      } catch (err) {
+        console.error("[ask] proactive insight generation failed:", err);
+      }
 
       const enrichedResponse = {
         ...validated.data,
         summary,
+        ...(proactiveInsights.length > 0 ? { proactive_insights: proactiveInsights } : {}),
         resourcesAvailable: shouldSurfaceResources({
           intent: effectiveIntent,
           userQuestion,
@@ -3086,11 +3133,11 @@ CRITICAL RULES:
 
           if (docCaseId) {
             try {
-              const rawSignals = await extractSignalsFromDocument({
+              const signalIntelligence = await extractSignalsFromDocument({
                 documentId: savedDoc.id,
                 documentText: truncatedText,
               });
-              const signalWrite = await replaceDocumentSignals(docCaseId, savedDoc.id, rawSignals);
+              const signalWrite = await replaceDocumentSignals(docCaseId, savedDoc.id, signalIntelligence.signals);
               if (!signalWrite.ok) {
                 console.error("[analyze-document] signal persistence failed", {
                   documentId: savedDoc.id,
@@ -4819,6 +4866,101 @@ Do not add facts not present in the provided evidence.`,
     } catch (err) {
       console.error("[cases] GET :caseId error:", err);
       return res.status(500).json({ error: "Failed to load case." });
+    }
+  });
+
+  app.get("/api/cases/:caseId/strength", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const caseId = asString(req.params.caseId);
+
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const [documents, signalResult] = await Promise.all([
+        getDocumentsByCase(caseId, user.id),
+        listSignalsForCase(caseId, user.id),
+      ]);
+      const signals = signalResult.signals ?? [];
+      const sourceSignature = buildCaseStrengthSourceSignature(documents, signals);
+
+      const cacheQuery = await supabaseAdmin
+        ?.from("cases")
+        .select("strength_report_json, strength_cached_at")
+        .eq("id", caseId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const cachedPayload = (cacheQuery?.data?.strength_report_json ?? null) as
+        | { sourceSignature?: string; report?: CaseStrengthReport }
+        | null;
+
+      if (cachedPayload?.sourceSignature === sourceSignature && cachedPayload.report) {
+        return res.json(cachedPayload.report);
+      }
+
+      const report = await analyzeCaseStrength(
+        documents.map((doc) => doc.extractedText || JSON.stringify(doc.analysisJson ?? {})),
+        signals,
+        {
+          state: caseRecord.jurisdictionState ?? "Georgia",
+          county: caseRecord.jurisdictionCounty ?? "Unknown County",
+        },
+      );
+
+      await supabaseAdmin
+        ?.from("cases")
+        .update({
+          strength_report_json: { sourceSignature, report },
+          strength_cached_at: new Date().toISOString(),
+        })
+        .eq("id", caseId)
+        .eq("user_id", user.id);
+
+      return res.json(report);
+    } catch (err) {
+      console.error("[cases] GET strength error:", err);
+      return res.status(500).json({ error: "Failed to analyze case strength." });
+    }
+  });
+
+  app.post("/api/cases/:caseId/strength/refresh", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const caseId = asString(req.params.caseId);
+
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const [documents, signalResult] = await Promise.all([
+        getDocumentsByCase(caseId, user.id),
+        listSignalsForCase(caseId, user.id),
+      ]);
+      const signals = signalResult.signals ?? [];
+      const sourceSignature = buildCaseStrengthSourceSignature(documents, signals);
+
+      const report = await analyzeCaseStrength(
+        documents.map((doc) => doc.extractedText || JSON.stringify(doc.analysisJson ?? {})),
+        signals,
+        {
+          state: caseRecord.jurisdictionState ?? "Georgia",
+          county: caseRecord.jurisdictionCounty ?? "Unknown County",
+        },
+      );
+
+      await supabaseAdmin
+        ?.from("cases")
+        .update({
+          strength_report_json: { sourceSignature, report },
+          strength_cached_at: new Date().toISOString(),
+        })
+        .eq("id", caseId)
+        .eq("user_id", user.id);
+
+      return res.json(report);
+    } catch (err) {
+      console.error("[cases] POST strength refresh error:", err);
+      return res.status(500).json({ error: "Failed to refresh case strength." });
     }
   });
 

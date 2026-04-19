@@ -2,6 +2,7 @@ import { FormEvent, KeyboardEvent, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Lightbulb, Scale, TriangleAlert } from "lucide-react";
+import CaseStrengthScore from "@/components/CaseStrengthScore";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -610,6 +611,8 @@ export default function CaseDashboardPage() {
         </div>
 
         <div className="space-y-3 lg:col-span-2">
+          <CaseStrengthScore caseId={data.case.id} />
+
           <Card data-testid="section-top-risks">
             <CardHeader className="pb-2"><CardTitle className="text-base">Top Risks</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">

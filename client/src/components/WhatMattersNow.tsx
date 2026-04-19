@@ -1,15 +1,9 @@
 "use client";
 
-// components/WhatMattersNow.tsx
-// Renders the "What Matters Now" signal panel.
-// Drop into Workspace dashboard, Analyze page sidebar, or Ask Atlas alert strip.
-
-import { useState } from "react";
-import { ScoredSignal, UserTier, WhatMattersNowResult } from "@/lib/signals";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { useEffect, useMemo, useState } from "react";
+import { Clock3, Lock, ShieldAlert, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import type { ScoredSignal, UserTier, WhatMattersNowResult } from "@/lib/signals";
 
 interface WhatMattersNowProps {
   result: WhatMattersNowResult;
@@ -20,141 +14,80 @@ interface WhatMattersNowProps {
   className?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Signal type config
-// ---------------------------------------------------------------------------
+type Urgency = "critical" | "high" | "medium";
 
-const TYPE_CONFIG = {
-  urgent: {
-    label: "Urgent",
-    color: "text-red-700 bg-red-50 border-red-100",
-    dot: "bg-red-500",
-    border: "border-l-red-400",
-  },
-  risk: {
-    label: "Risk",
-    color: "text-amber-700 bg-amber-50 border-amber-100",
-    dot: "bg-amber-500",
-    border: "border-l-amber-400",
-  },
-  action: {
-    label: "Action",
-    color: "text-teal-700 bg-teal-50 border-teal-100",
-    dot: "bg-teal-500",
-    border: "border-l-teal-400",
-  },
-  pattern: {
-    label: "Pattern",
-    color: "text-purple-700 bg-purple-50 border-purple-100",
-    dot: "bg-purple-500",
-    border: "border-l-purple-400",
-  },
-} as const;
-
-// ---------------------------------------------------------------------------
-// Due date helper
-// ---------------------------------------------------------------------------
-
-function formatDue(daysUntilDue?: number): string | null {
-  if (daysUntilDue === undefined) return null;
-  if (daysUntilDue < 0) return "Overdue";
-  if (daysUntilDue === 0) return "Due today";
-  if (daysUntilDue === 1) return "Due tomorrow";
-  if (daysUntilDue <= 7) return `Due in ${daysUntilDue} days`;
-  if (daysUntilDue <= 14) return `Due in ${daysUntilDue} days`;
-  return null; // not worth surfacing for distant dates
+function deriveUrgency(signal: ScoredSignal): Urgency {
+  if ((signal.daysUntilDue ?? 99) <= 3 || signal.type === "urgent") return "critical";
+  if ((signal.daysUntilDue ?? 99) <= 10 || signal.type === "risk") return "high";
+  return "medium";
 }
 
-// ---------------------------------------------------------------------------
-// Single signal card
-// ---------------------------------------------------------------------------
+function urgencyClass(urgency: Urgency): string {
+  if (urgency === "critical") return "border-red-400/60 bg-red-500/15 text-red-200";
+  if (urgency === "high") return "border-amber-400/60 bg-amber-500/15 text-amber-200";
+  return "border-sky-400/60 bg-sky-500/15 text-sky-200";
+}
 
-function SignalCard({
-  signal,
-  onDismiss,
-}: {
-  signal: ScoredSignal;
-  onDismiss?: (id: string) => void;
-}) {
-  const config = TYPE_CONFIG[signal.type];
-  const dueLabel = formatDue(signal.daysUntilDue);
-  const [dismissing, setDismissing] = useState(false);
+function formatDate(value?: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-  function handleDismiss() {
-    setDismissing(true);
-    setTimeout(() => onDismiss?.(signal.id), 200);
+function dueFraming(signal: ScoredSignal): string {
+  if ((signal.daysUntilDue ?? 99) < 0) {
+    return "This already moved without waiting for you.";
   }
+  return "This will happen whether you are ready or not.";
+}
 
+function dismissButton(signalId: string, onDismiss?: (signalId: string) => void) {
+  if (!onDismiss) return null;
   return (
-    <div
-      className={`
-        relative border-l-2 ${config.border}
-        bg-white border border-gray-100 rounded-lg px-4 py-3
-        transition-all duration-200
-        ${dismissing ? "opacity-0 scale-95" : "opacity-100"}
-      `}
+    <button
+      type="button"
+      onClick={() => onDismiss(signalId)}
+      className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
+      aria-label="Dismiss signal"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5 min-w-0">
-          {/* Type badge */}
-          <span
-            className={`
-              inline-flex items-center mt-0.5 px-2 py-0.5 rounded-full text-xs font-medium
-              border ${config.color} flex-shrink-0
-            `}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${config.dot} mr-1.5`} />
-            {config.label}
-          </span>
+      <X className="h-4 w-4" />
+    </button>
+  );
+}
 
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 leading-snug">
-              {signal.title}
-            </p>
-
-            {dueLabel && (
-              <p
-                className={`text-xs mt-0.5 font-medium ${
-                  signal.daysUntilDue !== undefined && signal.daysUntilDue <= 7
-                    ? "text-red-600"
-                    : "text-gray-400"
-                }`}
-              >
-                {dueLabel}
-              </p>
-            )}
-
-            <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-              {signal.detail}
-            </p>
-          </div>
+function LoadingState() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-5">
+        <div className="mb-3 h-5 w-28 rounded bg-white/10" />
+        <div className="mb-3 h-8 w-4/5 rounded bg-white/10" />
+        <div className="h-4 w-3/4 rounded bg-white/10" />
+      </div>
+      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-5">
+        <div className="mb-3 h-5 w-52 rounded bg-white/10" />
+        <div className="space-y-3">
+          <div className="h-14 rounded-xl bg-white/10" />
+          <div className="h-14 rounded-xl bg-white/10" />
         </div>
-
-        {/* Dismiss */}
-        {onDismiss && (
-          <button
-            onClick={handleDismiss}
-            className="flex-shrink-0 text-gray-300 hover:text-gray-500 transition-colors mt-0.5"
-            aria-label="Dismiss signal"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M2 2l10 10M12 2L2 12"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        )}
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Locked signal placeholder
-// ---------------------------------------------------------------------------
+function EmptyState() {
+  return (
+    <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/60 px-5 py-8 text-center">
+      <p className="text-sm text-slate-400">
+        No immediate pressure points are visible yet. Upload a document to surface the next thing that can change your case.
+      </p>
+    </div>
+  );
+}
 
 function LockedSignalCard({
   signal,
@@ -163,76 +96,20 @@ function LockedSignalCard({
   signal: ScoredSignal;
   onUpgradeClick?: () => void;
 }) {
-  const config = TYPE_CONFIG[signal.type];
-
   return (
-    <div
-      className={`
-        relative border-l-2 border-l-gray-200
-        bg-gray-50 border border-gray-100 rounded-lg px-4 py-3
-        opacity-60
-      `}
+    <button
+      type="button"
+      onClick={onUpgradeClick}
+      className="flex w-full items-center justify-between rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.05]"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span
-            className={`
-              inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-              border ${config.color} opacity-50
-            `}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${config.dot} mr-1.5`} />
-            {config.label}
-          </span>
-          <p className="text-sm text-gray-400 blur-sm select-none">
-            {signal.title}
-          </p>
-        </div>
-
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 14 14"
-          fill="none"
-          className="text-gray-300 flex-shrink-0"
-        >
-          <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M4 6V4a3 3 0 016 0v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-300 blur-[2px]">{signal.title}</p>
+        <p className="mt-1 text-xs text-slate-500">Unlock the rest of this case pressure map with Pro.</p>
       </div>
-    </div>
+      <Lock className="h-4 w-4 shrink-0 text-slate-500" />
+    </button>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Loading skeleton
-// ---------------------------------------------------------------------------
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-2.5 animate-pulse">
-      {[1, 2].map((i) => (
-        <div
-          key={i}
-          className="border-l-2 border-l-gray-200 bg-white border border-gray-100 rounded-lg px-4 py-3"
-        >
-          <div className="flex items-start gap-2.5">
-            <div className="w-16 h-5 bg-gray-100 rounded-full mt-0.5" />
-            <div className="flex-1 space-y-1.5">
-              <div className="w-3/4 h-4 bg-gray-100 rounded" />
-              <div className="w-full h-3 bg-gray-100 rounded" />
-              <div className="w-2/3 h-3 bg-gray-100 rounded" />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Upgrade nudge — shown below locked signals
-// ---------------------------------------------------------------------------
 
 function UpgradeNudge({
   lockedCount,
@@ -243,67 +120,21 @@ function UpgradeNudge({
   patternCount: number;
   onUpgradeClick?: () => void;
 }) {
-  const label =
-    patternCount > 0
-      ? `${patternCount} pattern${patternCount > 1 ? "s" : ""} detected across your documents`
-      : `${lockedCount} more signal${lockedCount > 1 ? "s" : ""} found`;
+  const label = patternCount > 0
+    ? `${patternCount} cross-document pattern${patternCount > 1 ? "s" : ""} hidden`
+    : `${lockedCount} more pressure point${lockedCount > 1 ? "s" : ""} hidden`;
 
   return (
     <button
+      type="button"
       onClick={onUpgradeClick}
-      className="
-        w-full text-left mt-2
-        border border-dashed border-gray-200 rounded-lg px-4 py-3
-        hover:border-gray-300 hover:bg-gray-50
-        transition-all duration-150 group
-      "
+      className="w-full rounded-xl border border-dashed border-sky-400/25 bg-sky-500/5 px-4 py-3 text-left transition-colors hover:bg-sky-500/10"
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
-            {label}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            See what to do next — get deeper guidance
-          </p>
-        </div>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          className="text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0"
-        >
-          <path
-            d="M3 8h10M9 4l4 4-4 4"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
+      <p className="text-sm font-medium text-sky-100">{label}</p>
+      <p className="mt-1 text-xs text-sky-200/70">Upgrade to see the full case pressure map and hidden document patterns.</p>
     </button>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-
-function EmptyState() {
-  return (
-    <div className="text-center py-6">
-      <p className="text-sm text-gray-400">
-        No signals found yet. Upload a document to get started.
-      </p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export default function WhatMattersNow({
   result,
@@ -314,60 +145,167 @@ export default function WhatMattersNow({
   className = "",
 }: WhatMattersNowProps) {
   const { signals, lockedCount, patternCount } = result;
-  const visibleSignals = signals.filter((s) => !s.locked);
-  const lockedSignals = signals.filter((s) => s.locked);
-  const hasContent = signals.length > 0;
+  const visibleSignals = signals.filter((signal) => !signal.locked);
+  const lockedSignals = signals.filter((signal) => signal.locked);
+
+  const derived = useMemo(() => {
+    const primarySignal = visibleSignals[0] ?? null;
+    const timeline = visibleSignals
+      .filter((signal) => Boolean(signal.dueDate))
+      .sort((left, right) => {
+        const leftTime = left.dueDate ? new Date(left.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        const rightTime = right.dueDate ? new Date(right.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        return leftTime - rightTime;
+      })
+      .slice(0, 4);
+
+    const riskCandidates = visibleSignals
+      .filter((signal) => signal.type === "risk" || signal.type === "urgent")
+      .slice(0, 4);
+
+    const risks = riskCandidates.length > 0
+      ? riskCandidates
+      : visibleSignals.slice(primarySignal ? 1 : 0, primarySignal ? 4 : 3);
+
+    return { primarySignal, timeline, risks };
+  }, [visibleSignals]);
+
+  const [dismissedRiskIds, setDismissedRiskIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setDismissedRiskIds(new Set());
+  }, [signals]);
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (visibleSignals.length === 0 && lockedSignals.length === 0) {
+    return <EmptyState />;
+  }
+
+  const activeRisks = derived.risks.filter((risk) => !dismissedRiskIds.has(risk.id));
   const showUpgradeNudge = tier === "free" && (lockedCount > 0 || patternCount > 0);
 
   return (
-    <section className={`${className}`} aria-label="What matters now">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-900 tracking-tight">
-          What matters now
-        </h2>
-        {!loading && hasContent && (
-          <span className="text-xs text-gray-400">
-            {visibleSignals.length} signal{visibleSignals.length !== 1 ? "s" : ""}
-          </span>
+    <section className={className} aria-label="What matters now">
+      <div className="space-y-4">
+        {derived.primarySignal && (
+          <div className="rounded-2xl border border-white/10 bg-slate-950/90 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Primary Priority</p>
+                <p className="mt-3 text-2xl font-semibold leading-tight text-slate-50 sm:text-[1.95rem]">
+                  {derived.primarySignal.title}
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <Badge
+                  variant="outline"
+                  className={`border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${urgencyClass(deriveUrgency(derived.primarySignal))}`}
+                >
+                  {deriveUrgency(derived.primarySignal)}
+                </Badge>
+                {dismissButton(derived.primarySignal.id, onDismiss)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+              <p className="text-sm font-medium text-red-100">
+                <span className="text-red-300">If ignored:</span> {derived.primarySignal.detail}
+              </p>
+            </div>
+          </div>
         )}
-      </div>
 
-      {/* Content */}
-      {loading ? (
-        <LoadingSkeleton />
-      ) : !hasContent ? (
-        <EmptyState />
-      ) : (
-        <div className="space-y-2.5">
-          {/* Visible signals */}
-          {visibleSignals.map((signal) => (
-            <SignalCard
-              key={signal.id}
-              signal={signal}
-              onDismiss={onDismiss}
-            />
-          ))}
-
-          {/* Locked signal placeholders */}
-          {lockedSignals.map((signal) => (
-            <LockedSignalCard
-              key={signal.id}
-              signal={signal}
-              onUpgradeClick={onUpgradeClick}
-            />
-          ))}
-
-          {/* Upgrade nudge */}
-          {showUpgradeNudge && (
-            <UpgradeNudge
-              lockedCount={lockedCount}
-              patternCount={patternCount}
-              onUpgradeClick={onUpgradeClick}
-            />
+        <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Clock3 className="h-4 w-4 text-sky-300" />
+            <h2 className="text-sm font-semibold text-slate-100">What will happen whether you are ready or not</h2>
+          </div>
+          {derived.timeline.length === 0 ? (
+            <p className="text-sm text-slate-400">No dated event is surfaced yet from your current case signals.</p>
+          ) : (
+            <div className="space-y-3">
+              {derived.timeline.map((signal, index) => (
+                <div key={signal.id} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-50">{formatDate(signal.dueDate) ?? "Date TBD"}</p>
+                        {index === 0 ? (
+                          <Badge variant="outline" className="border-sky-400/40 bg-sky-500/10 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-200">
+                            Next
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-200">{signal.title}</p>
+                      <p className="mt-2 text-xs italic text-slate-400">{dueFraming(signal)}</p>
+                    </div>
+                    {dismissButton(signal.id, onDismiss)}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-      )}
+
+        <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-amber-300" />
+            <h2 className="text-sm font-semibold text-slate-100">Risks you cannot ignore</h2>
+          </div>
+          {activeRisks.length === 0 ? (
+            <p className="text-sm text-slate-400">No additional risks are visible from the current signal set.</p>
+          ) : (
+            <div className="space-y-3">
+              {activeRisks.map((risk) => (
+                <div key={risk.id} className="rounded-xl border border-amber-500/20 bg-amber-500/[0.08] px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-relaxed text-amber-50">{risk.title}</p>
+                      <p className="mt-2 text-sm text-red-200">
+                        <span className="font-semibold text-red-300">If ignored:</span> {risk.detail}
+                      </p>
+                      {risk.dueDate ? (
+                        <p className="mt-2 text-xs uppercase tracking-[0.16em] text-amber-300/80">
+                          Deadline: {formatDate(risk.dueDate)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDismissedRiskIds((current) => new Set(current).add(risk.id));
+                        onDismiss?.(risk.id);
+                      }}
+                      className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
+                      aria-label="Dismiss risk"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {lockedSignals.length > 0 && (
+          <div className="space-y-3">
+            {lockedSignals.map((signal) => (
+              <LockedSignalCard key={signal.id} signal={signal} onUpgradeClick={onUpgradeClick} />
+            ))}
+          </div>
+        )}
+
+        {showUpgradeNudge && (
+          <UpgradeNudge
+            lockedCount={lockedCount}
+            patternCount={patternCount}
+            onUpgradeClick={onUpgradeClick}
+          />
+        )}
+      </div>
     </section>
   );
 }

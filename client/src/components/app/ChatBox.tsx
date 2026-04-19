@@ -3,7 +3,7 @@ import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
   MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck, BookmarkCheck,
-  FileSearch, Zap, Search, CheckCheck, BookmarkPlus,
+  FileSearch, Zap, Search, CheckCheck, BookmarkPlus, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -152,7 +152,15 @@ function SaveAsActionButton({
   );
 }
 
-function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: string }) {
+function StructuredResponse({
+  data,
+  caseId,
+  onSelectSuggestedQuestion,
+}: {
+  data: AILegalResponse;
+  caseId?: string;
+  onSelectSuggestedQuestion: (question: string) => void;
+}) {
   const isFact = data.intent === "FACT";
   const isAction = data.intent === "ACTION";
   const [confirmingValue, setConfirmingValue] = useState<string | null>(null);
@@ -324,6 +332,64 @@ function StructuredResponse({ data, caseId }: { data: AILegalResponse; caseId?: 
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {data.proactive_insights && data.proactive_insights.length > 0 && (
+        <div className="space-y-3 border-t border-border pt-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Zap className="h-3.5 w-3.5 text-amber-500" />
+            <span>Atlas noticed something</span>
+          </div>
+          <div className="space-y-2.5">
+            {data.proactive_insights.slice(0, 2).map((insight, index) => (
+              <div
+                key={`${insight.type}-${index}`}
+                className={`rounded-lg border px-3 py-3 ${
+                  insight.type === "contradiction"
+                    ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20"
+                    : insight.type === "assumption_challenge"
+                      ? "border-sky-200 dark:border-sky-800/50 bg-sky-50 dark:bg-sky-950/20"
+                      : "border-border bg-muted/30"
+                }`}
+              >
+                {insight.type === "suggested_question" ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">You might also want to ask:</p>
+                    <button
+                      type="button"
+                      onClick={() => onSelectSuggestedQuestion(insight.text)}
+                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-primary/25 bg-primary/5 px-3 py-1.5 text-left text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{insight.text}</span>
+                    </button>
+                    <p className="text-xs leading-relaxed text-muted-foreground">{insight.reason}</p>
+                  </div>
+                ) : insight.type === "contradiction" ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <p className="text-sm leading-relaxed text-amber-900 dark:text-amber-100">
+                        <span className="font-medium">Heads up:</span> {insight.text}
+                      </p>
+                    </div>
+                    <p className="text-xs leading-relaxed text-amber-800/80 dark:text-amber-200/80">{insight.reason}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                      <p className="text-sm leading-relaxed text-sky-900 dark:text-sky-100">
+                        <span className="font-medium">Consider this:</span> {insight.text}
+                      </p>
+                    </div>
+                    <p className="text-xs leading-relaxed text-sky-800/80 dark:text-sky-200/80">{insight.reason}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -819,7 +885,14 @@ export function ChatBox({
                         </div>
                       </CardHeader>
                       <CardContent className="px-4 pb-4">
-                        <StructuredResponse data={msg.structured} caseId={caseId} />
+                        <StructuredResponse
+                          data={msg.structured}
+                          caseId={caseId}
+                          onSelectSuggestedQuestion={(question) => {
+                            setInput(question);
+                            setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
+                          }}
+                        />
                       </CardContent>
                     </Card>
 

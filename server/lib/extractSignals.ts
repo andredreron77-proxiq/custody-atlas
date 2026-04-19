@@ -1,48 +1,70 @@
 // lib/extractSignals.ts
-// Calls the OpenAI API to extract structured signals from document text.
-// Returns a RawSignal[] ready to be passed into buildWhatMattersNow().
+// Calls the OpenAI API to extract case intelligence from document text.
+// Returns a richer intelligence report plus RawSignal[] ready for persistence.
 
 import { RawSignal, SignalType } from "./signals";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o";
 
-// ---------------------------------------------------------------------------
-// Prompt
-// ---------------------------------------------------------------------------
+const SYSTEM_PROMPT = `You are a case intelligence engine analyzing custody documents.
+Your job is not to inform — it is to tell the parent the ONE thing that will determine the outcome of their case right now.
 
-const SYSTEM_PROMPT = `You are a custody document analyst. Your job is to extract actionable signals from legal custody documents for individuals who do not have legal representation.
+Be decisive. Be specific. Be uncomfortable if necessary.
 
-You will return ONLY a valid JSON array. No preamble, no explanation, no markdown fences.
+For the primary signal, think: "If this parent ignores everything else and focuses only on this, what is it?"
 
-Each signal in the array must follow this exact shape:
+For risks, do not soften language. Say exactly what will happen if they miss something.
+Example: "If you miss the April 18 hearing, the court may rule without your input and you could lose temporary custody."
+
+For deadlines, frame them as inevitable: "This will happen whether you are ready or not."
+
+Return ONLY valid JSON with this exact shape:
 {
-  "id": "<unique string, e.g. sig_001>",
-  "type": "<one of: urgent | risk | action | pattern>",
-  "title": "<short plain-English label, max 8 words>",
-  "detail": "<1-2 sentence plain-English explanation of why this matters>",
-  "dueDate": "<ISO 8601 date string if applicable, else omit>",
-  "sourceDocumentId": "<documentId passed in, always include>"
+  "primaryPriority": {
+    "title": "One sharp sentence naming the ONE thing",
+    "consequence": "What happens if ignored",
+    "urgency": "critical | high | medium"
+  },
+  "signals": [
+    {
+      "id": "sig_001",
+      "type": "urgent | risk | action | pattern",
+      "title": "Short sharp label",
+      "detail": "Specific explanation of why this matters right now",
+      "dueDate": "ISO 8601 date string if applicable",
+      "sourceDocumentId": "documentId passed in, always include"
+    }
+  ],
+  "risks": [
+    {
+      "text": "Uncomfortable, specific risk language",
+      "consequence": "Exact consequence if ignored",
+      "deadline": "Specific date if applicable"
+    }
+  ],
+  "timeline": [
+    {
+      "event": "What will happen next",
+      "date": "Specific date if present",
+      "framing": "This will happen whether you are ready or not",
+      "isNext": true
+    }
+  ]
 }
 
-Signal type definitions:
-- urgent: A deadline, hearing, or time-bound obligation is approaching.
-- risk: Language or terms that could be interpreted against the user's interests.
-- action: Something the user should do that isn't obvious from the document.
-- pattern: A cross-document finding — only use when multiple document summaries are provided.
-
 Rules:
-- Be specific. "Review exchange schedule" is bad. "Exchange scheduled for June 1 — confirm location in writing" is good.
-- Plain English only. No legal jargon.
-- If no signals of a type exist, omit them — do not force signals.
-- Maximum 8 signals per call.
-- Never invent dates. Only include dueDate if a specific date appears in the document.
-- If you cannot find meaningful signals, return an empty array: []`;
+- Be specific. "Review exchange schedule" is bad. "Hearing on June 1 at 9:00 AM — if you miss it, the judge may decide temporary custody without hearing from you" is good.
+- Never invent dates, deadlines, risks, or consequences that are not supported by the document.
+- Maximum 8 supporting signals.
+- Set exactly one timeline item to isNext=true when a next event can be identified.
+- If there is no meaningful evidence for a section, return an empty array for that section.
+- Keep the primary priority decisive and singular.`;
 
 function buildUserPrompt(
   documentText: string,
   documentId: string,
-  additionalContext?: string
+  additionalContext?: string,
 ): string {
   let prompt = `Document ID: ${documentId}\n\n`;
   if (additionalContext) {
@@ -52,13 +74,35 @@ function buildUserPrompt(
   return prompt;
 }
 
-// ---------------------------------------------------------------------------
-// API call
-// ---------------------------------------------------------------------------
-
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+}
+
+export interface ExtractedPrimaryPriority {
+  title: string;
+  consequence: string;
+  urgency: "critical" | "high" | "medium";
+}
+
+export interface ExtractedRisk {
+  text: string;
+  consequence: string;
+  deadline?: string;
+}
+
+export interface ExtractedTimelineEvent {
+  event: string;
+  date: string;
+  framing: string;
+  isNext: boolean;
+}
+
+export interface ExtractedSignalIntelligence {
+  primaryPriority: ExtractedPrimaryPriority | null;
+  signals: RawSignal[];
+  risks: ExtractedRisk[];
+  timeline: ExtractedTimelineEvent[];
 }
 
 async function callOpenAI(messages: ChatMessage[]): Promise<string> {
@@ -70,7 +114,8 @@ async function callOpenAI(messages: ChatMessage[]): Promise<string> {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 1000,
+      max_tokens: 1200,
+      response_format: { type: "json_object" },
       messages,
     }),
   });
@@ -80,33 +125,16 @@ async function callOpenAI(messages: ChatMessage[]): Promise<string> {
     throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
   }
 
-  const data = await response.json();
-  return data.choices[0].message.content.trim();
+  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
-// ---------------------------------------------------------------------------
-// Parse + validate response
-// ---------------------------------------------------------------------------
-
-function parseSignals(raw: string, documentId: string): RawSignal[] {
-  const cleaned = raw.replace(/```json|```/g, "").trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    console.error("[extractSignals] Failed to parse JSON:", cleaned);
-    return [];
-  }
-
-  if (!Array.isArray(parsed)) {
-    console.error("[extractSignals] Response was not an array:", parsed);
-    return [];
-  }
+function parseSignalsFromItems(items: unknown, documentId: string): RawSignal[] {
+  if (!Array.isArray(items)) return [];
 
   const validTypes: SignalType[] = ["urgent", "risk", "action", "pattern"];
 
-  return parsed
+  return items
     .filter((item): item is Record<string, unknown> => {
       return (
         typeof item === "object" &&
@@ -124,14 +152,83 @@ function parseSignals(raw: string, documentId: string): RawSignal[] {
       title: item.title as string,
       detail: item.detail as string,
       dueDate: typeof item.dueDate === "string" ? item.dueDate : undefined,
-      sourceDocumentId: documentId,
+      sourceDocumentId: typeof item.sourceDocumentId === "string" ? item.sourceDocumentId : documentId,
       dismissed: false,
     }));
 }
 
-// ---------------------------------------------------------------------------
-// Public API — single document extraction
-// ---------------------------------------------------------------------------
+function parseSignalIntelligence(raw: string, documentId: string): ExtractedSignalIntelligence {
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    console.error("[extractSignals] Failed to parse JSON:", cleaned);
+    return { primaryPriority: null, signals: [], risks: [], timeline: [] };
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    console.error("[extractSignals] Response was not an object:", parsed);
+    return { primaryPriority: null, signals: [], risks: [], timeline: [] };
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const primaryRaw =
+    typeof record.primaryPriority === "object" && record.primaryPriority !== null
+      ? (record.primaryPriority as Record<string, unknown>)
+      : null;
+
+  const primaryPriority = primaryRaw &&
+    typeof primaryRaw.title === "string" &&
+    typeof primaryRaw.consequence === "string" &&
+    (primaryRaw.urgency === "critical" || primaryRaw.urgency === "high" || primaryRaw.urgency === "medium")
+    ? {
+        title: primaryRaw.title,
+        consequence: primaryRaw.consequence,
+        urgency: primaryRaw.urgency,
+      } satisfies ExtractedPrimaryPriority
+    : null;
+
+  const risks = Array.isArray(record.risks)
+    ? record.risks
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .filter((item) => typeof item.text === "string" && typeof item.consequence === "string")
+      .map((item) => ({
+        text: item.text as string,
+        consequence: item.consequence as string,
+        deadline: typeof item.deadline === "string" ? item.deadline : undefined,
+      }))
+    : [];
+
+  let nextSeen = false;
+  const timeline = Array.isArray(record.timeline)
+    ? record.timeline
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .filter((item) =>
+        typeof item.event === "string" &&
+        typeof item.date === "string" &&
+        typeof item.framing === "string" &&
+        typeof item.isNext === "boolean")
+      .map((item) => {
+        const normalizedIsNext = Boolean(item.isNext) && !nextSeen;
+        if (normalizedIsNext) nextSeen = true;
+        return {
+          event: item.event as string,
+          date: item.date as string,
+          framing: item.framing as string,
+          isNext: normalizedIsNext,
+        };
+      })
+    : [];
+
+  return {
+    primaryPriority,
+    signals: parseSignalsFromItems(record.signals, documentId),
+    risks,
+    timeline,
+  };
+}
 
 export interface ExtractSignalsOptions {
   documentId: string;
@@ -140,8 +237,8 @@ export interface ExtractSignalsOptions {
 }
 
 export async function extractSignalsFromDocument(
-  opts: ExtractSignalsOptions
-): Promise<RawSignal[]> {
+  opts: ExtractSignalsOptions,
+): Promise<ExtractedSignalIntelligence> {
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     {
@@ -149,18 +246,14 @@ export async function extractSignalsFromDocument(
       content: buildUserPrompt(
         opts.documentText,
         opts.documentId,
-        opts.additionalContext
+        opts.additionalContext,
       ),
     },
   ];
 
   const raw = await callOpenAI(messages);
-  return parseSignals(raw, opts.documentId);
+  return parseSignalIntelligence(raw, opts.documentId);
 }
-
-// ---------------------------------------------------------------------------
-// Public API — cross-document pattern extraction (Pro tier)
-// ---------------------------------------------------------------------------
 
 export interface DocumentSummary {
   documentId: string;
@@ -169,14 +262,14 @@ export interface DocumentSummary {
 }
 
 export async function extractCrossDocumentPatterns(
-  documents: DocumentSummary[]
+  documents: DocumentSummary[],
 ): Promise<RawSignal[]> {
   if (documents.length < 2) return [];
 
   const content = documents
     .map(
       (d, i) =>
-        `Document ${i + 1} (ID: ${d.documentId}, uploaded: ${d.uploadedAt}):\n${d.summary}`
+        `Document ${i + 1} (ID: ${d.documentId}, uploaded: ${d.uploadedAt}):\n${d.summary}`,
     )
     .join("\n\n---\n\n");
 
@@ -189,11 +282,10 @@ export async function extractCrossDocumentPatterns(
   ];
 
   const raw = await callOpenAI(messages);
-
+  const intelligence = parseSignalIntelligence(raw, documents[0].documentId);
   const docIds = documents.map((d) => d.documentId);
-  const signals = parseSignals(raw, docIds[0]);
 
-  return signals.map((s) => ({
+  return intelligence.signals.map((s) => ({
     ...s,
     type: "pattern" as SignalType,
     sourceDocumentIds: docIds,

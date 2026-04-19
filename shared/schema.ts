@@ -187,6 +187,11 @@ export const aiLegalResponseSchema = z.object({
   questions_to_ask_attorney: z.array(z.string()),
   cautions: z.array(z.string()),
   disclaimer: z.string(),
+  proactive_insights: z.array(z.object({
+    type: z.enum(["suggested_question", "contradiction", "assumption_challenge"]),
+    text: z.string(),
+    reason: z.string(),
+  })).optional(),
   resourcesAvailable: z.boolean().optional(),
   /** Answer mode — set by the server, never by the LLM */
   intent: z.enum(["FACT", "EXPLANATION", "ACTION"]).optional(),
