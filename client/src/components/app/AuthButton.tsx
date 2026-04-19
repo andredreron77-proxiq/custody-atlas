@@ -16,13 +16,17 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
   LogOut, Mail, Loader2, ArrowLeft, Send,
-  ShieldCheck, BrainCircuit, BookmarkCheck,
+  ShieldCheck, BrainCircuit, BookmarkCheck, SlidersHorizontal,
 } from "lucide-react";
 import { LogoMark } from "./LogoMark";
+import { CommunicationPreferences } from "./CommunicationPreferences";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +42,7 @@ import {
 import { SiGoogle } from "react-icons/si";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { initialsFromPreferredName, resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
+import { useUsage } from "@/hooks/use-usage";
 import {
   signInWithEmail,
   signUpWithEmail,
@@ -110,7 +115,9 @@ function DialogBrand({ subtitle }: { subtitle: string }) {
 export function AuthButton() {
   const { user, isLoading } = useCurrentUser();
   const { data: profile } = useUserProfile();
+  const { usage } = useUsage();
   const [open, setOpen]         = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [view, setView]         = useState<DialogView>("main");
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail]       = useState("");
@@ -226,6 +233,7 @@ export function AuthButton() {
   }
 
   if (user) {
+    const isProUser = usage?.tier === "pro";
     const preferredDisplayName = resolvePreferredDisplayName({
       profileDisplayName: profile?.displayName,
       profileFullName: profile?.fullName,
@@ -242,48 +250,76 @@ export function AuthButton() {
     });
 
     return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary/40"
-            data-testid="button-user-menu"
-            aria-label="User menu"
-          >
-            {user.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt={preferredDisplayName ?? "User avatar"}
-                className="w-8 h-8 rounded-full object-cover border border-white/20"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">
-                {initials}
-              </div>
-            )}
-            <span
-              className="hidden lg:block text-sm text-slate-300 max-w-[120px] truncate"
-              data-testid="text-username"
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary/40"
+              data-testid="button-user-menu"
+              aria-label="User menu"
             >
-              {preferredDisplayName ?? user.email}
-            </span>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          <div className="px-2 py-1.5">
-            <p className="text-[11px] text-muted-foreground/70">Signed in as</p>
-            <p className="text-xs font-medium truncate mt-0.5">{user.email}</p>
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={handleSignOut}
-            className="gap-2 text-sm cursor-pointer"
-            data-testid="button-logout"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Sign out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              {user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={preferredDisplayName ?? "User avatar"}
+                  className="w-8 h-8 rounded-full object-cover border border-white/20"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-semibold">
+                  {initials}
+                </div>
+              )}
+              <span
+                className="hidden lg:block text-sm text-slate-300 max-w-[120px] truncate"
+                data-testid="text-username"
+              >
+                {preferredDisplayName ?? user.email}
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="px-2 py-1.5">
+              <p className="text-[11px] text-muted-foreground/70">Signed in as</p>
+              <p className="text-xs font-medium truncate mt-0.5">{user.email}</p>
+            </div>
+            {isProUser && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    setPreferencesOpen(true);
+                  }}
+                  className="gap-2 text-sm cursor-pointer"
+                  data-testid="button-communication-preferences"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  Communication Preferences
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleSignOut}
+              className="gap-2 text-sm cursor-pointer"
+              data-testid="button-logout"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Dialog open={preferencesOpen} onOpenChange={setPreferencesOpen}>
+          <DialogContent className="max-w-2xl border-white/10 bg-slate-950 p-0 text-slate-100">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Communication Preferences</DialogTitle>
+              <DialogDescription>Customize how Atlas communicates with you.</DialogDescription>
+            </DialogHeader>
+            <CommunicationPreferences onClose={() => setPreferencesOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 

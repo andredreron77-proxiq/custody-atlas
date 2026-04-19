@@ -9,6 +9,7 @@ import { createHash } from "crypto";
 import multer from "multer";
 import OpenAI from "openai";
 import { supabaseAdmin } from "./lib/supabaseAdmin";
+import { addLegalDisclaimer, analyzeUserSignals, buildAdaptiveSystemPrompt } from "./lib/adaptiveIntelligence";
 import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtractor";
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
@@ -104,6 +105,14 @@ import {
   createPortalSession,
   handleWebhookEvent,
 } from "./services/billing";
+import {
+  getDefaultUserPreferences,
+  getUserPreferences,
+  resetUserPreferences,
+  resolveEffectivePreferences,
+  setUserPreferences,
+  updateDetectedPreferences,
+} from "./services/userPreferences";
 import {
   maybePublishQuestion,
   getPublicQuestionsByState,
@@ -1350,6 +1359,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/user/preferences", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id as string;
+      const prefs = await getUserPreferences(userId);
+      return res.json(prefs ?? getDefaultUserPreferences());
+    } catch (err) {
+      console.error("[user-preferences] GET error:", err);
+      return res.status(500).json({ error: "Failed to load communication preferences." });
+    }
+  });
+
+  app.patch("/api/user/preferences", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string; tier: "free" | "pro" };
+      if (user.tier !== "pro") {
+        return res.status(403).json({ error: "Communication preferences are a Pro feature." });
+      }
+
+      const parsed = z.object({
+        communication_style: z.enum(["simple", "balanced", "professional"]).optional(),
+        response_format: z.enum(["bullets", "prose"]).optional(),
+        explain_terms: z.enum(["always", "once", "never"]).optional(),
+      }).refine(
+        (value) => Object.values(value).some((entry) => entry !== undefined),
+        { message: "At least one preference must be provided." },
+      ).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid communication preferences.",
+          details: parsed.error.issues.map((issue) => issue.message),
+        });
+      }
+
+      await setUserPreferences(user.id, parsed.data);
+      const updated = await getUserPreferences(user.id);
+      return res.json(updated ?? getDefaultUserPreferences());
+    } catch (err) {
+      console.error("[user-preferences] PATCH error:", err);
+      return res.status(500).json({ error: "Failed to save communication preferences." });
+    }
+  });
+
+  app.post("/api/user/preferences/reset", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string; tier: "free" | "pro" };
+      if (user.tier !== "pro") {
+        return res.status(403).json({ error: "Communication preferences are a Pro feature." });
+      }
+
+      await resetUserPreferences(user.id);
+      return res.json({ ok: true, preferences: getDefaultUserPreferences() });
+    } catch (err) {
+      console.error("[user-preferences] RESET error:", err);
+      return res.status(500).json({ error: "Failed to reset communication preferences." });
+    }
+  });
+
   app.get("/api/custody-laws/:state", (req, res) => {
     const stateName = asString(req.params.state);
     const law = getCustodyLaw(stateName);
@@ -2151,8 +2218,33 @@ ACTION GUIDANCE MODE
 The user is asking what they should do or how to take a specific action. Focus your response on concrete next steps. Keep steps numbered and clear. Distinguish between actions they can take themselves and actions that require an attorney.`;
       }
 
-      const systemPrompt =
-        buildSystemPrompt(effectiveJurisdiction.state) +
+      const userSignals = analyzeUserSignals(userQuestion, historyTurns);
+      const storedPrefs = userId ? await getUserPreferences(userId) : null;
+      const effectivePreferences = storedPrefs
+        ? resolveEffectivePreferences(storedPrefs, userSignals)
+        : {
+            knowledgeLevel: userSignals.knowledgeLevel,
+            responseFormat: "bullets" as const,
+            explainTerms: userSignals.knowledgeLevel === "beginner",
+          };
+
+      const effectiveSignals = {
+        ...userSignals,
+        knowledgeLevel: effectivePreferences.knowledgeLevel,
+        prefersBullets: effectivePreferences.responseFormat === "bullets",
+      };
+
+      const baseSystemPrompt =
+        buildSystemPrompt(
+          effectiveJurisdiction.state,
+          effectivePreferences.knowledgeLevel,
+        ) +
+        `
+
+---
+COMMUNICATION PREFERENCES
+- Response format: ${effectivePreferences.responseFormat === "prose" ? "Use flowing prose paragraphs unless a numbered process is truly necessary." : "Use organized bullet points when they improve clarity."}
+- Explain legal terms: ${effectivePreferences.explainTerms ? "Yes — define legal terms when you use them." : "No — do not define basic legal terms unless the term is unusually technical."}` +
         officialContactAddendum +
         caseJurisdictionAddendum +
         caseMemoryText +
@@ -2162,8 +2254,19 @@ The user is asking what they should do or how to take a specific action. Focus y
         retainedChunkAddendum +
         factModeAddendum;
 
+      const adaptedSystemPrompt = buildAdaptiveSystemPrompt(
+        baseSystemPrompt,
+        effectiveSignals,
+        effectiveJurisdiction,
+      );
+
+      if (userId && storedPrefs) {
+        updateDetectedPreferences(userId, userSignals, storedPrefs)
+          .catch((err) => console.error("preference update error:", err));
+      }
+
       const openAIMessages = [
-        { role: "system" as const, content: systemPrompt },
+        { role: "system" as const, content: adaptedSystemPrompt },
         ...historyTurns,
         {
           role: "user" as const,
@@ -2205,8 +2308,11 @@ The user is asking what they should do or how to take a specific action. Focus y
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
+      const summary = addLegalDisclaimer(validated.data.summary);
+
       const enrichedResponse = {
         ...validated.data,
+        summary,
         resourcesAvailable: shouldSurfaceResources({
           intent: effectiveIntent,
           userQuestion,
