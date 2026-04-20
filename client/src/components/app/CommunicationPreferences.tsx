@@ -163,8 +163,8 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
   }
 
   return (
-    <Card className="border-white/10 bg-slate-950/90 text-slate-100 shadow-xl">
-      <CardHeader className="pb-5">
+    <Card className="flex max-h-[80vh] flex-col border-white/10 bg-slate-950/90 text-slate-100 shadow-xl">
+      <CardHeader className="shrink-0 pb-5">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 rounded-xl border border-sky-400/20 bg-sky-400/10 p-2.5">
             <Sparkles className="h-4 w-4 text-sky-300" />
@@ -178,7 +178,8 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-6">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 pb-4">
         <section className="space-y-3">
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-slate-100">How should Atlas explain things?</h3>
@@ -318,8 +319,10 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
             ))}
           </RadioGroup>
         </section>
+        </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-white/10 pt-5 sm:flex-row sm:justify-between">
+        <div className="shrink-0 border-t border-white/10 bg-slate-950/95 px-6 py-5">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
           <Button
             type="button"
             variant="outline"
@@ -339,6 +342,7 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Save preferences
           </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

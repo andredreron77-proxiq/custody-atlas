@@ -311,7 +311,7 @@ export function AuthButton() {
         </DropdownMenu>
 
         <Dialog open={preferencesOpen} onOpenChange={setPreferencesOpen}>
-          <DialogContent className="max-w-2xl border-white/10 bg-slate-950 p-0 text-slate-100">
+          <DialogContent className="left-1/2 top-1/2 max-h-[80vh] w-[calc(100vw-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden border-white/10 bg-slate-950 p-0 text-slate-100 sm:w-full">
             <DialogHeader className="sr-only">
               <DialogTitle>Communication Preferences</DialogTitle>
               <DialogDescription>Customize how Atlas communicates with you.</DialogDescription>
