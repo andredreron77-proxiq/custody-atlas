@@ -2338,6 +2338,10 @@ COMMUNICATION PREFERENCES
       }
 
       const summary = addLegalDisclaimer(validated.data.summary);
+      const keyPoints = validated.data.key_points ?? [];
+      const proseResponse = typeof validated.data.prose_response === "string"
+        ? validated.data.prose_response.trim()
+        : "";
       let proactiveInsights: Array<{
         type: "suggested_question" | "contradiction" | "assumption_challenge";
         text: string;
@@ -2345,9 +2349,14 @@ COMMUNICATION PREFERENCES
       }> = [];
 
       try {
+        const responseBodyForInsights = [
+          summary,
+          proseResponse,
+          ...keyPoints,
+        ].filter((entry) => typeof entry === "string" && entry.trim().length > 0).join("\n");
         proactiveInsights = await generateProactiveInsights(
           userQuestion,
-          [summary, ...validated.data.key_points].join("\n"),
+          responseBodyForInsights,
           contextDocumentsForInsights
             .map((doc) => doc.extractedText || JSON.stringify(doc.analysisJson ?? {}))
             .slice(0, 5),

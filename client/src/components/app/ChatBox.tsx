@@ -165,6 +165,8 @@ function StructuredResponse({
 }) {
   const isFact = data.intent === "FACT";
   const isAction = data.intent === "ACTION";
+  const keyPoints = data.key_points ?? [];
+  const proseResponse = data.prose_response?.trim() ?? "";
   const [confirmingValue, setConfirmingValue] = useState<string | null>(null);
   const [confirmedValues, setConfirmedValues] = useState<Set<string>>(new Set());
 
@@ -271,6 +273,20 @@ function StructuredResponse({
         <div className="text-[14.5px] leading-[1.65] text-foreground">{data.summary}</div>
       )}
 
+      {!isFact && proseResponse && (
+        <div className="space-y-3">
+          {proseResponse
+            .split(/\n{2,}/)
+            .map((paragraph) => paragraph.trim())
+            .filter(Boolean)
+            .map((paragraph, index) => (
+              <p key={index} className="text-[14.5px] leading-[1.75] text-foreground/88">
+                {paragraph}
+              </p>
+            ))}
+        </div>
+      )}
+
       {proactiveInsights.length > 0 && (
         <div className="space-y-2.5 border-t border-border pt-2.5">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -333,7 +349,7 @@ function StructuredResponse({
         <FollowUpChips onSelect={onSelectSuggestedQuestion} disabled={false} highlighted />
       )}
 
-      {isAction && data.key_points.length > 0 && (
+      {isAction && !proseResponse && keyPoints.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
@@ -346,12 +362,12 @@ function StructuredResponse({
               <SaveAsActionButton
                 caseId={caseId}
                 title={data.summary.slice(0, 120)}
-                description={data.key_points.slice(0, 5).join("; ")}
+                description={keyPoints.slice(0, 5).join("; ")}
               />
             )}
           </div>
           <ol className="space-y-2 list-decimal list-inside">
-            {data.key_points.map((point, i) => (
+            {keyPoints.map((point, i) => (
               <li key={i} className="text-[14.5px] leading-[1.75] text-foreground/85 pl-1" data-testid={`key-point-${i}`}>
                 {point}
               </li>
@@ -360,7 +376,7 @@ function StructuredResponse({
         </div>
       )}
 
-      {!isAction && data.key_points.length > 0 && (
+      {!isAction && !proseResponse && keyPoints.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -369,7 +385,7 @@ function StructuredResponse({
             </span>
           </div>
           <ul className="space-y-2">
-            {data.key_points.map((point, i) => (
+            {keyPoints.map((point, i) => (
               <li key={i} className="flex items-start gap-2.5" data-testid={`key-point-${i}`}>
                 <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                 <span className="text-[14.5px] leading-[1.75] text-foreground/85">{point}</span>

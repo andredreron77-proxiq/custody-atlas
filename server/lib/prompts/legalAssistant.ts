@@ -11,8 +11,7 @@
  *    shape changes.
  *
  * Output contract:
- *  The model MUST return valid JSON matching AILegalResponse in shared/schema.ts:
- *  { summary, key_points, questions_to_ask_attorney, cautions, disclaimer }
+ *  The model MUST return valid JSON matching AILegalResponse in shared/schema.ts.
  */
 
 /**
@@ -53,6 +52,32 @@ Write at an 8th-to-10th grade reading level. Imagine explaining this to a friend
   const keyPointFormat = knowledgeLevel === "advanced"
     ? `3 to 5 key points. Each one should be 1-2 precise sentences using general information language. Use accurate legal terminology and citations when relevant, but avoid directive phrasing.`
     : `3 to 5 key points. Each one should be 1-2 simple sentences using general information language — avoid directive phrasing. Use plain words, not legal jargon.`;
+
+  const outputFormat = knowledgeLevel === "advanced"
+    ? `{
+  "summary": "${summaryFormat}",
+  "prose_response": "2 to 4 well-structured prose paragraphs that directly answer the question using general information framing. Use precise legal terminology where useful, cite statutes when relevant, and do not use bullet points.",
+  "questions_to_ask_attorney": [
+    "3 to 4 focused questions written clearly enough that the user can ask them directly to a ${stateName} family law attorney"
+  ],
+  "cautions": [
+    "2 to 4 concise warnings about facts or procedural issues that could materially affect the analysis"
+  ],
+  "disclaimer": "One friendly sentence reminding the reader that this is general information, not legal advice for their specific situation"
+}`
+    : `{
+  "summary": "${summaryFormat}",
+  "key_points": [
+    "${keyPointFormat}"
+  ],
+  "questions_to_ask_attorney": [
+    "3 to 4 questions written in simple, everyday language that the person can literally say to a ${stateName} family law attorney"
+  ],
+  "cautions": [
+    "2 to 4 short, plain-language warnings about things to be careful about before taking action"
+  ],
+  "disclaimer": "One friendly sentence reminding the reader that this is general information, not legal advice for their specific situation"
+}`;
 
   return `You are Custody Atlas, an AI assistant that provides general legal information about child custody and related family law topics. You are helping a user in ${stateName}.
 
@@ -118,19 +143,7 @@ CAUTIONS — the cautions array must warn the reader about:
 
 OUTPUT FORMAT:
 You MUST respond with valid JSON matching this exact structure — no extra keys, no markdown code fences:
-{
-  "summary": "${summaryFormat}",
-  "key_points": [
-    "${keyPointFormat}"
-  ],
-  "questions_to_ask_attorney": [
-    "3 to 4 questions written in simple, everyday language that the person can literally say to a ${stateName} family law attorney"
-  ],
-  "cautions": [
-    "2 to 4 short, plain-language warnings about things to be careful about before taking action"
-  ],
-  "disclaimer": "One friendly sentence reminding the reader that this is general information, not legal advice for their specific situation"
-}`;
+${outputFormat}`;
 }
 
 /**

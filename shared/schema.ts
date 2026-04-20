@@ -183,7 +183,8 @@ export type AskAIRequest = z.infer<typeof askAIRequestSchema>;
 
 export const aiLegalResponseSchema = z.object({
   summary: z.string(),
-  key_points: z.array(z.string()),
+  key_points: z.array(z.string()).optional(),
+  prose_response: z.string().optional(),
   questions_to_ask_attorney: z.array(z.string()),
   cautions: z.array(z.string()),
   disclaimer: z.string(),

@@ -527,14 +527,28 @@ function ComparisonAISection({ stateA, stateB }: ComparisonAISectionProps) {
             <p className="text-sm leading-relaxed text-foreground">{aiResponse.summary}</p>
           </div>
 
+          {aiResponse.prose_response && (
+            <div className="rounded-lg border bg-card p-3 space-y-2">
+              {aiResponse.prose_response
+                .split(/\n{2,}/)
+                .map((paragraph) => paragraph.trim())
+                .filter(Boolean)
+                .map((paragraph, i) => (
+                  <p key={i} className="text-sm leading-relaxed text-foreground">
+                    {paragraph}
+                  </p>
+                ))}
+            </div>
+          )}
+
           {/* Key points */}
-          {aiResponse.key_points.length > 0 && (
+          {!aiResponse.prose_response && (aiResponse.key_points?.length ?? 0) > 0 && (
             <div className="rounded-lg border bg-card p-3 space-y-1.5">
               <div className="flex items-center gap-1.5 mb-2">
                 <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key Differences</span>
               </div>
-              {aiResponse.key_points.map((pt, i) => (
+              {(aiResponse.key_points ?? []).map((pt, i) => (
                 <div key={i} className="flex gap-2">
                   <span className="w-1 h-1 rounded-full bg-primary mt-2 flex-shrink-0" />
                   <p className="text-sm text-foreground leading-relaxed">{pt}</p>

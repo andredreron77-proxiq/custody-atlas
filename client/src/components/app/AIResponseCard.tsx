@@ -17,6 +17,8 @@ interface AIResponseCardProps {
 }
 
 export function AIResponseCard({ response }: AIResponseCardProps) {
+  const proseResponse = response.prose_response?.trim() ?? "";
+  const keyPoints = response.key_points ?? [];
   return (
     <div className="space-y-5" data-testid="section-ai-response">
       {/* Summary */}
@@ -33,15 +35,29 @@ export function AIResponseCard({ response }: AIResponseCardProps) {
         </Card>
       )}
 
+      {proseResponse && (
+        <div className="space-y-3">
+          {proseResponse
+            .split(/\n{2,}/)
+            .map((paragraph) => paragraph.trim())
+            .filter(Boolean)
+            .map((paragraph, i) => (
+              <p key={i} className="text-sm leading-relaxed text-foreground">
+                {paragraph}
+              </p>
+            ))}
+        </div>
+      )}
+
       {/* Key points */}
-      {response.key_points?.length > 0 && (
+      {!proseResponse && keyPoints.length > 0 && (
         <div>
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
             <FileText className="w-4 h-4 text-primary" />
             Key Points
           </h2>
           <ul className="space-y-2">
-            {response.key_points.map((point, i) => (
+            {keyPoints.map((point, i) => (
               <li
                 key={i}
                 className="flex gap-2.5 text-sm leading-relaxed"
