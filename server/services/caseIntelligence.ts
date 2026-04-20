@@ -1,3 +1,4 @@
+import type { RawSignal, SignalType } from "../lib/signals";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
 import { generateActionsForRisks } from "./actionGenerator";
 import { pickWhatMattersNow, renderSummary } from "./plainEnglish";
@@ -36,6 +37,15 @@ interface NormalizedContext {
     extractedFacts: Record<string, unknown>;
     implications: string[];
   }>;
+}
+
+interface SignalRow {
+  id: string;
+  type: SignalType;
+  title: string;
+  detail: string;
+  due_date: string | null;
+  dismissed: boolean | null;
 }
 
 function toStringArray(value: unknown): string[] {
@@ -101,6 +111,70 @@ function shortReason(reason: string): string {
   const sentenceMatch = trimmed.match(/^[^.!?]*[.!?]?/);
   const sentence = (sentenceMatch?.[0] ?? trimmed).trim();
   return sentence.length <= 120 ? sentence : `${sentence.slice(0, 117).trimEnd()}...`;
+}
+
+function signalPriority(type: SignalType): number {
+  if (type === "urgent") return 0;
+  if (type === "risk") return 1;
+  if (type === "action") return 2;
+  return 3;
+}
+
+function toSignalWhatMattersNow(signal: RawSignal): {
+  top_priority: string;
+  reason: string;
+  urgency: "High" | "Medium" | "Low";
+} {
+  return {
+    top_priority: signal.title.trim(),
+    reason: shortReason(signal.detail),
+    urgency: signal.type === "urgent" ? "High" : signal.type === "risk" ? "Medium" : "Low",
+  };
+}
+
+async function getPrioritySignalForCase(caseId: string): Promise<RawSignal | null> {
+  if (!supabaseAdmin) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("signals")
+    .select("id,type,title,detail,due_date,dismissed")
+    .eq("case_id", caseId)
+    .order("due_date", { ascending: true });
+
+  if (error) {
+    console.error("[caseIntelligence] signals fetch error:", error.message);
+    return null;
+  }
+
+  const rows = Array.isArray(data) ? data as SignalRow[] : [];
+  const top = rows
+    .filter((row) => !row.dismissed)
+    .filter((row) =>
+      typeof row.id === "string" &&
+      (row.type === "urgent" || row.type === "risk" || row.type === "action" || row.type === "pattern") &&
+      typeof row.title === "string" &&
+      typeof row.detail === "string")
+    .sort((left, right) => {
+      const priorityDiff = signalPriority(left.type) - signalPriority(right.type);
+      if (priorityDiff !== 0) return priorityDiff;
+
+      const leftDue = left.due_date ? Date.parse(left.due_date) : Number.MAX_SAFE_INTEGER;
+      const rightDue = right.due_date ? Date.parse(right.due_date) : Number.MAX_SAFE_INTEGER;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+
+      return left.title.localeCompare(right.title);
+    })[0];
+
+  if (!top) return null;
+
+  return {
+    id: top.id,
+    type: top.type,
+    title: top.title,
+    detail: top.detail,
+    dueDate: top.due_date ?? undefined,
+    dismissed: Boolean(top.dismissed),
+  };
 }
 
 function deriveObligations(
@@ -221,6 +295,8 @@ function normalizeAnalysis(documents: CanonicalDocument[]): NormalizedContext {
 export async function generateCaseIntelligence(caseId: string): Promise<CaseIntelligenceRecord | null> {
   if (!supabaseAdmin) return null;
 
+  const prioritySignal = await getPrioritySignalForCase(caseId);
+
   const { data, error } = await supabaseAdmin
     .from("documents")
     .select("id,analysis_json,created_at")
@@ -241,11 +317,13 @@ export async function generateCaseIntelligence(caseId: string): Promise<CaseInte
   });
   const actions = generateActionsForRisks(risks);
   const whatMattersNowRaw = pickWhatMattersNow(risks);
-  const whatMattersNow = {
-    ...whatMattersNowRaw,
-    top_priority: makeTopPriorityCardTitle(whatMattersNowRaw.top_priority),
-    reason: shortReason(whatMattersNowRaw.reason),
-  };
+  const whatMattersNow = prioritySignal
+    ? toSignalWhatMattersNow(prioritySignal)
+    : {
+        ...whatMattersNowRaw,
+        top_priority: makeTopPriorityCardTitle(whatMattersNowRaw.top_priority),
+        reason: shortReason(whatMattersNowRaw.reason),
+      };
   const summary = renderSummary(risks, actions, docs.length);
   const obligations = deriveObligations(risks, normalizedContext.docsForRules);
   const missingInformation = deriveMissingInformation(risks, normalizedContext.normalized.keyDates);
