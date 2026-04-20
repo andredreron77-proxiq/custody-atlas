@@ -316,15 +316,6 @@ export default function AskAIPage() {
     !showLocationPicker &&
     isLoadingCases;
 
-  if ((threadIdParam && isLoadingThread) || (conversationIdParam && isLoadingConversation)) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
-        <p className="text-sm text-muted-foreground">Loading your conversation...</p>
-      </div>
-    );
-  }
-
   const initialMessages: ChatMessage[] | undefined =
     threadData?.messages?.map((m) => ({
       role: m.role,
@@ -342,6 +333,46 @@ export default function AskAIPage() {
       setHasChatMessages(true);
     }
   }, [initialMessages]);
+
+  const activeCaseName = activeCase?.title?.trim() || (activeCaseId ? "Unnamed Case" : null);
+  const answeringScopeLabel = activeCaseName
+    ? `Answering from: ${activeCaseName}`
+    : "Answering from: General Workspace";
+  const selectedDocCount = chatSelectedDocumentIds ? chatSelectedDocumentIds.length : userDocuments.length;
+  const userTier: UserTier = isProUser ? "pro" : "free";
+
+  const { data: signalsData, isLoading: isLoadingSignals } = useQuery<{ signals: RawSignal[] }>({
+    queryKey: ["/api/signals", "case", activeCaseId],
+    enabled: !!activeCaseId,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      if (!activeCaseId) return { signals: [] };
+      const res = await apiRequestRaw("GET", `/api/signals?caseId=${encodeURIComponent(activeCaseId)}`);
+      if (!res.ok) return { signals: [] };
+      return res.json();
+    },
+  });
+
+  const whatMattersNowPreview = activeCaseId
+    ? buildWhatMattersNow(signalsData?.signals ?? [], {
+        tier: userTier,
+        totalDocuments: userDocuments.length,
+        lastActivityDaysAgo: 0,
+      })
+    : null;
+  const topCaseSignals: RawSignal[] = (whatMattersNowPreview?.signals ?? [])
+    .slice(0, 2)
+    .map(({ score, locked, daysUntilDue, ...raw }) => raw);
+
+  if ((threadIdParam && isLoadingThread) || (conversationIdParam && isLoadingConversation)) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
+        <p className="text-sm text-muted-foreground">Loading your conversation...</p>
+      </div>
+    );
+  }
 
   if (awaitingCaseJurisdiction) {
     return (
@@ -418,36 +449,6 @@ export default function AskAIPage() {
     (jurisdiction.latitude !== undefined ? `&lat=${jurisdiction.latitude}` : "") +
     (jurisdiction.longitude !== undefined ? `&lng=${jurisdiction.longitude}` : "");
 
-  const activeCaseName = activeCase?.title?.trim() || (activeCaseId ? "Unnamed Case" : null);
-  const answeringScopeLabel = activeCaseName
-    ? `Answering from: ${activeCaseName}`
-    : "Answering from: General Workspace";
-  const selectedDocCount = chatSelectedDocumentIds ? chatSelectedDocumentIds.length : userDocuments.length;
-  const userTier: UserTier = isProUser ? "pro" : "free";
-
-  const { data: signalsData, isLoading: isLoadingSignals } = useQuery<{ signals: RawSignal[] }>({
-    queryKey: ["/api/signals", "case", activeCaseId],
-    enabled: !!activeCaseId,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      if (!activeCaseId) return { signals: [] };
-      const res = await apiRequestRaw("GET", `/api/signals?caseId=${encodeURIComponent(activeCaseId)}`);
-      if (!res.ok) return { signals: [] };
-      return res.json();
-    },
-  });
-
-  const whatMattersNowPreview = activeCaseId
-    ? buildWhatMattersNow(signalsData?.signals ?? [], {
-        tier: userTier,
-        totalDocuments: userDocuments.length,
-        lastActivityDaysAgo: 0,
-      })
-    : null;
-  const topCaseSignals: RawSignal[] = (whatMattersNowPreview?.signals ?? [])
-    .slice(0, 2)
-    .map(({ score, locked, daysUntilDue, ...raw }) => raw);
 
   return (
     <div className="h-screen overflow-hidden flex flex-col">

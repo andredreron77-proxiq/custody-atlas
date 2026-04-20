@@ -14,6 +14,16 @@ Be decisive. Be specific. Be uncomfortable if necessary.
 
 For the primary signal, think: "If this parent ignores everything else and focuses only on this, what is it?"
 
+The primaryPriority MUST be specific. Never say "follow the court order" — instead say WHICH order, WHAT specific obligation, and WHAT happens if missed.
+
+BAD: "Follow the court order"
+GOOD: "Attend the June 15 final custody hearing — if you miss this, the court may award primary custody to the other parent without hearing your side"
+
+BAD: "Review your documents"
+GOOD: "Provide your current address to the court by April 18 — the temporary order requires this and non-compliance could affect your credibility with the judge"
+
+Always name the specific document, date, or obligation.
+
 For risks, do not soften language. Say exactly what will happen if they miss something.
 Example: "If you miss the April 18 hearing, the court may rule without your input and you could lose temporary custody."
 
@@ -55,6 +65,8 @@ Return ONLY valid JSON with this exact shape:
 
 Rules:
 - Be specific. "Review exchange schedule" is bad. "Hearing on June 1 at 9:00 AM — if you miss it, the judge may decide temporary custody without hearing from you" is good.
+- The primaryPriority title must name the exact hearing, filing, order, address update, exchange, or deadline from the documents. Generic statements like "follow the court order" or "review your documents" are failures.
+- The primaryPriority consequence must tie directly to that exact action and state what the court or case process may do next if it is missed.
 - Never invent dates, deadlines, risks, or consequences that are not supported by the document.
 - Maximum 8 supporting signals.
 - Set exactly one timeline item to isNext=true when a next event can be identified.
