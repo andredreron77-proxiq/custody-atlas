@@ -79,14 +79,14 @@ const FOLLOW_UP_QUESTIONS = [
 function CautionsList({ cautions }: { cautions: string[] }) {
   if (!cautions || cautions.length === 0) return null;
   return (
-    <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
+    <div className="rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 p-2.5 space-y-1.5">
       <div className="flex items-center gap-1.5">
         <ShieldAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
         <span className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
           Important Cautions
         </span>
       </div>
-      <ul className="space-y-1.5">
+      <ul className="space-y-1">
         {cautions.map((c, i) => (
           <li
             key={i}
@@ -156,10 +156,12 @@ function StructuredResponse({
   data,
   caseId,
   onSelectSuggestedQuestion,
+  showFollowUpChips,
 }: {
   data: AILegalResponse;
   caseId?: string;
   onSelectSuggestedQuestion: (question: string) => void;
+  showFollowUpChips?: boolean;
 }) {
   const isFact = data.intent === "FACT";
   const isAction = data.intent === "ACTION";
@@ -186,12 +188,13 @@ function StructuredResponse({
   }
 
   const canConfirm = !!caseId && !!data.factTypeKey;
+  const proactiveInsights = data.proactive_insights?.slice(0, 2) ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {isFact && (
         <div
-          className={`rounded-md p-3 flex items-start gap-2.5 ${
+          className={`rounded-md p-2.5 flex items-start gap-2 ${
             data.factConflict
               ? "bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50"
               : data.factSource
@@ -265,87 +268,20 @@ function StructuredResponse({
       )}
 
       {!isFact && (
-        <div className="text-[14.5px] leading-[1.75] text-foreground">{data.summary}</div>
+        <div className="text-[14.5px] leading-[1.65] text-foreground">{data.summary}</div>
       )}
 
-      {isAction && data.key_points.length > 0 && (
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
-                Steps to Take
-              </span>
-            </div>
-            {caseId && (
-              <SaveAsActionButton
-                caseId={caseId}
-                title={data.summary.slice(0, 120)}
-                description={data.key_points.slice(0, 5).join("; ")}
-              />
-            )}
-          </div>
-          <ol className="space-y-2.5 list-decimal list-inside">
-            {data.key_points.map((point, i) => (
-              <li key={i} className="text-[14.5px] leading-[1.75] text-foreground/85 pl-1" data-testid={`key-point-${i}`}>
-                {point}
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
-      {!isAction && data.key_points.length > 0 && (
-        <div className="space-y-2.5">
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
-              {isFact ? "Details" : "Key Points"}
-            </span>
-          </div>
-          <ul className="space-y-2.5">
-            {data.key_points.map((point, i) => (
-              <li key={i} className="flex items-start gap-2.5" data-testid={`key-point-${i}`}>
-                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                <span className="text-[14.5px] leading-[1.75] text-foreground/85">{point}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <CautionsList cautions={data.cautions} />
-
-      {data.questions_to_ask_attorney.length > 0 && (
-        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3.5 space-y-2.5">
-          <div className="flex items-center gap-1.5">
-            <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80 dark:text-blue-300/80">
-              Questions to Ask Your Attorney
-            </span>
-          </div>
-          <ul className="space-y-2.5">
-            {data.questions_to_ask_attorney.map((q, i) => (
-              <li key={i} className="flex items-start gap-2.5" data-testid={`attorney-question-${i}`}>
-                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                <span className="text-[14.5px] leading-[1.75] text-blue-900 dark:text-blue-100">{q}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {data.proactive_insights && data.proactive_insights.length > 0 && (
-        <div className="space-y-3 border-t border-border pt-3">
+      {proactiveInsights.length > 0 && (
+        <div className="space-y-2.5 border-t border-border pt-2.5">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Zap className="h-3.5 w-3.5 text-amber-500" />
             <span>Atlas noticed something</span>
           </div>
-          <div className="space-y-2.5">
-            {data.proactive_insights.slice(0, 2).map((insight, index) => (
+          <div className="space-y-2">
+            {proactiveInsights.map((insight, index) => (
               <div
                 key={`${insight.type}-${index}`}
-                className={`rounded-lg border px-3 py-3 ${
+                className={`rounded-lg border px-3 py-2.5 ${
                   insight.type === "contradiction"
                     ? "border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/20"
                     : insight.type === "assumption_challenge"
@@ -354,7 +290,7 @@ function StructuredResponse({
                 }`}
               >
                 {insight.type === "suggested_question" ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <p className="text-xs text-muted-foreground">You might also want to ask:</p>
                     <button
                       type="button"
@@ -367,7 +303,7 @@ function StructuredResponse({
                     <p className="text-xs leading-relaxed text-muted-foreground">{insight.reason}</p>
                   </div>
                 ) : insight.type === "contradiction" ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                       <p className="text-sm leading-relaxed text-amber-900 dark:text-amber-100">
@@ -377,7 +313,7 @@ function StructuredResponse({
                     <p className="text-xs leading-relaxed text-amber-800/80 dark:text-amber-200/80">{insight.reason}</p>
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     <div className="flex items-start gap-2">
                       <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
                       <p className="text-sm leading-relaxed text-sky-900 dark:text-sky-100">
@@ -393,7 +329,78 @@ function StructuredResponse({
         </div>
       )}
 
-      <div className="flex items-start gap-1.5 pt-2 border-t border-border">
+      {showFollowUpChips && (
+        <FollowUpChips onSelect={onSelectSuggestedQuestion} disabled={false} highlighted />
+      )}
+
+      {isAction && data.key_points.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
+                Steps to Take
+              </span>
+            </div>
+            {caseId && (
+              <SaveAsActionButton
+                caseId={caseId}
+                title={data.summary.slice(0, 120)}
+                description={data.key_points.slice(0, 5).join("; ")}
+              />
+            )}
+          </div>
+          <ol className="space-y-2 list-decimal list-inside">
+            {data.key_points.map((point, i) => (
+              <li key={i} className="text-[14.5px] leading-[1.75] text-foreground/85 pl-1" data-testid={`key-point-${i}`}>
+                {point}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {!isAction && data.key_points.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/55">
+              {isFact ? "Details" : "Key Points"}
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {data.key_points.map((point, i) => (
+              <li key={i} className="flex items-start gap-2.5" data-testid={`key-point-${i}`}>
+                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                <span className="text-[14.5px] leading-[1.75] text-foreground/85">{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <CautionsList cautions={data.cautions} />
+
+      {data.questions_to_ask_attorney.length > 0 && (
+        <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3 space-y-2">
+          <div className="flex items-center gap-1.5">
+            <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80 dark:text-blue-300/80">
+              Questions to Ask Your Attorney
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {data.questions_to_ask_attorney.map((q, i) => (
+              <li key={i} className="flex items-start gap-2.5" data-testid={`attorney-question-${i}`}>
+                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                <span className="text-[14.5px] leading-[1.75] text-blue-900 dark:text-blue-100">{q}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex items-start gap-1.5 pt-1.5 border-t border-border">
         <Scale className="w-3 h-3 text-foreground/35 flex-shrink-0 mt-0.5" />
         <p className="text-[12px] text-foreground/50 italic leading-relaxed">{data.disclaimer}</p>
       </div>
@@ -404,12 +411,21 @@ function StructuredResponse({
 function FollowUpChips({
   onSelect,
   disabled,
+  highlighted = false,
 }: {
   onSelect: (q: string) => void;
   disabled: boolean;
+  highlighted?: boolean;
 }) {
   return (
-    <div className="pt-3 space-y-2.5" data-testid="follow-up-chips">
+    <div
+      className={`space-y-2 rounded-lg border px-3 py-2.5 ${
+        highlighted
+          ? "border-primary/35 bg-primary/5 shadow-sm"
+          : "border-border/60 bg-muted/20"
+      }`}
+      data-testid="follow-up-chips"
+    >
       <p className="text-xs text-muted-foreground italic">
         Want to go deeper? Ask a follow-up about your situation.
       </p>
@@ -419,7 +435,11 @@ function FollowUpChips({
             key={i}
             onClick={() => onSelect(q)}
             disabled={disabled}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border bg-background hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+            className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              highlighted
+                ? "border-primary/40 bg-background text-foreground/80 hover:border-primary/60 hover:bg-primary/5 hover:text-foreground"
+                : "bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            }`}
             data-testid={`button-followup-${i}`}
           >
             <ChevronRight className="w-3 h-3 flex-shrink-0" />
@@ -726,7 +746,7 @@ export function ChatBox({
       <div
         ref={messageListRef}
         className="min-h-0 flex-1 overflow-y-auto pr-1"
-        style={{ paddingBottom: "1rem" }}
+        style={{ paddingBottom: "0.5rem" }}
       >
         {hasMessages && (
           <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3 mb-4">
@@ -798,7 +818,7 @@ export function ChatBox({
         )}
 
         {hasMessages && (
-          <div className="space-y-4 pb-4">
+          <div className="space-y-3 pb-2">
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -823,7 +843,7 @@ export function ChatBox({
                     </CardContent>
                   </Card>
                 ) : msg.structured ? (
-                  <div className="max-w-[88%] space-y-2 flex-1 min-w-0">
+                  <div className="w-full flex-1 min-w-0 space-y-1.5">
                     {(() => {
                       const structuredResponse = msg.structured as AskAssistantResponse;
                       return structuredResponse.jurisdictionMismatch &&
@@ -874,7 +894,7 @@ export function ChatBox({
                       );
                     })()}
                     <Card className="border-border shadow-sm" data-testid={`card-response-${i}`}>
-                      <CardHeader className="pb-2 pt-3.5 px-4">
+                      <CardHeader className="px-3.5 pb-1.5 pt-3">
                         <div className="flex items-center justify-between gap-2">
                           <Badge variant="outline" className="text-xs font-normal gap-1">
                             <Scale className="w-3 h-3" />
@@ -883,10 +903,11 @@ export function ChatBox({
                           <TTSControls text={msg.structured.summary} defaultVoice="marin" />
                         </div>
                       </CardHeader>
-                      <CardContent className="px-4 pb-4">
+                      <CardContent className="px-3.5 pb-3">
                         <StructuredResponse
                           data={msg.structured}
                           caseId={caseId}
+                          showFollowUpChips={i === messages.length - 1 && !isLoading}
                           onSelectSuggestedQuestion={(question) => {
                             setInput(question);
                             setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
@@ -912,9 +933,8 @@ export function ChatBox({
 
                     {i === messages.length - 1 && !isLoading && (
                       <>
-                        <FollowUpChips onSelect={sendMessage} disabled={isLoading} />
                         {Math.ceil(messages.length / 2) >= 2 && (
-                          <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3.5 py-3" data-testid="attorney-bridge">
+                          <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5" data-testid="attorney-bridge">
                             <UserCheck className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                             <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
                               Need help applying this to your situation? You can speak with a custody attorney for guidance specific to your case.

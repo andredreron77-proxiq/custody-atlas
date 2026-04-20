@@ -24,6 +24,12 @@ export interface ListSignalsResult {
   notFound?: boolean;
 }
 
+export interface DeleteSignalsResult {
+  ok: boolean;
+  error?: PersistenceErrorDetail;
+  deletedCount?: number;
+}
+
 export async function replaceDocumentSignals(
   caseId: string,
   documentId: string,
@@ -180,6 +186,59 @@ export async function dismissSignalForUser(
       ok: false,
       error: buildPersistenceErrorDetail(error, {
         operation: "dismissSignalForUser",
+        table: "signals",
+        writeMode: "update",
+      }),
+    };
+  }
+}
+
+export async function deleteSignalsForCase(caseId: string): Promise<DeleteSignalsResult> {
+  if (!supabaseAdmin) {
+    return {
+      ok: false,
+      error: {
+        operation: "deleteSignalsForCase",
+        table: "signals",
+        writeMode: "update",
+        code: null,
+        message: "Supabase admin client is not configured.",
+        details: null,
+        hint: null,
+        column: null,
+        constraint: null,
+        isRls: false,
+      },
+    };
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("signals")
+      .delete()
+      .eq("case_id", caseId)
+      .select("id");
+
+    if (error) {
+      return {
+        ok: false,
+        error: buildPersistenceErrorDetail(error, {
+          operation: "deleteSignalsForCase",
+          table: "signals",
+          writeMode: "update",
+        }),
+      };
+    }
+
+    return {
+      ok: true,
+      deletedCount: Array.isArray(data) ? data.length : 0,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: buildPersistenceErrorDetail(error, {
+        operation: "deleteSignalsForCase",
         table: "signals",
         writeMode: "update",
       }),

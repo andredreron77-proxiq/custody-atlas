@@ -90,6 +90,7 @@ import {
   getRecentMessages,
 } from "./services/threads";
 import {
+  deleteSignalsForCase,
   dismissSignalForUser,
   listSignalsForCase,
   listSignalsForDocument,
@@ -4692,6 +4693,120 @@ Do not add facts not present in the provided evidence.`,
     const ok = await deactivateInviteCode(codeId);
     if (!ok) return res.status(500).json({ error: "Failed to deactivate code." });
     return res.json({ ok: true });
+  });
+
+  // POST /api/admin/cases/:caseId/refresh-signals — force fresh signal extraction for a case
+  app.post("/api/admin/cases/:caseId/refresh-signals", requireAdmin, async (req, res) => {
+    const caseId = asString(req.params.caseId);
+
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Supabase admin client is not configured." });
+    }
+
+    try {
+      const { data: caseRow, error: caseError } = await supabaseAdmin
+        .from("cases")
+        .select("id, title, jurisdiction_state, jurisdiction_county")
+        .eq("id", caseId)
+        .maybeSingle();
+
+      if (caseError) {
+        console.error("[admin] refresh-signals case lookup error:", caseError);
+        return res.status(500).json({ error: "Failed to load case." });
+      }
+
+      if (!caseRow) {
+        return res.status(404).json({ error: "Case not found." });
+      }
+
+      const deleted = await deleteSignalsForCase(caseId);
+      if (!deleted.ok) {
+        console.error("[admin] refresh-signals delete error:", deleted.error);
+        return res.status(500).json({ error: "Failed to clear cached signals." });
+      }
+
+      const { data: rawDocuments, error: docsError } = await supabaseAdmin
+        .from("documents")
+        .select("id, case_id, file_name, extracted_text, analysis_json")
+        .eq("case_id", caseId)
+        .order("created_at", { ascending: true });
+
+      if (docsError) {
+        console.error("[admin] refresh-signals documents lookup error:", docsError);
+        return res.status(500).json({ error: "Failed to load case documents." });
+      }
+
+      const documents = Array.isArray(rawDocuments)
+        ? rawDocuments.filter((row): row is {
+            id: string;
+            case_id: string;
+            file_name: string | null;
+            extracted_text: string | null;
+            analysis_json: Record<string, unknown> | null;
+          } => typeof row?.id === "string" && typeof row?.case_id === "string")
+        : [];
+
+      const refreshedSignals: Array<Record<string, unknown>> = [];
+      const refreshedDocuments: Array<{ documentId: string; insertedSignals: number }> = [];
+
+      for (const doc of documents) {
+        const extractedText = typeof doc.extracted_text === "string" ? doc.extracted_text.trim() : "";
+        if (!extractedText) continue;
+
+        const additionalContext = (() => {
+          const summary = typeof doc.analysis_json?.summary === "string" ? doc.analysis_json.summary.trim() : "";
+          const fileLabel = typeof doc.file_name === "string" && doc.file_name.trim().length > 0
+            ? `Document: ${doc.file_name.trim()}`
+            : "";
+          return [fileLabel, summary ? `Existing summary: ${summary}` : ""].filter(Boolean).join("\n");
+        })();
+
+        const signalIntelligence = await extractSignalsFromDocument({
+          documentId: doc.id,
+          documentText: extractedText,
+          additionalContext: additionalContext || undefined,
+        });
+
+        const signalWrite = await replaceDocumentSignals(caseId, doc.id, signalIntelligence.signals);
+        if (!signalWrite.ok) {
+          console.error("[admin] refresh-signals write error:", {
+            caseId,
+            documentId: doc.id,
+            error: signalWrite.error,
+          });
+          return res.status(500).json({ error: "Failed to refresh extracted signals." });
+        }
+
+        refreshedDocuments.push({
+          documentId: doc.id,
+          insertedSignals: signalWrite.insertedCount ?? signalIntelligence.signals.length,
+        });
+
+        refreshedSignals.push({
+          documentId: doc.id,
+          primaryPriority: signalIntelligence.primaryPriority,
+          risks: signalIntelligence.risks,
+          timeline: signalIntelligence.timeline,
+          signals: signalIntelligence.signals,
+        });
+      }
+
+      return res.json({
+        ok: true,
+        case: {
+          id: caseRow.id,
+          title: caseRow.title,
+          jurisdictionState: caseRow.jurisdiction_state,
+          jurisdictionCounty: caseRow.jurisdiction_county,
+        },
+        deletedCachedSignals: deleted.deletedCount ?? 0,
+        refreshedDocuments,
+        refreshedSignals,
+      });
+    } catch (err) {
+      console.error("[admin] refresh-signals exception:", err);
+      return res.status(500).json({ error: "Failed to refresh signals." });
+    }
   });
 
   /* ════════════════════════════════════════════════════════════════════════
