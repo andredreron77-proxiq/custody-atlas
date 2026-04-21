@@ -63,6 +63,7 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
   const qc = useQueryClient();
   const isProUser = usage?.tier === "pro";
   const [formState, setFormState] = useState(DEFAULT_PREFERENCES);
+  const [hasCommunicationStyleSelection, setHasCommunicationStyleSelection] = useState(false);
   const [hasResponseFormatSelection, setHasResponseFormatSelection] = useState(false);
   const [hasExplainTermsSelection, setHasExplainTermsSelection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -77,6 +78,7 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
         throw new Error("Failed to load communication preferences.");
       }
       const json = await res.json() as Partial<CommunicationPreferencesResponse>;
+      setHasCommunicationStyleSelection(json.communication_style !== undefined && json.communication_style !== "auto");
       setHasResponseFormatSelection(json.response_format !== undefined && json.response_format !== "auto");
       setHasExplainTermsSelection(json.explain_terms !== undefined && json.explain_terms !== "auto");
       return normalizePreferences(json);
@@ -97,11 +99,15 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
   async function handleSave() {
     setIsSaving(true);
     try {
-      const res = await apiRequestRaw("PATCH", "/api/user/preferences", {
-        communication_style: formState.communication_style,
+      const payload = {
         response_format: formState.response_format,
         explain_terms: formState.explain_terms,
-      });
+        ...(hasCommunicationStyleSelection
+          ? { communication_style: formState.communication_style }
+          : {}),
+      };
+
+      const res = await apiRequestRaw("PATCH", "/api/user/preferences", payload);
 
       if (!res.ok) {
         const body = await res.text();
@@ -109,6 +115,7 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
       }
 
       await refreshPreferences();
+      setHasCommunicationStyleSelection(formState.communication_style !== "auto");
       setHasResponseFormatSelection(true);
       setHasExplainTermsSelection(true);
       toast({
@@ -138,6 +145,7 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
 
       await refreshPreferences();
       setFormState(DEFAULT_PREFERENCES);
+      setHasCommunicationStyleSelection(false);
       setHasResponseFormatSelection(false);
       setHasExplainTermsSelection(false);
       toast({
@@ -214,12 +222,14 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
             </p>
           </div>
           <RadioGroup
-            value={formState.communication_style}
-            onValueChange={(value) =>
+            value={hasCommunicationStyleSelection ? formState.communication_style : undefined}
+            onValueChange={(value) => {
+              setHasCommunicationStyleSelection(true);
               setFormState((current) => ({
                 ...current,
                 communication_style: value as CommunicationPreferencesValue["communication_style"],
-              }))}
+              }));
+            }}
             className="gap-3"
           >
             {[
