@@ -166,10 +166,12 @@ export function WelcomeFlow() {
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
+      window.dispatchEvent(new Event("custody-atlas:welcome-completed"));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save welcome progress.";
       console.error("[WelcomeFlow] Failed to persist welcome dismissal:", message, error);
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
+      window.dispatchEvent(new Event("custody-atlas:welcome-completed"));
     }
     setTimeout(() => {
       navigate(href, { replace: true });

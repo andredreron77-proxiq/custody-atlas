@@ -58,6 +58,10 @@ export function parseStoredJurisdiction(raw: string, activeUserId: string | null
     entry = { jurisdiction: parsed as Jurisdiction, savedAt: Date.now() };
   }
 
+  if (entry.userId && activeUserId && entry.userId !== activeUserId) {
+    return null;
+  }
+
   return { entry, shouldClearStorage };
 }
 
@@ -67,7 +71,10 @@ function readFromStorage(): Jurisdiction | null {
     if (!raw) return null;
     const activeUserId = getActiveUserIdFromSession();
     const parsed = parseStoredJurisdiction(raw, activeUserId);
-    if (!parsed) return null;
+    if (!parsed) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
     const { entry, shouldClearStorage } = parsed;
     if (shouldClearStorage) {
       localStorage.removeItem(STORAGE_KEY);

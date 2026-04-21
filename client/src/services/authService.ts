@@ -107,6 +107,7 @@ export async function updatePassword(
  */
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
+  localStorage.removeItem("custody_jurisdiction");
   resetAnalytics();
 }
 

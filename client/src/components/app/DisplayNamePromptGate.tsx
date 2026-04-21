@@ -29,15 +29,34 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   const [dismissed, setDismissed] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const suppressForRoute = location === "/welcome" || location === "/workspace";
-  const suppressForCompletedWelcome =
+  const [suppressForCompletedWelcome, setSuppressForCompletedWelcome] = useState(
+    () =>
     typeof window !== "undefined" &&
-    window.sessionStorage.getItem(WELCOME_FLOW_JUST_COMPLETED_KEY) === "1";
+    window.sessionStorage.getItem(WELCOME_FLOW_JUST_COMPLETED_KEY) === "1",
+  );
 
   useEffect(() => {
     if (!draft && user?.displayName) {
       setDraft(firstNameFromDisplayName(user.displayName));
     }
   }, [draft, user?.displayName]);
+
+  useEffect(() => {
+    const handleStorage = () => {
+      setSuppressForCompletedWelcome(
+        sessionStorage.getItem(WELCOME_FLOW_JUST_COMPLETED_KEY) === "1",
+      );
+    };
+    const handleWelcomeCompleted = () => {
+      setSuppressForCompletedWelcome(true);
+    };
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("custody-atlas:welcome-completed", handleWelcomeCompleted);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("custody-atlas:welcome-completed", handleWelcomeCompleted);
+    };
+  }, []);
 
   const suppressionState = useMemo(
     () => getDisplayNamePromptSuppressionState(user?.id),

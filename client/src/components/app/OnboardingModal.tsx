@@ -66,7 +66,7 @@ export function OnboardingModal() {
   const { user, isLoading } = useCurrentUser();
   const { data: profile, isLoading: isProfileLoading, isFetching: isProfileFetching } = useUserProfile();
   const { data: casesData, isLoading: isCasesLoading, isFetching: isCasesFetching } = useQuery<{ cases?: Array<{ id: string; status?: string | null }> }>({
-    queryKey: ["/api/cases", "onboarding-visibility"],
+    queryKey: ["/api/cases", "onboarding-visibility", user?.id ?? "anonymous"],
     enabled: Boolean(user),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
