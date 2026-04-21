@@ -1609,7 +1609,7 @@ export default function UploadDocumentPage() {
   /* ── Render ──────────────────────────────────────────────────────────── */
 
   return (
-    <PageContainer size="narrow">
+    <PageContainer size={result ? "wide" : "narrow"}>
 
       {/* 1. Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
@@ -1876,8 +1876,8 @@ export default function UploadDocumentPage() {
 
           {/* Tabbed results */}
           {result && !isAnalyzing && (
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-              <SectionStack gap="md" className="xl:col-span-8">
+            <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+              <SectionStack gap="md" className="min-w-0">
                 {caseAssignment && (
                   <Panel>
                     <PanelHeader icon={FileText} label="Case assignment" />
@@ -2086,7 +2086,7 @@ export default function UploadDocumentPage() {
                 <DocumentQASection result={result} jurisdiction={jurisdiction} />
               </SectionStack>
 
-              <div className="xl:col-span-4">
+              <div className="min-w-0 max-w-full">
                 <Panel>
                   <PanelHeader icon={FileSearch} label="What Matters Now" />
                   <PanelContent className="p-3">

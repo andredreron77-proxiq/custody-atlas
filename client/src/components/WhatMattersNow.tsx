@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Clock3, Lock, ShieldAlert, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ScoredSignal, UserTier, WhatMattersNowResult } from "@/lib/signals";
 
 interface WhatMattersNowProps {
@@ -188,21 +189,21 @@ export default function WhatMattersNow({
   const showUpgradeNudge = tier === "free" && (lockedCount > 0 || patternCount > 0);
 
   return (
-    <section className={className} aria-label="What matters now">
-      <div className="space-y-4">
+    <section className={cn("min-w-0 max-w-full", className)} aria-label="What matters now">
+      <div className="min-w-0 space-y-4">
         {derived.primarySignal && (
-          <div className="rounded-2xl border border-white/10 bg-slate-950/90 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/90 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div className="mb-4 flex min-w-0 flex-col gap-3">
+              <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Primary Priority</p>
-                <p className="mt-3 text-2xl font-semibold leading-tight text-slate-50 sm:text-[1.95rem]">
+                <p className="mt-3 break-words text-lg font-semibold leading-snug text-slate-50 sm:text-xl">
                   {derived.primarySignal.title}
                 </p>
               </div>
-              <div className="flex items-start gap-2">
+              <div className="flex items-start justify-between gap-2">
                 <Badge
                   variant="outline"
-                  className={`border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${urgencyClass(deriveUrgency(derived.primarySignal))}`}
+                  className={`max-w-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${urgencyClass(deriveUrgency(derived.primarySignal))}`}
                 >
                   {deriveUrgency(derived.primarySignal)}
                 </Badge>
@@ -217,7 +218,7 @@ export default function WhatMattersNow({
           </div>
         )}
 
-        <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-5">
+        <div className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/70 p-5">
           <div className="mb-4 flex items-center gap-2">
             <Clock3 className="h-4 w-4 text-sky-300" />
             <h2 className="text-sm font-semibold text-slate-100">What will happen whether you are ready or not</h2>
@@ -227,7 +228,7 @@ export default function WhatMattersNow({
           ) : (
             <div className="space-y-3">
               {derived.timeline.map((signal, index) => (
-                <div key={signal.id} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div key={signal.id} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -249,7 +250,7 @@ export default function WhatMattersNow({
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-5">
+        <div className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/70 p-5">
           <div className="mb-4 flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-amber-300" />
             <h2 className="text-sm font-semibold text-slate-100">Risks you cannot ignore</h2>
@@ -259,15 +260,15 @@ export default function WhatMattersNow({
           ) : (
             <div className="space-y-3">
               {activeRisks.map((risk) => (
-                <div key={risk.id} className="rounded-xl border border-amber-500/20 bg-amber-500/[0.08] px-4 py-3">
+                <div key={risk.id} className="min-w-0 rounded-xl border border-amber-500/20 bg-amber-500/[0.08] px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium leading-relaxed text-amber-50">{risk.title}</p>
-                      <p className="mt-2 text-sm text-red-200">
+                      <p className="break-words text-sm font-medium leading-relaxed text-amber-50">{risk.title}</p>
+                      <p className="mt-2 break-words text-sm text-red-200">
                         <span className="font-semibold text-red-300">If ignored:</span> {risk.detail}
                       </p>
                       {risk.dueDate ? (
-                        <p className="mt-2 text-xs uppercase tracking-[0.16em] text-amber-300/80">
+                        <p className="mt-2 break-words text-xs uppercase tracking-[0.16em] text-amber-300/80">
                           Deadline: {formatDate(risk.dueDate)}
                         </p>
                       ) : null}
@@ -278,7 +279,7 @@ export default function WhatMattersNow({
                         setDismissedRiskIds((current) => new Set(current).add(risk.id));
                         onDismiss?.(risk.id);
                       }}
-                      className="rounded-md p-1 text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
+                      className="shrink-0 rounded-md p-1 text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
                       aria-label="Dismiss risk"
                     >
                       <X className="h-4 w-4" />
