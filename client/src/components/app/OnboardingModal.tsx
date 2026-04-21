@@ -88,19 +88,24 @@ export function OnboardingModal() {
     isProfileFetching ||
     isCasesLoading ||
     isCasesFetching;
+  const hasDurableDismissal = Boolean(profile?.welcomeDismissedAt);
+  const isWelcomeFlowCandidate =
+    !hasDurableDismissal &&
+    Array.isArray(casesData?.cases) &&
+    cases.length === 0;
+  const mustStayClosed =
+    !user ||
+    isOnboardingStatePending ||
+    isSuppressedRoute ||
+    hasDurableDismissal ||
+    isWelcomeFlowCandidate;
 
   // Auto-open once for first-time authenticated users.
   // Durable source of truth: user_profiles.welcome_dismissed_at.
   // Local storage is a fallback optimization.
   // Returning users with active case context bypass onboarding entirely.
   useEffect(() => {
-    if (isOnboardingStatePending) {
-      setOpen(false);
-      return;
-    }
-    if (!user) return;
-
-    if (isSuppressedRoute) {
+    if (mustStayClosed) {
       setOpen(false);
       return;
     }
@@ -111,8 +116,7 @@ export function OnboardingModal() {
     }
 
     const localSeen = localStorage.getItem(storageKey);
-    const hasDurableDismissal = Boolean(profile?.welcomeDismissedAt);
-    const shouldShow = !hasDurableDismissal && localSeen !== "true";
+    const shouldShow = localSeen !== "true";
 
     console.info("[OnboardingModal] decision", {
       hasUserId: Boolean(user?.id),
@@ -121,6 +125,7 @@ export function OnboardingModal() {
       profileWelcomeDismissedAt: profile?.welcomeDismissedAt ?? null,
       casesLoaded: !isCasesLoading,
       caseCount: cases.length,
+      isWelcomeFlowCandidate,
       hasActiveCaseContext,
       storageKey,
       localSeen,
@@ -128,13 +133,9 @@ export function OnboardingModal() {
       shouldShow,
     });
 
-    if (shouldShow) {
-      setOpen(true);
-    }
+    setOpen(shouldShow);
   }, [
-    user,
-    isOnboardingStatePending,
-    isSuppressedRoute,
+    mustStayClosed,
     hasActiveCaseContext,
     cases.length,
     profile?.welcomeDismissedAt,
@@ -143,10 +144,12 @@ export function OnboardingModal() {
 
   // Allow any component to reopen via event dispatch
   useEffect(() => {
-    const handler = () => setOpen(true);
+    const handler = () => {
+      if (!mustStayClosed) setOpen(true);
+    };
     window.addEventListener("custody-atlas:open-onboarding", handler);
     return () => window.removeEventListener("custody-atlas:open-onboarding", handler);
-  }, []);
+  }, [mustStayClosed]);
 
   const dismiss = async () => {
     if (!user?.id) return;
@@ -173,10 +176,10 @@ export function OnboardingModal() {
     navigate(href);
   };
 
-  if (isOnboardingStatePending) return null;
+  if (mustStayClosed) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) void dismiss(); }}>
+    <Dialog open={open && !mustStayClosed} onOpenChange={(v) => { if (!v) void dismiss(); }}>
       <DialogContent
         className="max-w-lg w-full p-0 gap-0 overflow-hidden"
         data-testid="modal-onboarding"

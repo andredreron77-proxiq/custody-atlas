@@ -13,6 +13,7 @@ import {
   setDisplayNameSkipForSession,
   skipDisplayNamePromptForAWhile,
   useUserProfile,
+  WELCOME_FLOW_JUST_COMPLETED_KEY,
 } from "@/hooks/use-user-profile";
 
 function hasRealDisplayName(displayName: string | null | undefined): boolean {
@@ -23,10 +24,14 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   const { user } = useCurrentUser();
   const { data: profile, isLoading, isError } = useUserProfile();
   const qc = useQueryClient();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [draft, setDraft] = useState(() => firstNameFromDisplayName(user?.displayName));
   const [dismissed, setDismissed] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const suppressForRoute = location === "/welcome" || location === "/workspace";
+  const suppressForCompletedWelcome =
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem(WELCOME_FLOW_JUST_COMPLETED_KEY) === "1";
 
   useEffect(() => {
     if (!draft && user?.displayName) {
@@ -48,12 +53,14 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
       Boolean(user) &&
       profileLoaded &&
       !isError &&
+      !suppressForRoute &&
+      !suppressForCompletedWelcome &&
       hasProfileRecord &&
       !profile?.welcomeDismissedAt &&
       !dismissed &&
       !hasProfileDisplayName &&
       !suppressionState.suppressed,
-    [user, profileLoaded, isError, hasProfileRecord, profile?.welcomeDismissedAt, dismissed, hasProfileDisplayName, suppressionState.suppressed],
+    [user, profileLoaded, isError, suppressForRoute, suppressForCompletedWelcome, hasProfileRecord, profile?.welcomeDismissedAt, dismissed, hasProfileDisplayName, suppressionState.suppressed],
   );
 
   useEffect(() => {
@@ -61,6 +68,9 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
       hasUserId: Boolean(user?.id),
       userId: user?.id ?? null,
       profileLoaded,
+      route: location,
+      suppressForRoute,
+      suppressForCompletedWelcome,
       profileLoadError: isError,
       hasProfileRecord,
       rawDisplayName: profile?.displayName ?? null,
@@ -78,6 +88,9 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   }, [
     user?.id,
     profileLoaded,
+    location,
+    suppressForRoute,
+    suppressForCompletedWelcome,
     isError,
     hasProfileRecord,
     profile?.displayName,

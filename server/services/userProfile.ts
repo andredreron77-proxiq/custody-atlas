@@ -4,6 +4,7 @@ export interface UserProfile {
   id: string;
   displayName: string | null;
   welcomeDismissedAt: string | null;
+  createdAt: string | null;
 }
 
 export interface SetDisplayNameResult {
@@ -43,13 +44,13 @@ export interface ResetOnboardingStateResult {
 
 export async function getUserProfile(userId: string): Promise<UserProfile> {
   if (!supabaseAdmin) {
-    return { id: userId, displayName: null, welcomeDismissedAt: null };
+    return { id: userId, displayName: null, welcomeDismissedAt: null, createdAt: null };
   }
 
   try {
     const { data } = await supabaseAdmin
       .from("user_profiles")
-      .select("id, display_name, welcome_dismissed_at")
+      .select("id, display_name, welcome_dismissed_at, created_at")
       .eq("id", userId)
       .maybeSingle();
 
@@ -57,9 +58,10 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
       id: userId,
       displayName: data?.display_name ?? null,
       welcomeDismissedAt: data?.welcome_dismissed_at ?? null,
+      createdAt: data?.created_at ?? null,
     };
   } catch {
-    return { id: userId, displayName: null, welcomeDismissedAt: null };
+    return { id: userId, displayName: null, welcomeDismissedAt: null, createdAt: null };
   }
 }
 

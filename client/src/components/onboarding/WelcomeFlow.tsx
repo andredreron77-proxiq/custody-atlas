@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
+import { resolvePreferredDisplayName, useUserProfile, WELCOME_FLOW_JUST_COMPLETED_KEY } from "@/hooks/use-user-profile";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { resolveUSStateCode } from "@shared/usStates";
@@ -165,9 +165,11 @@ export function WelcomeFlow() {
       }
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });
+      window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save welcome progress.";
       console.error("[WelcomeFlow] Failed to persist welcome dismissal:", message, error);
+      window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
     } finally {
       navigate(href, { replace: true });
     }

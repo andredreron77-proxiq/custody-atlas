@@ -41,7 +41,7 @@ import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequestRaw, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { resolvePreferredFirstName, useUserProfile } from "@/hooks/use-user-profile";
+import { resolvePreferredFirstName, useUserProfile, WELCOME_FLOW_JUST_COMPLETED_KEY } from "@/hooks/use-user-profile";
 import {
   deriveCaseActivityState,
   type CaseActivityState,
@@ -219,11 +219,13 @@ function CaseMemoryStrip({
   activeCase,
   nextHearingDate,
   lastThread,
+  isReturningUser,
 }: {
   firstName: string;
   activeCase: CaseRecord;
   nextHearingDate: string | null;
   lastThread: WorkspaceThread | null;
+  isReturningUser: boolean;
 }) {
   const caseName = (activeCase.name ?? activeCase.title)?.trim() || "Unnamed Case";
   const caseStatus = (activeCase.status ?? "active").replace(/[_-]+/g, " ").trim();
@@ -244,7 +246,7 @@ function CaseMemoryStrip({
   return (
     <div className="rounded-xl border border-border/60 bg-muted/[0.22] px-4 py-3.5 shadow-sm" data-testid="card-case-memory-strip">
       <p className="text-sm font-semibold text-foreground">
-        Welcome back, {firstName}
+        {isReturningUser ? "Welcome back" : "Welcome"}, {firstName}
       </p>
 
       <div className="mt-3 space-y-2.5">
@@ -1805,6 +1807,12 @@ export default function WorkspacePage() {
     ? `${preferredName}, upload your first custody document`
     : "Upload your first custody document";
   const greetingName = preferredName || (user?.email?.split("@")[0] ?? "there");
+  const profileCreatedAtMs = profile?.createdAt ? new Date(profile.createdAt).getTime() : Number.NaN;
+  const isFreshProfile = Number.isFinite(profileCreatedAtMs) && Date.now() - profileCreatedAtMs <= 5 * 60 * 1000;
+  const welcomeJustCompleted =
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem(WELCOME_FLOW_JUST_COMPLETED_KEY) === "1";
+  const isReturningUserGreeting = !isFreshProfile && !welcomeJustCompleted && cases.length > 0;
 
   return (
     <PageContainer size="wide" className="max-w-[1320px] py-4 space-y-4" testId="page-workspace">
@@ -1935,6 +1943,7 @@ export default function WorkspacePage() {
               activeCase={memoryCase}
               nextHearingDate={memoryCaseActions?.hearingDate ?? null}
               lastThread={lastThread}
+              isReturningUser={isReturningUserGreeting}
             />
           )}
 

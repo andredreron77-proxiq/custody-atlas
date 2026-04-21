@@ -4,6 +4,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 
 export const DISPLAY_NAME_SKIP_SESSION_KEY = "custody-atlas:display-name-skip";
 export const DISPLAY_NAME_SKIP_UNTIL_KEY = "custody-atlas:display-name-skip-until";
+export const WELCOME_FLOW_JUST_COMPLETED_KEY = "custody-atlas:welcome-flow-just-completed";
 const DISPLAY_NAME_SKIP_DAYS = 14;
 
 function displayNameSkipSessionKey(userId?: string | null): string {
@@ -21,6 +22,7 @@ export interface UserProfile {
   displayName: string | null;
   fullName: string | null;
   welcomeDismissedAt: string | null;
+  createdAt: string | null;
 }
 
 export function firstNameFromDisplayName(input: string | null | undefined): string {
@@ -141,12 +143,15 @@ export function useUserProfile() {
         full_name?: string | null;
         welcomeDismissedAt?: string | null;
         welcome_dismissed_at?: string | null;
+        createdAt?: string | null;
+        created_at?: string | null;
       };
       return {
         id: json.id,
         displayName: json.displayName ?? json.display_name ?? null,
         fullName: json.fullName ?? json.full_name ?? null,
         welcomeDismissedAt: json.welcomeDismissedAt ?? json.welcome_dismissed_at ?? null,
+        createdAt: json.createdAt ?? json.created_at ?? null,
       };
     },
     staleTime: 30_000,
