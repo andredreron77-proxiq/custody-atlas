@@ -170,9 +170,10 @@ export function WelcomeFlow() {
       const message = error instanceof Error ? error.message : "Failed to save welcome progress.";
       console.error("[WelcomeFlow] Failed to persist welcome dismissal:", message, error);
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
-    } finally {
-      navigate(href, { replace: true });
     }
+    setTimeout(() => {
+      navigate(href, { replace: true });
+    }, 0);
   };
 
   const skipFlow = () => {

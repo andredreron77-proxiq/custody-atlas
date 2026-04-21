@@ -62,7 +62,7 @@ const STEPS = [
 ];
 
 export function OnboardingModal() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => false);
   const { user, isLoading } = useCurrentUser();
   const { data: profile, isLoading: isProfileLoading, isFetching: isProfileFetching } = useUserProfile();
   const { data: casesData, isLoading: isCasesLoading, isFetching: isCasesFetching } = useQuery<{ cases?: Array<{ id: string; status?: string | null }> }>({

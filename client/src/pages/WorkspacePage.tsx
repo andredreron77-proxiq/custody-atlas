@@ -1812,7 +1812,11 @@ export default function WorkspacePage() {
   const welcomeJustCompleted =
     typeof window !== "undefined" &&
     window.sessionStorage.getItem(WELCOME_FLOW_JUST_COMPLETED_KEY) === "1";
-  const isReturningUserGreeting = !isFreshProfile && !welcomeJustCompleted && cases.length > 0;
+  const isReturningUserGreeting =
+    !isFreshProfile &&
+    !welcomeJustCompleted &&
+    cases.length > 0 &&
+    Boolean(profile?.createdAt);
 
   return (
     <PageContainer size="wide" className="max-w-[1320px] py-4 space-y-4" testId="page-workspace">
