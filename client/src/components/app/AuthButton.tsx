@@ -151,8 +151,11 @@ export function AuthButton() {
 
   // Listen for the event fired by AuthRequiredCard's "Sign in to continue" button.
   useEffect(() => {
-    function handleOpenAuth() {
-      if (!user) openDialog();
+    function handleOpenAuth(event: Event) {
+      if (!user) {
+        const signUp = event instanceof CustomEvent && event.detail?.mode === "signup";
+        openDialog(signUp);
+      }
     }
     window.addEventListener("custody-atlas:open-auth", handleOpenAuth);
     return () => window.removeEventListener("custody-atlas:open-auth", handleOpenAuth);

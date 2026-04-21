@@ -241,6 +241,7 @@ export async function createCase(
     caseType?: string;
     status?: string;
     stateCode?: string | null;
+    description?: string | null;
   },
 ): Promise<Case | null> {
   const result = await createCaseWithDiagnostics(userId, opts);
@@ -255,22 +256,30 @@ export async function createCaseWithDiagnostics(
     status?: string;
     stateCode?: string | null;
     authToken?: string | null;
+    description?: string | null;
   },
 ): Promise<CreateCaseResult> {
   const normalizedTitle = opts.title.slice(0, 200);
   const normalizedStateCode = resolveUSStateCode(opts.stateCode) ?? "US";
+  const normalizedDescription = opts.description?.trim()
+    ? opts.description.trim().slice(0, 1000)
+    : null;
   // Keep inserts aligned to confirmed live schema columns only.
   const insertPayload: {
     user_id: string;
     title: string;
     case_type: string;
     state_code: string;
+    description?: string;
   } = {
     user_id: userId,
     title: normalizedTitle,
     case_type: opts.caseType ?? "custody",
     state_code: normalizedStateCode,
   };
+  if (normalizedDescription) {
+    insertPayload.description = normalizedDescription;
+  }
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY;

@@ -4845,14 +4845,22 @@ Do not add facts not present in the provided evidence.`,
   app.post("/api/cases", requireAuth, async (req, res) => {
     const user = (req as any).user;
     const schema = z.object({
-      title: z.string().min(1).max(200),
+      title: z.string().min(1).max(200).optional(),
+      name: z.string().min(1).max(200).optional(),
       caseType: z.enum(["custody", "child_support", "custody_and_support"]).optional(),
       stateCode: z.string().trim().min(2).max(64).optional(),
       jurisdictionState: z.string().trim().min(2).max(64).optional(),
+      situation_type: z.string().trim().min(1).max(80).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid case payload.", details: parsed.error.flatten() });
+    }
+    const caseTitle = parsed.success
+      ? (parsed.data.title ?? parsed.data.name)?.trim()
+      : "";
+    if (!caseTitle) {
+      return res.status(400).json({ error: "Invalid case payload.", details: { fieldErrors: { title: ["Case name is required."] } } });
     }
     try {
       const resolvedStateCode =
@@ -4862,11 +4870,14 @@ Do not add facts not present in the provided evidence.`,
       const existingCases = await listCases(user.id, 2);
       const isFirstCase = existingCases.length === 0;
       const createCaseResult = await createCaseWithDiagnostics(user.id, {
-        title: parsed.data.title,
+        title: caseTitle,
         caseType: parsed.data.caseType ?? "custody",
         status: "active",
         stateCode: resolvedStateCode,
         authToken: asString(req.headers.authorization).replace("Bearer ", "").trim() || null,
+        description: parsed.data.situation_type
+          ? JSON.stringify({ situation_type: parsed.data.situation_type })
+          : null,
       });
       const newCase = createCaseResult.createdCase;
       if (!newCase) {
@@ -4875,9 +4886,10 @@ Do not add facts not present in the provided evidence.`,
           errorId,
           userId: user.id,
           requestPayload: {
-            title: parsed.data.title,
+            title: caseTitle,
             caseType: parsed.data.caseType ?? "custody",
             stateCode: resolvedStateCode,
+            situationType: parsed.data.situation_type ?? null,
           },
           failure: createCaseResult.failure,
         });

@@ -24,6 +24,10 @@ const STATES_WITH_DATA = new Set([
 ]);
 const STATES_COVERED = Array.from(STATES_WITH_DATA).sort();
 
+function openSignup() {
+  window.dispatchEvent(new CustomEvent("custody-atlas:open-auth", { detail: { mode: "signup" } }));
+}
+
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
@@ -141,16 +145,15 @@ function HeroSection() {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
-            <Link href="/location">
-              <Button
-                size="lg"
-                className="h-11 px-7 font-semibold hover:opacity-90 transition-opacity"
-                data-testid="button-hero-primary"
-              >
-                Get Started Free
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
+            <Button
+              size="lg"
+              className="h-11 px-7 font-semibold hover:opacity-90 transition-opacity"
+              onClick={openSignup}
+              data-testid="button-hero-primary"
+            >
+              Get Started Free
+              <ArrowRight className="w-4 h-4" />
+            </Button>
             <Link href="/custody-map">
               <Button
                 size="lg"
@@ -492,17 +495,16 @@ function CTASection() {
           Get clarity, confidence, and guidance — all in one place.
         </p>
 
-        <Link href="/location">
-          <Button
-            size="lg"
-            className="h-12 px-8 font-semibold text-base"
-            style={{ background: "white", color: NAVY }}
-            data-testid="button-cta-bottom"
-          >
-            <MapPin className="w-4 h-4" />
-            Get Started Free
-          </Button>
-        </Link>
+        <Button
+          size="lg"
+          className="h-12 px-8 font-semibold text-base"
+          style={{ background: "white", color: NAVY }}
+          onClick={openSignup}
+          data-testid="button-cta-bottom"
+        >
+          <MapPin className="w-4 h-4" />
+          Get Started Free
+        </Button>
 
         {/* Disclaimer note */}
         <div className="mt-12 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-6 text-xs text-white/30">

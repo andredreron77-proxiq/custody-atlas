@@ -49,10 +49,11 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
       profileLoaded &&
       !isError &&
       hasProfileRecord &&
+      !profile?.welcomeDismissedAt &&
       !dismissed &&
       !hasProfileDisplayName &&
       !suppressionState.suppressed,
-    [user, profileLoaded, isError, hasProfileRecord, dismissed, hasProfileDisplayName, suppressionState.suppressed],
+    [user, profileLoaded, isError, hasProfileRecord, profile?.welcomeDismissedAt, dismissed, hasProfileDisplayName, suppressionState.suppressed],
   );
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
       hasProfileRecord,
       rawDisplayName: profile?.displayName ?? null,
       rawFullName: profile?.fullName ?? null,
+      welcomeDismissedAt: profile?.welcomeDismissedAt ?? null,
       authDisplayName: user?.displayName ?? null,
       authMetadataName: user?.authMetadataName ?? null,
       hasRealDisplayName: hasProfileDisplayName,
@@ -80,6 +82,7 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
     hasProfileRecord,
     profile?.displayName,
     profile?.fullName,
+    profile?.welcomeDismissedAt,
     user?.displayName,
     user?.authMetadataName,
     hasProfileDisplayName,

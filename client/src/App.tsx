@@ -22,6 +22,7 @@ import ResourcesPage from "@/pages/ResourcesPage";
 import UploadDocumentPage from "@/pages/UploadDocumentPage";
 import CustodyMapPage from "@/pages/CustodyMapPage";
 import WorkspacePage from "@/pages/WorkspacePage";
+import WelcomeFlow from "@/components/onboarding/WelcomeFlow";
 import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsOfServicePage from "@/pages/TermsOfServicePage";
 import CustodyLawsStatePage from "@/pages/CustodyLawsStatePage";
@@ -70,6 +71,42 @@ function ProtectedRoute({
   feature: GatedFeature;
 }) {
   const { user, isLoading } = useCurrentUser();
+  const [location, navigate] = useLocation();
+  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
+    queryKey: ["/api/user-profile", user?.id ?? "anon", "welcome-gate"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/user-profile");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+  const { data: casesData, isLoading: isCasesLoading } = useQuery<{ cases?: unknown[] }>({
+    queryKey: ["/api/cases", user?.id ?? "anon", "welcome-gate"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/cases");
+      if (!res.ok) return { cases: [] };
+      return res.json();
+    },
+  });
+  const welcomeDismissedAt = profile?.welcomeDismissedAt ?? profile?.welcome_dismissed_at ?? null;
+  const shouldRedirectToWelcome =
+    Boolean(user) &&
+    !welcomeDismissedAt &&
+    Array.isArray(casesData?.cases) &&
+    casesData.cases.length === 0 &&
+    location !== "/welcome";
+
+  useEffect(() => {
+    if (shouldRedirectToWelcome) {
+      navigate("/welcome", { replace: true });
+    }
+  }, [navigate, shouldRedirectToWelcome]);
 
   if (isLoading) {
     return (
@@ -83,11 +120,68 @@ function ProtectedRoute({
     return <AuthRequiredCard feature={feature} />;
   }
 
+  if (isProfileLoading || isCasesLoading || shouldRedirectToWelcome) {
+    return <FullPageLoading />;
+  }
+
   return (
     <DisplayNamePromptGate>
       <Page />
     </DisplayNamePromptGate>
   );
+}
+
+function ProtectedWelcomeRoute() {
+  const { user, isLoading } = useCurrentUser();
+  const [, navigate] = useLocation();
+  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
+    queryKey: ["/api/user-profile", user?.id ?? "anon", "welcome-route"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/user-profile");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+  const { data: casesData, isLoading: isCasesLoading } = useQuery<{ cases?: unknown[] }>({
+    queryKey: ["/api/cases", user?.id ?? "anon", "welcome-route"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/cases");
+      if (!res.ok) return { cases: [] };
+      return res.json();
+    },
+  });
+  const welcomeDismissedAt = profile?.welcomeDismissedAt ?? profile?.welcome_dismissed_at ?? null;
+  const shouldShowWelcome =
+    Boolean(user) &&
+    !welcomeDismissedAt &&
+    Array.isArray(casesData?.cases) &&
+    casesData.cases.length === 0;
+
+  useEffect(() => {
+    if (!isLoading && user && !isProfileLoading && !isCasesLoading && !shouldShowWelcome) {
+      navigate("/workspace", { replace: true });
+    }
+  }, [isCasesLoading, isLoading, isProfileLoading, navigate, shouldShowWelcome, user]);
+
+  if (isLoading || (user && (isProfileLoading || isCasesLoading))) {
+    return <FullPageLoading />;
+  }
+
+  if (!user) {
+    return <AuthRequiredCard feature="workspace" />;
+  }
+
+  if (!shouldShowWelcome) {
+    return <FullPageLoading />;
+  }
+
+  return <WelcomeFlow />;
 }
 
 function Router() {
@@ -111,6 +205,9 @@ function Router() {
       <Route path="/admin/users" component={AdminPage} />
 
       {/* Gated routes — require authentication */}
+      <Route path="/welcome">
+        {() => <ProtectedWelcomeRoute />}
+      </Route>
       <Route path="/ask">
         {() => <ProtectedRoute component={AskAIPage} feature="ask-ai" />}
       </Route>
@@ -168,16 +265,42 @@ function HomeRoute() {
     staleTime: 60_000,
     retry: false,
   });
+  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
+    queryKey: ["/api/user-profile", user?.id ?? "anon", "home-redirect"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/user-profile");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+  const { data: casesData, isLoading: isCasesLoading } = useQuery<{ cases?: unknown[] }>({
+    queryKey: ["/api/cases", user?.id ?? "anon", "home-redirect"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/cases");
+      if (!res.ok) return { cases: [] };
+      return res.json();
+    },
+  });
 
   useEffect(() => {
-    if (isAuthLoading || !user || isWorkspaceLoading) return;
-    const destination = hasDocuments ? "/workspace" : "/analyze";
+    if (isAuthLoading || !user || isWorkspaceLoading || isProfileLoading || isCasesLoading) return;
+    const welcomeDismissedAt = profile?.welcomeDismissedAt ?? profile?.welcome_dismissed_at ?? null;
+    const hasNoCases = Array.isArray(casesData?.cases) && casesData.cases.length === 0;
+    const destination = !welcomeDismissedAt && hasNoCases
+      ? "/welcome"
+      : hasDocuments ? "/workspace" : "/analyze";
     if (location !== destination) {
       window.location.replace(destination);
     }
-  }, [hasDocuments, isAuthLoading, isWorkspaceLoading, location, user]);
+  }, [casesData?.cases, hasDocuments, isAuthLoading, isCasesLoading, isProfileLoading, isWorkspaceLoading, location, profile?.welcomeDismissedAt, profile?.welcome_dismissed_at, user]);
 
-  if (isAuthLoading || (user && isWorkspaceLoading) || (!user && hasPriorAuthHint)) {
+  if (isAuthLoading || (user && (isWorkspaceLoading || isProfileLoading || isCasesLoading)) || (!user && hasPriorAuthHint)) {
     return <FullPageLoading />;
   }
 

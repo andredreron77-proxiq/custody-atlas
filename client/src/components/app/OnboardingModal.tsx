@@ -64,29 +64,46 @@ const STEPS = [
 export function OnboardingModal() {
   const [open, setOpen] = useState(false);
   const { user, isLoading } = useCurrentUser();
-  const { data: profile, isLoading: isProfileLoading } = useUserProfile();
-  const { data: casesData, isLoading: isCasesLoading } = useQuery<{ cases?: Array<{ id: string; status?: string | null }> }>({
+  const { data: profile, isLoading: isProfileLoading, isFetching: isProfileFetching } = useUserProfile();
+  const { data: casesData, isLoading: isCasesLoading, isFetching: isCasesFetching } = useQuery<{ cases?: Array<{ id: string; status?: string | null }> }>({
     queryKey: ["/api/cases", "onboarding-visibility"],
     enabled: Boolean(user),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [isPersistingDismissal, setIsPersistingDismissal] = useState(false);
   const storageKey = useMemo(() => welcomeStorageKeyForUser(user?.id), [user?.id]);
 
   const cases = casesData?.cases ?? [];
   const hasActiveCaseContext = cases.some((caseRecord) => caseRecord.status === "active");
+  const isSuppressedRoute =
+    location === "/welcome" ||
+    location === "/location" ||
+    location === "/workspace" ||
+    location.startsWith("/jurisdiction");
+  const isOnboardingStatePending =
+    isLoading ||
+    isProfileLoading ||
+    isProfileFetching ||
+    isCasesLoading ||
+    isCasesFetching;
 
   // Auto-open once for first-time authenticated users.
   // Durable source of truth: user_profiles.welcome_dismissed_at.
   // Local storage is a fallback optimization.
   // Returning users with active case context bypass onboarding entirely.
   useEffect(() => {
-    if (isLoading) return;
+    if (isOnboardingStatePending) {
+      setOpen(false);
+      return;
+    }
     if (!user) return;
-    if (isProfileLoading) return;
-    if (isCasesLoading) return;
+
+    if (isSuppressedRoute) {
+      setOpen(false);
+      return;
+    }
 
     if (hasActiveCaseContext) {
       setOpen(false);
@@ -116,9 +133,8 @@ export function OnboardingModal() {
     }
   }, [
     user,
-    isLoading,
-    isProfileLoading,
-    isCasesLoading,
+    isOnboardingStatePending,
+    isSuppressedRoute,
     hasActiveCaseContext,
     cases.length,
     profile?.welcomeDismissedAt,
@@ -156,6 +172,8 @@ export function OnboardingModal() {
     await dismiss();
     navigate(href);
   };
+
+  if (isOnboardingStatePending) return null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) void dismiss(); }}>
