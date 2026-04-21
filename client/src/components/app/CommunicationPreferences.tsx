@@ -14,17 +14,22 @@ import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 
 export interface CommunicationPreferencesValue {
   communication_style: "auto" | "simple" | "balanced" | "professional";
-  response_format: "auto" | "bullets" | "prose";
-  explain_terms: "auto" | "always" | "once" | "never";
+  response_format: "bullets" | "prose";
+  explain_terms: "always" | "once" | "never";
   detected_knowledge_level: "beginner" | "intermediate" | "advanced";
   questions_asked_count: number;
   preference_locked: boolean;
 }
 
+type CommunicationPreferencesResponse = Omit<CommunicationPreferencesValue, "response_format" | "explain_terms"> & {
+  response_format: "auto" | CommunicationPreferencesValue["response_format"];
+  explain_terms: "auto" | CommunicationPreferencesValue["explain_terms"];
+};
+
 const DEFAULT_PREFERENCES: CommunicationPreferencesValue = {
   communication_style: "auto",
-  response_format: "auto",
-  explain_terms: "auto",
+  response_format: "bullets",
+  explain_terms: "always",
   detected_knowledge_level: "beginner",
   questions_asked_count: 0,
   preference_locked: false,
@@ -32,6 +37,19 @@ const DEFAULT_PREFERENCES: CommunicationPreferencesValue = {
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function normalizePreferences(
+  value: Partial<CommunicationPreferencesResponse>,
+): CommunicationPreferencesValue {
+  return {
+    ...DEFAULT_PREFERENCES,
+    ...value,
+    response_format: value.response_format === "prose" ? "prose" : "bullets",
+    explain_terms: value.explain_terms === "once" || value.explain_terms === "never"
+      ? value.explain_terms
+      : "always",
+  };
 }
 
 interface CommunicationPreferencesProps {
@@ -45,6 +63,8 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
   const qc = useQueryClient();
   const isProUser = usage?.tier === "pro";
   const [formState, setFormState] = useState(DEFAULT_PREFERENCES);
+  const [hasResponseFormatSelection, setHasResponseFormatSelection] = useState(false);
+  const [hasExplainTermsSelection, setHasExplainTermsSelection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -56,8 +76,10 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
       if (!res.ok) {
         throw new Error("Failed to load communication preferences.");
       }
-      const json = await res.json() as Partial<CommunicationPreferencesValue>;
-      return { ...DEFAULT_PREFERENCES, ...json };
+      const json = await res.json() as Partial<CommunicationPreferencesResponse>;
+      setHasResponseFormatSelection(json.response_format !== undefined && json.response_format !== "auto");
+      setHasExplainTermsSelection(json.explain_terms !== undefined && json.explain_terms !== "auto");
+      return normalizePreferences(json);
     },
     staleTime: 30_000,
   });
@@ -87,6 +109,8 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
       }
 
       await refreshPreferences();
+      setHasResponseFormatSelection(true);
+      setHasExplainTermsSelection(true);
       toast({
         title: "Preferences saved",
         description: "Atlas will use your communication settings on future answers.",
@@ -114,6 +138,8 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
 
       await refreshPreferences();
       setFormState(DEFAULT_PREFERENCES);
+      setHasResponseFormatSelection(false);
+      setHasExplainTermsSelection(false);
       toast({
         title: "Auto-detect restored",
         description: "Atlas will start learning your preferences again.",
@@ -236,12 +262,14 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
             <h3 className="text-sm font-semibold text-slate-100">How should answers be formatted?</h3>
           </div>
           <RadioGroup
-            value={formState.response_format}
-            onValueChange={(value) =>
+            value={hasResponseFormatSelection ? formState.response_format : undefined}
+            onValueChange={(value) => {
+              setHasResponseFormatSelection(true);
               setFormState((current) => ({
                 ...current,
                 response_format: value as CommunicationPreferencesValue["response_format"],
-              }))}
+              }));
+            }}
             className="gap-3"
           >
             {[
@@ -279,12 +307,14 @@ export function CommunicationPreferences({ onClose }: CommunicationPreferencesPr
             <h3 className="text-sm font-semibold text-slate-100">How should legal terms be handled?</h3>
           </div>
           <RadioGroup
-            value={formState.explain_terms}
-            onValueChange={(value) =>
+            value={hasExplainTermsSelection ? formState.explain_terms : undefined}
+            onValueChange={(value) => {
+              setHasExplainTermsSelection(true);
               setFormState((current) => ({
                 ...current,
                 explain_terms: value as CommunicationPreferencesValue["explain_terms"],
-              }))}
+              }));
+            }}
             className="gap-3"
           >
             {[
