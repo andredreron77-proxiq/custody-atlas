@@ -77,26 +77,27 @@ export function OnboardingModal() {
 
   const cases = casesData?.cases ?? [];
   const hasActiveCaseContext = cases.some((caseRecord) => caseRecord.status === "active");
-  const isSuppressedRoute =
-    location === "/welcome" ||
-    location === "/location" ||
-    location === "/workspace" ||
-    location.startsWith("/jurisdiction");
+  const isSuppressedRoute = location !== "/";
   const isOnboardingStatePending =
     isLoading ||
     isProfileLoading ||
     isProfileFetching ||
     isCasesLoading ||
     isCasesFetching;
+  const hasLocalDismissal =
+    typeof window !== "undefined" &&
+    localStorage.getItem(storageKey) === "true";
   const hasDurableDismissal = Boolean(profile?.welcomeDismissedAt);
   const isWelcomeFlowCandidate =
     !hasDurableDismissal &&
+    !hasLocalDismissal &&
     Array.isArray(casesData?.cases) &&
     cases.length === 0;
   const mustStayClosed =
     !user ||
     isOnboardingStatePending ||
     isSuppressedRoute ||
+    hasLocalDismissal ||
     hasDurableDismissal ||
     isWelcomeFlowCandidate;
 
@@ -129,6 +130,7 @@ export function OnboardingModal() {
       hasActiveCaseContext,
       storageKey,
       localSeen,
+      hasLocalDismissal,
       hasDurableDismissal,
       shouldShow,
     });
@@ -138,6 +140,7 @@ export function OnboardingModal() {
     mustStayClosed,
     hasActiveCaseContext,
     cases.length,
+    hasLocalDismissal,
     profile?.welcomeDismissedAt,
     storageKey,
   ]);
