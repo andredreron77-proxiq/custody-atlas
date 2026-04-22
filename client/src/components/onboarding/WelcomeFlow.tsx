@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { resolvePreferredDisplayName, useUserProfile, WELCOME_FLOW_JUST_COMPLETED_KEY } from "@/hooks/use-user-profile";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
@@ -130,6 +131,7 @@ export function WelcomeFlow() {
   const qc = useQueryClient();
   const { user } = useCurrentUser();
   const { data: profile } = useUserProfile();
+  const { setJurisdiction: persistJurisdiction } = useJurisdiction();
   const [step, setStep] = useState(1);
   const [situationType, setSituationType] = useState<SituationType | null>(null);
   const [jurisdiction, setJurisdiction] = useState<Jurisdiction | null>(null);
@@ -164,6 +166,9 @@ export function WelcomeFlow() {
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Failed to save welcome progress.");
+      }
+      if (jurisdiction) {
+        persistJurisdiction(jurisdiction);
       }
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });

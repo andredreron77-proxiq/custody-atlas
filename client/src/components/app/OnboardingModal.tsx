@@ -194,7 +194,7 @@ export function OnboardingModal() {
     navigate(href);
   };
 
-  if (mustStayClosed) return null;
+  if (!open || mustStayClosed) return null;
 
   return (
     <Dialog open={open && !mustStayClosed} onOpenChange={(v) => { if (!v) void dismiss(); }}>
