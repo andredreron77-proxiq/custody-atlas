@@ -313,6 +313,7 @@ function HomeRoute() {
 
 function App() {
   const { user, isLoading } = useCurrentUser();
+  const [location] = useLocation();
   const { data: usage } = useQuery({
     queryKey: ["/api/usage", "analytics-identify", user?.id ?? "anon"],
     enabled: Boolean(user),
@@ -320,7 +321,39 @@ function App() {
     retry: false,
     queryFn: fetchUsageState,
   });
+  const { data: modalProfile, isLoading: isModalProfileLoading, isFetching: isModalProfileFetching } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
+    queryKey: ["/api/user-profile", user?.id ?? "anon", "onboarding-modal-gate"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/user-profile");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+  const { data: modalCasesData, isLoading: isModalCasesLoading } = useQuery<{ cases?: unknown[] }>({
+    queryKey: ["/api/cases", user?.id ?? "anon", "onboarding-modal-gate"],
+    enabled: Boolean(user),
+    staleTime: 30_000,
+    retry: false,
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", "/api/cases");
+      if (!res.ok) return { cases: [] };
+      return res.json();
+    },
+  });
   const authKey = isLoading ? "loading" : user ? user.id : "unauthenticated";
+  const modalWelcomeDismissedAt = modalProfile?.welcomeDismissedAt ?? modalProfile?.welcome_dismissed_at ?? null;
+  const shouldMountOnboardingModal =
+    Boolean(user) &&
+    !isModalProfileLoading &&
+    !isModalProfileFetching &&
+    !isModalCasesLoading &&
+    modalWelcomeDismissedAt === null &&
+    Array.isArray(modalCasesData?.cases) &&
+    modalCasesData.cases.length === 0 &&
+    location === "/";
 
   useEffect(() => {
     if (!user) return;
@@ -343,7 +376,7 @@ function App() {
           </main>
           <AppFooter />
         </div>
-        <OnboardingModal />
+        {shouldMountOnboardingModal ? <OnboardingModal /> : null}
         <Toaster />
       </TooltipProvider>
     </ThemeProvider>
