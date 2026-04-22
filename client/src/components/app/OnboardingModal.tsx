@@ -106,6 +106,21 @@ export function OnboardingModal() {
   // Local storage is a fallback optimization.
   // Returning users with active case context bypass onboarding entirely.
   useEffect(() => {
+    console.log("[Modal] effect fired", {
+      mustStayClosed,
+      isOnboardingStatePending,
+      isLoading,
+      isProfileLoading,
+      isProfileFetching,
+      isCasesLoading,
+      isCasesFetching,
+      hasDurableDismissal,
+      hasLocalDismissal,
+      isWelcomeFlowCandidate,
+      userId: user?.id ?? null,
+      location,
+    });
+
     if (mustStayClosed) {
       setOpen(false);
       return;

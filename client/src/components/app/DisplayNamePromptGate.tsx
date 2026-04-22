@@ -68,17 +68,31 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   const profileLoaded = !isLoading;
 
   const needsPrompt = useMemo(
-    () =>
-      Boolean(user) &&
-      profileLoaded &&
-      !isError &&
-      !suppressForRoute &&
-      !suppressForCompletedWelcome &&
-      hasProfileRecord &&
-      !profile?.welcomeDismissedAt &&
-      !dismissed &&
-      !hasProfileDisplayName &&
-      !suppressionState.suppressed,
+    () => {
+      console.log("[NameGate] evaluating needsPrompt", {
+        user: Boolean(user),
+        profileLoaded,
+        suppressForRoute,
+        suppressForCompletedWelcome,
+        hasProfileDisplayName,
+        welcomeDismissedAt: profile?.welcomeDismissedAt ?? null,
+        dismissed,
+        suppressionStateSuppressed: suppressionState.suppressed,
+      });
+
+      return (
+        Boolean(user) &&
+        profileLoaded &&
+        !isError &&
+        !suppressForRoute &&
+        !suppressForCompletedWelcome &&
+        hasProfileRecord &&
+        !profile?.welcomeDismissedAt &&
+        !dismissed &&
+        !hasProfileDisplayName &&
+        !suppressionState.suppressed
+      );
+    },
     [user, profileLoaded, isError, suppressForRoute, suppressForCompletedWelcome, hasProfileRecord, profile?.welcomeDismissedAt, dismissed, hasProfileDisplayName, suppressionState.suppressed],
   );
 

@@ -76,6 +76,12 @@ function readFromStorage(): Jurisdiction | null {
       return null;
     }
     const { entry, shouldClearStorage } = parsed;
+    console.log("[Jurisdiction] read", {
+      entryUserId: entry?.userId ?? null,
+      activeUserId,
+      match: entry?.userId === activeUserId,
+    });
+
     if (shouldClearStorage) {
       localStorage.removeItem(STORAGE_KEY);
     }
