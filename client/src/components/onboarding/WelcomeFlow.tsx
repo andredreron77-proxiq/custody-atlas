@@ -133,9 +133,11 @@ export function WelcomeFlow() {
   const [step, setStep] = useState(1);
   const [situationType, setSituationType] = useState<SituationType | null>(null);
   const [jurisdiction, setJurisdiction] = useState<Jurisdiction | null>(null);
+  const [displayNameDraft, setDisplayNameDraft] = useState("");
   const [caseName, setCaseName] = useState("");
   const [caseError, setCaseError] = useState<string | null>(null);
   const [caseCreationFailed, setCaseCreationFailed] = useState(false);
+  const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
   const [isCreatingCase, setIsCreatingCase] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
 
@@ -166,12 +168,10 @@ export function WelcomeFlow() {
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
-      window.dispatchEvent(new Event("custody-atlas:welcome-completed"));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save welcome progress.";
       console.error("[WelcomeFlow] Failed to persist welcome dismissal:", message, error);
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
-      window.dispatchEvent(new Event("custody-atlas:welcome-completed"));
     }
     setTimeout(() => {
       navigate(href, { replace: true });
@@ -208,6 +208,32 @@ export function WelcomeFlow() {
       setCaseCreationFailed(true);
     } finally {
       setIsCreatingCase(false);
+    }
+  };
+
+  const saveDisplayNameAndContinue = async () => {
+    const trimmed = displayNameDraft.trim();
+    if (!trimmed) {
+      setStep(2);
+      return;
+    }
+
+    setIsSavingDisplayName(true);
+    try {
+      const res = await apiRequestRaw("PATCH", "/api/user-profile/display-name", {
+        displayName: trimmed,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not save your name.");
+      }
+      await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not save your name.";
+      console.error("[WelcomeFlow] Failed to save display name:", message, error);
+    } finally {
+      setIsSavingDisplayName(false);
+      setStep(2);
     }
   };
 
@@ -258,10 +284,26 @@ export function WelcomeFlow() {
                 </button>
               ))}
             </div>
+            <div className="mt-5 space-y-2">
+              <Label htmlFor="welcome-display-name">What should we call you? (optional)</Label>
+              <Input
+                id="welcome-display-name"
+                value={displayNameDraft}
+                onChange={(event) => setDisplayNameDraft(event.target.value)}
+                placeholder="First name or nickname"
+                maxLength={80}
+                data-testid="input-welcome-display-name"
+              />
+            </div>
             <div className="mt-6 flex justify-end">
-              <Button disabled={!situationType} onClick={() => setStep(2)} data-testid="button-welcome-step-1-next">
+              <Button
+                disabled={!situationType || isSavingDisplayName}
+                onClick={() => void saveDisplayNameAndContinue()}
+                data-testid="button-welcome-step-1-next"
+              >
+                {isSavingDisplayName ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Next
-                <ArrowRight className="h-4 w-4" />
+                {!isSavingDisplayName ? <ArrowRight className="h-4 w-4" /> : null}
               </Button>
             </div>
           </Panel>

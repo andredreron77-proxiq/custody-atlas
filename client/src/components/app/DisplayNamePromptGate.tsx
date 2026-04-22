@@ -28,7 +28,17 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState(() => firstNameFromDisplayName(user?.displayName));
   const [dismissed, setDismissed] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const suppressForRoute = location === "/welcome" || location === "/workspace";
+  const suppressForRoute =
+    location === "/welcome" ||
+    location === "/workspace" ||
+    location === "/ask" ||
+    location === "/analyze" ||
+    location === "/upload-document" ||
+    location === "/resources" ||
+    location === "/custody-map" ||
+    location.startsWith("/case/") ||
+    location.startsWith("/jurisdiction/") ||
+    location === "/location";
   const [suppressForCompletedWelcome, setSuppressForCompletedWelcome] = useState(
     () =>
     typeof window !== "undefined" &&
@@ -47,14 +57,9 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
         sessionStorage.getItem(WELCOME_FLOW_JUST_COMPLETED_KEY) === "1",
       );
     };
-    const handleWelcomeCompleted = () => {
-      setSuppressForCompletedWelcome(true);
-    };
     window.addEventListener("storage", handleStorage);
-    window.addEventListener("custody-atlas:welcome-completed", handleWelcomeCompleted);
     return () => {
       window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("custody-atlas:welcome-completed", handleWelcomeCompleted);
     };
   }, []);
 
