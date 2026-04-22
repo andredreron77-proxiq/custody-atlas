@@ -161,6 +161,7 @@ export function WelcomeFlow() {
 
   const finish = async (href = "/workspace") => {
     setIsFinishing(true);
+    console.log("[WelcomeFlow] finish called, jurisdiction =", jurisdiction);
     if (jurisdiction) {
       persistJurisdiction(jurisdiction);
     }
