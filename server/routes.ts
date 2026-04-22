@@ -4286,7 +4286,6 @@ CRITICAL RULES:
   }
 
   app.patch("/api/documents/:documentId/case-assignment", requireAuth, patchDocumentCaseAssignment);
-  app.patch("/api/documents/:documentId", requireAuth, patchDocumentCaseAssignment);
 
   /**
    * DELETE /api/documents/:documentId

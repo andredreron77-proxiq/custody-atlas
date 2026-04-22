@@ -76,11 +76,6 @@ function readFromStorage(): Jurisdiction | null {
       return null;
     }
     const { entry, shouldClearStorage } = parsed;
-    console.log("[Jurisdiction] read", {
-      entryUserId: entry?.userId ?? null,
-      activeUserId,
-      match: entry?.userId === activeUserId,
-    });
 
     if (shouldClearStorage) {
       localStorage.removeItem(STORAGE_KEY);
@@ -109,10 +104,8 @@ function writeToStorage(j: Jurisdiction): void {
   try {
     const userId = getActiveUserIdFromSession();
     const entry: StoredEntry = { jurisdiction: j, savedAt: Date.now(), ...(userId ? { userId } : {}) };
-    console.log("[Jurisdiction] writeToStorage called", JSON.stringify(entry));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entry));
-  } catch (e) {
-    console.log("[Jurisdiction] writeToStorage FAILED", e);
+  } catch {
     // localStorage may be unavailable in private/restricted contexts — fail silently.
   }
 }

@@ -383,7 +383,6 @@ export default function AskAIPage() {
     );
   }
 
-  console.log("AskAIPage caseJurisdiction at location gate", caseJurisdiction);
   if (!jurisdiction || showLocationPicker) {
     const previousJurisdiction = showLocationPicker ? jurisdiction : null;
 

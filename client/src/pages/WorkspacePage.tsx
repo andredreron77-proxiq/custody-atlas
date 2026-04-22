@@ -312,18 +312,6 @@ function CaseMemoryStrip({
 
 type WorkspaceState = CaseActivityState;
 
-/* Debug/inspection shape — logged in development; can be removed later. */
-interface WorkspaceSignals {
-  documentCount: number;
-  analyzedCount: number;
-  conversationCount: number;
-  hasJurisdiction: boolean;
-  hasRisks: boolean;
-  primaryState: WorkspaceState;
-  recommendedActionReason: string;
-  latestActivityIso: string | null;
-}
-
 /* Returns true if the document has a completed analysis. */
 function isDocAnalyzed(doc: WorkspaceDocument): boolean {
   return doc.isAnalysisAvailable;
@@ -857,11 +845,9 @@ function DocumentsSection({
   // hooks — all unconditional, called in same order every render
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [location] = useLocation();
   const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null);
 
-  const isFullDocumentsView = location.split("?")[0] === "/workspace/documents";
-  const MAX_VISIBLE = isFullDocumentsView ? Number.POSITIVE_INFINITY : 4;
+  const MAX_VISIBLE = 4;
   const canonicalDocuments = documents.filter((doc) => !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id));
 
   const deleteMutation = useMutation({
@@ -900,17 +886,6 @@ function DocumentsSection({
       toast({ title: "Assignment update failed", description: err.message, variant: "destructive" });
     },
   });
-
-  useEffect(() => {
-    console.info(
-      "[trace][workspace] documents before rendering",
-      canonicalDocuments.map((doc) => ({
-        id: doc.id,
-        file_name: doc.fileName,
-        duplicate_of_document_id: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
-      })),
-    );
-  }, [canonicalDocuments]);
 
   const orderedDocs = [...canonicalDocuments].sort((a, b) => getDocumentPriorityScore(b) - getDocumentPriorityScore(a));
   const hiddenCount = Math.max(0, orderedDocs.length - MAX_VISIBLE);
@@ -1087,19 +1062,9 @@ function DocumentsSection({
 
       <div className="pt-1 flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground">
-          {isFullDocumentsView
-            ? `Showing all ${orderedDocs.length} document${orderedDocs.length === 1 ? "" : "s"}`
-            : `Showing ${Math.min(orderedDocs.length, MAX_VISIBLE)} of ${orderedDocs.length} document${orderedDocs.length === 1 ? "" : "s"}`}
-          {!isFullDocumentsView && hiddenCount > 0 ? ` · ${hiddenCount} more in full view` : ""}
+          {`Showing ${Math.min(orderedDocs.length, MAX_VISIBLE)} of ${orderedDocs.length} document${orderedDocs.length === 1 ? "" : "s"}`}
+          {hiddenCount > 0 ? ` · ${hiddenCount} more` : ""}
         </p>
-        {!isFullDocumentsView && (
-          <Link href="/workspace/documents">
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" data-testid="button-show-all-docs">
-              View all documents
-              <ArrowRight className="w-3 h-3" />
-            </Button>
-          </Link>
-        )}
       </div>
 
       {/* ── Shared delete confirmation dialog ────────────────────────────── */}
@@ -1477,14 +1442,6 @@ export default function WorkspacePage() {
       if (!res.ok) return { threads: [], documents: [], timelineEvents: [] };
       const payload = await res.json() as WorkspaceData;
       const rawDocuments = Array.isArray(payload?.documents) ? payload.documents : [];
-      const documentDiagnostics = rawDocuments.map((doc) => ({
-        id: doc.id,
-        file_name: doc.fileName ?? null,
-        duplicateOfDocumentId: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
-        duplicate_of_document_id: doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id ?? null,
-        canonical: !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id),
-      }));
-      console.info("[trace][workspace] workspace payload documents:", documentDiagnostics);
       const duplicateMarkedRows = rawDocuments.filter((doc) => !!(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id));
       if (duplicateMarkedRows.length > 0) {
         console.warn("[trace][workspace] duplicate-marked documents received from API (unexpected)", {
@@ -1654,9 +1611,7 @@ export default function WorkspacePage() {
   const hasRisks = documents.some(docHasRiskSignals);
 
   const openDocumentSafely = async (documentId: string) => {
-    console.info("[trace][workspace] navigate request documentId=", documentId);
     const res = await apiRequestRaw("GET", `/api/documents/${documentId}`);
-    console.info("[trace][workspace] detail preflight", { documentId, status: res.status });
     if (res.ok) {
       navigate(`/document/${documentId}`);
       return;
@@ -1735,25 +1690,7 @@ export default function WorkspacePage() {
     }
   }
 
-  const { scenario, reason: recommendedActionReason } = resolveScenario();
-
-  // ── Debug inspection (remove after verification) ──────────────────────────
-  useEffect(() => {
-    const signals: WorkspaceSignals = {
-      documentCount,
-      analyzedCount,
-      conversationCount,
-      hasJurisdiction,
-      hasRisks,
-      primaryState: workspaceState,
-      recommendedActionReason,
-      latestActivityIso,
-    };
-    console.debug("[Workspace state]", signals);
-    console.debug("[trace][workspace] visible documentIds", documents.map((d) => d.id));
-  // Intentionally omit stable refs — fires whenever meaningful signals change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceState, documentCount, analyzedCount, conversationCount, hasRisks, hasJurisdiction, recommendedActionReason, documents]);
+  const { scenario } = resolveScenario();
 
   // ── CTA href for the recommended action card ──────────────────────────────
   const scenarioCta = ((): string => {

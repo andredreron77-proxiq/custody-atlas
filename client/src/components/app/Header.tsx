@@ -235,23 +235,6 @@ export function Header() {
                 </li>
               )}
 
-              {/* Getting Started — reopens onboarding modal */}
-              <li>
-                <button
-                  onClick={() => {
-                    setMobileOpen(false);
-                    window.dispatchEvent(new CustomEvent("custody-atlas:open-onboarding"));
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium text-slate-300 hover:text-white hover:bg-white/8 border border-transparent transition-colors"
-                  data-testid="mobile-nav-getting-started"
-                >
-                  <span className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center flex-shrink-0">
-                    <HelpCircle className="w-4 h-4" />
-                  </span>
-                  <span className="flex-1">Getting Started</span>
-                </button>
-              </li>
-
               {/* Theme toggle */}
               <li>
                 <ThemeToggle compact />

@@ -671,14 +671,7 @@ export default function DocumentDetailPage() {
   const { data: doc, isLoading, isError } = useQuery<DocumentDetail>({
     queryKey: ["/api/documents", documentId],
     queryFn: async () => {
-      console.info("[trace][detail] route documentId=", documentId);
       const result = await fetchDocumentDetail(documentId ?? "");
-      console.info("[trace][detail] api response", {
-        routeDocumentId: documentId,
-        responseDocumentId: result.document?.id,
-        code: result.missingAnalysis?.code,
-        supersededCode: result.superseded?.code,
-      });
       if (result.missingAnalysis) {
         setMissingAnalysis(result.missingAnalysis);
         throw new Error("Document analysis unavailable");

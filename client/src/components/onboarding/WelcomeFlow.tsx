@@ -160,7 +160,6 @@ export function WelcomeFlow() {
   const ReadyIcon = currentReadyCopy.icon;
 
   const finish = async (href = "/workspace") => {
-    console.log("[WelcomeFlow] finish() called, jurisdiction state =", jurisdiction);
     setIsFinishing(true);
     if (jurisdiction) {
       persistJurisdiction(jurisdiction);

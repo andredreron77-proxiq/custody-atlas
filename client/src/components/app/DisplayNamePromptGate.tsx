@@ -74,17 +74,6 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
 
   const needsPrompt = useMemo(
     () => {
-      console.log("[NameGate] evaluating needsPrompt", {
-        user: Boolean(user),
-        profileLoaded,
-        suppressForRoute,
-        suppressForCompletedWelcome,
-        hasProfileDisplayName,
-        welcomeDismissedAt: profile?.welcomeDismissedAt ?? null,
-        dismissed,
-        suppressionStateSuppressed: suppressionState.suppressed,
-      });
-
       return (
         Boolean(user) &&
         profileLoaded &&
@@ -100,49 +89,6 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
     },
     [user, profileLoaded, isError, suppressForRoute, suppressForCompletedWelcome, hasProfileRecord, profile?.welcomeDismissedAt, dismissed, hasProfileDisplayName, suppressionState.suppressed],
   );
-
-  useEffect(() => {
-    console.info("[DisplayNamePromptGate] decision", {
-      hasUserId: Boolean(user?.id),
-      userId: user?.id ?? null,
-      profileLoaded,
-      route: location,
-      suppressForRoute,
-      suppressForCompletedWelcome,
-      profileLoadError: isError,
-      hasProfileRecord,
-      rawDisplayName: profile?.displayName ?? null,
-      rawFullName: profile?.fullName ?? null,
-      welcomeDismissedAt: profile?.welcomeDismissedAt ?? null,
-      authDisplayName: user?.displayName ?? null,
-      authMetadataName: user?.authMetadataName ?? null,
-      hasRealDisplayName: hasProfileDisplayName,
-      hasSessionSkip: suppressionState.hasSessionSkip,
-      localSkipUntil: suppressionState.localSkipUntil,
-      hasActiveLocalSkip: suppressionState.hasActiveLocalSkip,
-      dismissed,
-      shouldShowPrompt: needsPrompt,
-    });
-  }, [
-    user?.id,
-    profileLoaded,
-    location,
-    suppressForRoute,
-    suppressForCompletedWelcome,
-    isError,
-    hasProfileRecord,
-    profile?.displayName,
-    profile?.fullName,
-    profile?.welcomeDismissedAt,
-    user?.displayName,
-    user?.authMetadataName,
-    hasProfileDisplayName,
-    suppressionState.hasSessionSkip,
-    suppressionState.localSkipUntil,
-    suppressionState.hasActiveLocalSkip,
-    dismissed,
-    needsPrompt,
-  ]);
 
   const saveMutation = useMutation({
     mutationFn: async (displayName: string) => {

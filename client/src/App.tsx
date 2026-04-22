@@ -7,7 +7,6 @@ import { Header } from "@/components/app/Header";
 import { MinimalFooter } from "@/components/app/Footer";
 import { ThemeProvider } from "@/components/app/ThemeProvider";
 import { AuthRequiredCard } from "@/components/app/AuthRequiredCard";
-import { OnboardingModal } from "@/components/app/OnboardingModal";
 import { DisplayNamePromptGate } from "@/components/app/DisplayNamePromptGate";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { identifyUser } from "@/lib/analytics";
@@ -202,7 +201,6 @@ function Router() {
       <Route path="/billing/success" component={BillingSuccessPage} />
       <Route path="/billing/cancel" component={BillingCancelPage} />
       <Route path="/admin" component={AdminPage} />
-      <Route path="/admin/users" component={AdminPage} />
 
       {/* Gated routes — require authentication */}
       <Route path="/welcome">
@@ -218,12 +216,9 @@ function Router() {
         {() => <ProtectedRoute component={UploadDocumentPage} feature="analyze-document" />}
       </Route>
       <Route path="/analyze">
-        {() => <ProtectedRoute component={UploadDocumentPage} feature="analyze-document" />}
+        {() => <AnalyzeRedirect />}
       </Route>
       <Route path="/workspace">
-        {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
-      </Route>
-      <Route path="/workspace/documents">
         {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
       </Route>
       <Route path="/case/:caseId">
@@ -236,6 +231,16 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+function AnalyzeRedirect() {
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    navigate("/upload-document", { replace: true });
+  }, [navigate]);
+
+  return <FullPageLoading />;
 }
 
 function FullPageLoading() {
@@ -313,7 +318,6 @@ function HomeRoute() {
 
 function App() {
   const { user, isLoading } = useCurrentUser();
-  const [location] = useLocation();
   const { data: usage } = useQuery({
     queryKey: ["/api/usage", "analytics-identify", user?.id ?? "anon"],
     enabled: Boolean(user),
@@ -321,39 +325,7 @@ function App() {
     retry: false,
     queryFn: fetchUsageState,
   });
-  const { data: modalProfile, isLoading: isModalProfileLoading, isFetching: isModalProfileFetching } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
-    queryKey: ["/api/user-profile", user?.id ?? "anon", "onboarding-modal-gate"],
-    enabled: Boolean(user),
-    staleTime: 30_000,
-    retry: false,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", "/api/user-profile");
-      if (!res.ok) return null;
-      return res.json();
-    },
-  });
-  const { data: modalCasesData, isLoading: isModalCasesLoading } = useQuery<{ cases?: unknown[] }>({
-    queryKey: ["/api/cases", user?.id ?? "anon", "onboarding-modal-gate"],
-    enabled: Boolean(user),
-    staleTime: 30_000,
-    retry: false,
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", "/api/cases");
-      if (!res.ok) return { cases: [] };
-      return res.json();
-    },
-  });
   const authKey = isLoading ? "loading" : user ? user.id : "unauthenticated";
-  const modalWelcomeDismissedAt = modalProfile?.welcomeDismissedAt ?? modalProfile?.welcome_dismissed_at ?? null;
-  const shouldMountOnboardingModal =
-    Boolean(user) &&
-    !isModalProfileLoading &&
-    !isModalProfileFetching &&
-    !isModalCasesLoading &&
-    modalWelcomeDismissedAt === null &&
-    Array.isArray(modalCasesData?.cases) &&
-    modalCasesData.cases.length === 0 &&
-    location === "/";
 
   useEffect(() => {
     if (!user) return;
@@ -376,7 +348,6 @@ function App() {
           </main>
           <AppFooter />
         </div>
-        {shouldMountOnboardingModal ? <OnboardingModal /> : null}
         <Toaster />
       </TooltipProvider>
     </ThemeProvider>
