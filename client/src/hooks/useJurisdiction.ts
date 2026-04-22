@@ -109,9 +109,10 @@ function writeToStorage(j: Jurisdiction): void {
   try {
     const userId = getActiveUserIdFromSession();
     const entry: StoredEntry = { jurisdiction: j, savedAt: Date.now(), ...(userId ? { userId } : {}) };
-    console.log("[Jurisdiction] writeToStorage called", entry);
+    console.log("[Jurisdiction] writeToStorage called", JSON.stringify(entry));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entry));
-  } catch {
+  } catch (e) {
+    console.log("[Jurisdiction] writeToStorage FAILED", e);
     // localStorage may be unavailable in private/restricted contexts — fail silently.
   }
 }
