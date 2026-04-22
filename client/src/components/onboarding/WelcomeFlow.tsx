@@ -161,19 +161,22 @@ export function WelcomeFlow() {
 
   const finish = async (href = "/workspace") => {
     setIsFinishing(true);
+    if (jurisdiction) {
+      persistJurisdiction(jurisdiction);
+    }
     try {
       const res = await apiRequestRaw("PATCH", "/api/user-profile/welcome-dismissed");
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Failed to save welcome progress.");
       }
-      if (jurisdiction) {
-        persistJurisdiction(jurisdiction);
-      }
       await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
     } catch (error) {
+      if (jurisdiction) {
+        persistJurisdiction(jurisdiction);
+      }
       const message = error instanceof Error ? error.message : "Failed to save welcome progress.";
       console.error("[WelcomeFlow] Failed to persist welcome dismissal:", message, error);
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");

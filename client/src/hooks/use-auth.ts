@@ -96,7 +96,6 @@ export function useCurrentUser(): UseAuthResult {
           }
         } else {
           sessionStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
-          localStorage.removeItem("custody_jurisdiction");
           setUser(null);
         }
         setIsLoading(false);
@@ -116,7 +115,6 @@ export function useCurrentUser(): UseAuthResult {
         sessionStorage.setItem(AUTH_USER_ID_STORAGE_KEY, session.user.id);
       } else {
         sessionStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
-        localStorage.removeItem("custody_jurisdiction");
         setUser(null);
       }
       setIsLoading(false);
