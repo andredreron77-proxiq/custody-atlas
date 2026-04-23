@@ -133,6 +133,9 @@ function ProtectedRoute({
 function ProtectedWelcomeRoute() {
   const { user, isLoading } = useCurrentUser();
   const [, navigate] = useLocation();
+  const welcomeFlowActive =
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem("custody-atlas:welcome-flow-active") === "1";
   const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
     queryKey: ["/api/user-profile", user?.id ?? "anon", "welcome-route"],
     enabled: Boolean(user),
@@ -163,10 +166,10 @@ function ProtectedWelcomeRoute() {
     casesData.cases.length === 0;
 
   useEffect(() => {
-    if (!isLoading && user && !isProfileLoading && !isCasesLoading && !shouldShowWelcome) {
+    if (!isLoading && user && !isProfileLoading && !isCasesLoading && !shouldShowWelcome && !welcomeFlowActive) {
       navigate("/workspace", { replace: true });
     }
-  }, [isCasesLoading, isLoading, isProfileLoading, navigate, shouldShowWelcome, user]);
+  }, [isCasesLoading, isLoading, isProfileLoading, navigate, shouldShowWelcome, user, welcomeFlowActive]);
 
   if (isLoading || (user && (isProfileLoading || isCasesLoading))) {
     return <FullPageLoading />;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft,
@@ -65,6 +65,8 @@ const READY_COPY: Record<SituationType, { text: string; cta: string; href: strin
     icon: MessageSquare,
   },
 };
+
+const WELCOME_FLOW_ACTIVE_KEY = "custody-atlas:welcome-flow-active";
 
 function lastNameFromDisplayName(name: string | null): string {
   if (!name) return "";
@@ -157,6 +159,10 @@ export function WelcomeFlow() {
   const currentReadyCopy = READY_COPY[situationType ?? "figuring_things_out"];
   const ReadyIcon = currentReadyCopy.icon;
 
+  useEffect(() => {
+    window.sessionStorage.setItem(WELCOME_FLOW_ACTIVE_KEY, "1");
+  }, []);
+
   const finish = async (href = "/workspace") => {
     console.log("[WelcomeFlow] finish called", { jurisdiction });
     setIsFinishing(true);
@@ -191,11 +197,13 @@ export function WelcomeFlow() {
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
     }
     setTimeout(() => {
+      window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
       navigate(href, { replace: true });
     }, 0);
   };
 
   const skipFlow = () => {
+    window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
     void finish("/workspace");
   };
 
