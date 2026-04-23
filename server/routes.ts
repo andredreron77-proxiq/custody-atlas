@@ -123,7 +123,7 @@ import {
   getRelatedQuestions,
   TOPIC_LABELS,
 } from "./services/publicQuestions";
-import { getUserProfile, setDisplayName, setWelcomeDismissed, resetOnboardingState } from "./services/userProfile";
+import { getUserProfile, setDisplayName, setWelcomeDismissed, resetOnboardingState, setProfileJurisdiction } from "./services/userProfile";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -1354,6 +1354,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.error("[user-profile] PATCH display-name error:", err);
       return res.status(500).json({
         error: "We couldn't save your preferred name right now. Please try again in a moment.",
+      });
+    }
+  });
+
+  app.patch("/api/user-profile/jurisdiction", requireAuth, async (req, res) => {
+    try {
+      const parsed = z.object({
+        state: z.string().trim().min(1).max(80),
+        county: z.string().trim().min(1).max(120),
+      }).safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "state and county are required." });
+      }
+
+      const userId = (req as any).user?.id as string;
+      const result = await setProfileJurisdiction(userId, parsed.data);
+      if (!result.ok) {
+        console.error("[user-profile] PATCH jurisdiction save failed", {
+          reason: result.reason ?? "UNKNOWN",
+          supabaseCode: result.error?.code ?? null,
+          supabaseMessage: result.error?.message ?? null,
+          supabaseDetails: result.error?.details ?? null,
+          supabaseHint: result.error?.hint ?? null,
+          payload: {
+            userId,
+            state: parsed.data.state,
+            county: parsed.data.county,
+          },
+        });
+        return res.status(500).json({
+          error: "We couldn't save your jurisdiction right now. Please try again in a moment.",
+        });
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[user-profile] PATCH jurisdiction error:", err);
+      return res.status(500).json({
+        error: "We couldn't save your jurisdiction right now. Please try again in a moment.",
       });
     }
   });

@@ -23,6 +23,8 @@ export interface UserProfile {
   fullName: string | null;
   welcomeDismissedAt: string | null;
   createdAt: string | null;
+  jurisdictionState: string | null;
+  jurisdictionCounty: string | null;
 }
 
 export function firstNameFromDisplayName(input: string | null | undefined): string {
@@ -145,6 +147,10 @@ export function useUserProfile() {
         welcome_dismissed_at?: string | null;
         createdAt?: string | null;
         created_at?: string | null;
+        jurisdictionState?: string | null;
+        jurisdiction_state?: string | null;
+        jurisdictionCounty?: string | null;
+        jurisdiction_county?: string | null;
       };
       return {
         id: json.id,
@@ -152,6 +158,8 @@ export function useUserProfile() {
         fullName: json.fullName ?? json.full_name ?? null,
         welcomeDismissedAt: json.welcomeDismissedAt ?? json.welcome_dismissed_at ?? null,
         createdAt: json.createdAt ?? json.created_at ?? null,
+        jurisdictionState: json.jurisdictionState ?? json.jurisdiction_state ?? null,
+        jurisdictionCounty: json.jurisdictionCounty ?? json.jurisdiction_county ?? null,
       };
     },
     staleTime: 30_000,

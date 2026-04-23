@@ -18,6 +18,7 @@ import { fetchUsageState } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { useUserProfile } from "@/hooks/use-user-profile";
 import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
 import { buildWhatMattersNow, type RawSignal, type UserTier } from "@/lib/signals";
 
@@ -162,7 +163,15 @@ export default function AskAIPage() {
         }
       : null;
 
-  const { jurisdiction, setJurisdiction } = useJurisdiction(urlJurisdiction);
+  const { data: profile } = useUserProfile();
+  const profileJurisdiction: Jurisdiction | null = profile?.jurisdictionState
+    ? {
+        state: profile.jurisdictionState,
+        county: profile.jurisdictionCounty ?? "",
+        country: "United States",
+      }
+    : null;
+  const { jurisdiction, setJurisdiction } = useJurisdiction(urlJurisdiction ?? profileJurisdiction);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [activeCaseId, setActiveCaseId] = useState<string | undefined>(caseIdParam);
   const [showCasePicker, setShowCasePicker] = useState(false);

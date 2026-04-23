@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LocationSelector } from "@/components/app/LocationSelector";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { resolvePreferredDisplayName, useUserProfile, WELCOME_FLOW_JUST_COMPLETED_KEY } from "@/hooks/use-user-profile";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
@@ -131,7 +130,6 @@ export function WelcomeFlow() {
   const qc = useQueryClient();
   const { user } = useCurrentUser();
   const { data: profile } = useUserProfile();
-  const { setJurisdiction: persistJurisdiction } = useJurisdiction();
   const [step, setStep] = useState(1);
   const [situationType, setSituationType] = useState<SituationType | null>(null);
   const [jurisdiction, setJurisdiction] = useState<Jurisdiction | null>(null);
@@ -162,7 +160,20 @@ export function WelcomeFlow() {
   const finish = async (href = "/workspace") => {
     setIsFinishing(true);
     if (jurisdiction) {
-      persistJurisdiction(jurisdiction);
+      try {
+        const res = await apiRequestRaw("PATCH", "/api/user-profile/jurisdiction", {
+          state: jurisdiction.state,
+          county: jurisdiction.county,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error ?? "Failed to save jurisdiction.");
+        }
+        await qc.invalidateQueries({ queryKey: ["/api/user-profile"] });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to save jurisdiction.";
+        console.error("[WelcomeFlow] Failed to persist jurisdiction:", message, error);
+      }
     }
     try {
       const res = await apiRequestRaw("PATCH", "/api/user-profile/welcome-dismissed");
@@ -174,9 +185,6 @@ export function WelcomeFlow() {
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
     } catch (error) {
-      if (jurisdiction) {
-        persistJurisdiction(jurisdiction);
-      }
       const message = error instanceof Error ? error.message : "Failed to save welcome progress.";
       console.error("[WelcomeFlow] Failed to persist welcome dismissal:", message, error);
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");

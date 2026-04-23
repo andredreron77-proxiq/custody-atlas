@@ -5,6 +5,8 @@ export interface UserProfile {
   displayName: string | null;
   welcomeDismissedAt: string | null;
   createdAt: string | null;
+  jurisdictionState: string | null;
+  jurisdictionCounty: string | null;
 }
 
 export interface SetDisplayNameResult {
@@ -31,6 +33,17 @@ export interface SetWelcomeDismissedResult {
   };
 }
 
+export interface SetJurisdictionResult {
+  ok: boolean;
+  reason?: "SUPABASE_NOT_CONFIGURED" | "INVALID_JURISDICTION" | "SUPABASE_ERROR";
+  error?: {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+  };
+}
+
 export interface ResetOnboardingStateResult {
   ok: boolean;
   reason?: "SUPABASE_NOT_CONFIGURED" | "SUPABASE_ERROR";
@@ -44,13 +57,20 @@ export interface ResetOnboardingStateResult {
 
 export async function getUserProfile(userId: string): Promise<UserProfile> {
   if (!supabaseAdmin) {
-    return { id: userId, displayName: null, welcomeDismissedAt: null, createdAt: null };
+    return {
+      id: userId,
+      displayName: null,
+      welcomeDismissedAt: null,
+      createdAt: null,
+      jurisdictionState: null,
+      jurisdictionCounty: null,
+    };
   }
 
   try {
     const { data } = await supabaseAdmin
       .from("user_profiles")
-      .select("id, display_name, welcome_dismissed_at, created_at")
+      .select("id, display_name, welcome_dismissed_at, created_at, jurisdiction_state, jurisdiction_county")
       .eq("id", userId)
       .maybeSingle();
 
@@ -59,9 +79,72 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
       displayName: data?.display_name ?? null,
       welcomeDismissedAt: data?.welcome_dismissed_at ?? null,
       createdAt: data?.created_at ?? null,
+      jurisdictionState: data?.jurisdiction_state ?? null,
+      jurisdictionCounty: data?.jurisdiction_county ?? null,
     };
   } catch {
-    return { id: userId, displayName: null, welcomeDismissedAt: null, createdAt: null };
+    return {
+      id: userId,
+      displayName: null,
+      welcomeDismissedAt: null,
+      createdAt: null,
+      jurisdictionState: null,
+      jurisdictionCounty: null,
+    };
+  }
+}
+
+export async function setProfileJurisdiction(
+  userId: string,
+  jurisdiction: { state: string; county: string },
+): Promise<SetJurisdictionResult> {
+  if (!supabaseAdmin) {
+    return { ok: false, reason: "SUPABASE_NOT_CONFIGURED" };
+  }
+
+  const state = jurisdiction.state.trim();
+  const county = jurisdiction.county.trim();
+  if (!state || !county) {
+    return { ok: false, reason: "INVALID_JURISDICTION" };
+  }
+
+  try {
+    const { error } = await supabaseAdmin
+      .from("user_profiles")
+      .upsert(
+        {
+          id: userId,
+          jurisdiction_state: state,
+          jurisdiction_county: county,
+        },
+        { onConflict: "id" },
+      );
+
+    if (error) {
+      return {
+        ok: false,
+        reason: "SUPABASE_ERROR",
+        error: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        },
+      };
+    }
+
+    return { ok: true };
+  } catch (error: any) {
+    return {
+      ok: false,
+      reason: "SUPABASE_ERROR",
+      error: {
+        code: error?.code,
+        message: error?.message ?? "Unexpected error while saving jurisdiction.",
+        details: error?.details,
+        hint: error?.hint,
+      },
+    };
   }
 }
 

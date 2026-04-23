@@ -9,15 +9,16 @@
  *
  * Priority when reading:
  *   1. URL query params (direct links always take precedence)
- *   2. localStorage (remembered from any earlier session)
- *   3. null  →  show the location picker
+ *   2. override value from user profile
+ *   3. localStorage (remembered from any earlier session)
+ *   4. null  →  show the location picker
  *
  * Usage:
  *   const { jurisdiction, setJurisdiction, clearJurisdiction } = useJurisdiction();
  *   const { jurisdiction } = useJurisdiction(urlParamJurisdiction); // URL takes priority
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Jurisdiction } from "@shared/schema";
 import { normaliseCounty } from "@/lib/jurisdictionUtils";
 
@@ -134,6 +135,33 @@ export function useJurisdiction(override?: Jurisdiction | null): UseJurisdiction
     }
     return readFromStorage();
   });
+
+  useEffect(() => {
+    if (!override?.state?.trim()) return;
+    const normalizedOverride = {
+      ...override,
+      state: override.state.trim(),
+      county: normaliseCounty(override.county),
+    };
+    writeToStorage(normalizedOverride);
+    setJurisdictionState((current) => {
+      if (
+        current?.state === normalizedOverride.state &&
+        current?.county === normalizedOverride.county &&
+        current?.country === normalizedOverride.country
+      ) {
+        return current;
+      }
+      return normalizedOverride;
+    });
+  }, [
+    override?.state,
+    override?.county,
+    override?.country,
+    override?.formattedAddress,
+    override?.latitude,
+    override?.longitude,
+  ]);
 
   const setJurisdiction = (j: Jurisdiction) => {
     writeToStorage(j);

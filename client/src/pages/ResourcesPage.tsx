@@ -8,6 +8,7 @@ import { LocationSelector } from "@/components/app/LocationSelector";
 import { PageHeader, PageShell } from "@/components/app/PageShell";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { useUserProfile } from "@/hooks/use-user-profile";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { trackEvent } from "@/lib/analytics";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
@@ -244,7 +245,15 @@ export default function ResourcesPage() {
       }
     : null;
 
-  const { jurisdiction, setJurisdiction } = useJurisdiction(urlJurisdiction);
+  const { data: profile } = useUserProfile();
+  const profileJurisdiction: Jurisdiction | null = profile?.jurisdictionState
+    ? {
+        state: profile.jurisdictionState,
+        county: profile.jurisdictionCounty ?? "",
+        country: "United States",
+      }
+    : null;
+  const { jurisdiction, setJurisdiction } = useJurisdiction(urlJurisdiction ?? profileJurisdiction);
 
   useEffect(() => {
     if (!jurisdiction?.state || !jurisdiction?.county) return;
