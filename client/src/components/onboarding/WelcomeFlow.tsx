@@ -158,6 +158,7 @@ export function WelcomeFlow() {
   const ReadyIcon = currentReadyCopy.icon;
 
   const finish = async (href = "/workspace") => {
+    console.log("[WelcomeFlow] finish called", { jurisdiction });
     setIsFinishing(true);
     if (jurisdiction) {
       try {
@@ -354,7 +355,14 @@ export function WelcomeFlow() {
                   <ArrowLeft className="h-4 w-4" />
                   Back
                 </Button>
-                <Button disabled={!jurisdiction} onClick={() => setStep(3)} data-testid="button-welcome-step-2-next">
+                <Button
+                  disabled={!jurisdiction}
+                  onClick={() => {
+                    console.log("[WelcomeFlow] advancing from step 2", { jurisdiction });
+                    setStep(3);
+                  }}
+                  data-testid="button-welcome-step-2-next"
+                >
                   Next
                   <ArrowRight className="h-4 w-4" />
                 </Button>
