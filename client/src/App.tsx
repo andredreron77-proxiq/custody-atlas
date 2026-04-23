@@ -119,7 +119,7 @@ function ProtectedRoute({
     return <AuthRequiredCard feature={feature} />;
   }
 
-  if (isProfileLoading || isCasesLoading || shouldRedirectToWelcome) {
+  if (isProfileLoading || shouldRedirectToWelcome) {
     return <FullPageLoading />;
   }
 
@@ -147,7 +147,7 @@ function ProtectedWelcomeRoute() {
       return res.json();
     },
   });
-  const { data: casesData, isLoading: isCasesLoading } = useQuery<{ cases?: unknown[] }>({
+  const { data: casesData, isLoading: isCasesLoading, isFetching: isCasesFetching } = useQuery<{ cases?: unknown[] }>({
     queryKey: ["/api/cases", user?.id ?? "anon", "welcome-route"],
     enabled: Boolean(user),
     staleTime: 30_000,
@@ -166,12 +166,12 @@ function ProtectedWelcomeRoute() {
     casesData.cases.length === 0;
 
   useEffect(() => {
-    if (!isLoading && user && !isProfileLoading && !isCasesLoading && !shouldShowWelcome && !welcomeFlowActive) {
+    if (!isLoading && user && !isProfileLoading && !isCasesFetching && !shouldShowWelcome && !welcomeFlowActive) {
       navigate("/workspace", { replace: true });
     }
-  }, [isCasesLoading, isLoading, isProfileLoading, navigate, shouldShowWelcome, user, welcomeFlowActive]);
+  }, [isCasesFetching, isLoading, isProfileLoading, navigate, shouldShowWelcome, user, welcomeFlowActive]);
 
-  if (isLoading || (user && (isProfileLoading || isCasesLoading))) {
+  if (isLoading || (user && isProfileLoading)) {
     return <FullPageLoading />;
   }
 
