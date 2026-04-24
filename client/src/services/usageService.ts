@@ -12,7 +12,7 @@ export type Tier = "anonymous" | "free" | "pro";
 export const FREE_TIER_QUESTION_LIMIT = 10;
 export const GUEST_QUESTION_LIMIT = 3;
 const GUEST_FINGERPRINT_KEY = "custody-atlas:guest-fingerprint";
-const GUEST_QUESTION_COUNT_KEY = "custody-atlas:guest-questions-used";
+const GUEST_QUESTION_COUNT_KEY = "custody-atlas:guest-questions";
 
 export interface UsageState {
   isAuthenticated: boolean;

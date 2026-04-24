@@ -19,7 +19,12 @@ import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextH
 import { PageHeader } from "@/components/app/PageShell";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { fetchUsageState, incrementGuestQuestionsUsed } from "@/services/usageService";
+import {
+  fetchUsageState,
+  getGuestQuestionsUsed,
+  GUEST_QUESTION_LIMIT,
+  incrementGuestQuestionsUsed,
+} from "@/services/usageService";
 import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
@@ -91,7 +96,47 @@ const COMPARISON_CHIPS = [
   "Which state requires mediation before court hearings?",
 ];
 
+const GUEST_DEMO_SCENARIOS = [
+  {
+    title: "Scenario 1 — Hearing prep (Georgia)",
+    state: "Georgia",
+    situation: "Hearing Prep",
+    question:
+      "I have a custody hearing in 2 weeks in Fulton County. I have the current order but haven't filed anything yet. What should I be doing right now?",
+    response:
+      "With two weeks until your hearing, the most important thing is to review your current order carefully and gather any documentation that supports your position — school records, medical records, communication logs. Georgia courts focus on the child's best interests, so be ready to speak to your involvement in daily life. If you haven't already, consider whether you need an attorney — two weeks is tight but not too late for a consultation.",
+  },
+  {
+    title: "Scenario 2 — Relocation (Texas)",
+    state: "Texas",
+    situation: "Relocation",
+    question:
+      "My ex wants to move with our child from Texas to Colorado. Can they just do that?",
+    response:
+      "In Texas, a parent with primary custody generally cannot relocate with the child outside the geographic restriction in the custody order without court approval or the other parent's written agreement. If your order has a geographic restriction — which most Texas custody orders do — your ex would need to file a petition to modify it. You have the right to contest that petition. The court will decide based on what's in the child's best interests, not just what's convenient for either parent.",
+  },
+  {
+    title: "Scenario 3 — Modification (California)",
+    state: "California",
+    situation: "Modification",
+    question:
+      "My 14-year-old wants to live with me instead of their mom. Does that matter to a California court?",
+    response:
+      "In California, a child's preference is taken seriously — especially at 14. The court is required to consider the wishes of a child who is mature enough to form an intelligent preference. That doesn't mean the child decides, but a 14-year-old's preference carries real weight. You would need to file a motion to modify custody and show there's been a change in circumstances. The child's preference would be one significant factor the judge considers.",
+  },
+] as const;
+
+interface GuestExchange {
+  id: string;
+  question: string;
+  answer: string;
+}
+
 type Mode = "explore" | "compare";
+
+function openSignup() {
+  window.dispatchEvent(new CustomEvent("custody-atlas:open-auth", { detail: { mode: "signup" } }));
+}
 
 function getStateFill(opts: {
   mode: Mode;
@@ -792,6 +837,258 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
   );
 }
 
+function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) {
+  const { user } = useCurrentUser();
+  const queryClient = useQueryClient();
+  const [question, setQuestion] = useState("");
+  const [history, setHistory] = useState<GuestExchange[]>([]);
+  const [questionsUsed, setQuestionsUsed] = useState(() => getGuestQuestionsUsed());
+  const [error, setError] = useState<string | null>(null);
+  const isGuest = !user;
+  const remainingQuestions = Math.max(0, GUEST_QUESTION_LIMIT - questionsUsed);
+  const limitReached = isGuest && questionsUsed >= GUEST_QUESTION_LIMIT;
+
+  useEffect(() => {
+    setQuestionsUsed(getGuestQuestionsUsed());
+  }, []);
+
+  const mutation = useMutation({
+    mutationFn: async (prompt: string) => {
+      if (!selectedState) {
+        throw new Error("Select a state on the map to ask a question.");
+      }
+
+      const res = await apiRequestRaw("POST", "/api/ask", {
+        question: prompt,
+        userQuestion: prompt,
+        jurisdiction: {
+          state: selectedState,
+          county: "statewide",
+          country: "United States",
+        },
+        history: history.map((entry) => [
+          { role: "user" as const, content: entry.question },
+          { role: "assistant" as const, content: entry.answer },
+        ]).flat(),
+        isGuest: true,
+      });
+
+      if (res.status === 429) {
+        throw new Error("You've used your free questions.");
+      }
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Atlas couldn't answer right now. Please try again.");
+      }
+
+      return res.json() as Promise<AILegalResponse>;
+    },
+    onSuccess: (response, prompt) => {
+      setHistory((current) => [
+        ...current,
+        {
+          id:
+            typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+              ? crypto.randomUUID()
+              : `${Date.now()}-${current.length}`,
+          question: prompt,
+          answer: response.summary,
+        },
+      ]);
+      setQuestion("");
+      setError(null);
+      if (isGuest) {
+        const next = incrementGuestQuestionsUsed();
+        setQuestionsUsed(next);
+        queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+      }
+    },
+    onError: (err) => {
+      const message = err instanceof Error ? err.message : "Atlas couldn't answer right now. Please try again.";
+      setError(message);
+      if (isGuest) {
+        setQuestionsUsed(getGuestQuestionsUsed());
+      }
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!question.trim() || mutation.isPending || !selectedState || limitReached) return;
+    setError(null);
+    mutation.mutate(question.trim());
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6" data-testid="card-guest-state-qa">
+      <p
+        className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em]"
+        style={{ color: GOLD }}
+      >
+        TRY ATLAS FREE
+      </p>
+      <div className="max-w-2xl">
+        <h2 className="font-serif text-2xl font-semibold leading-tight" style={{ color: NAVY }}>
+          Have a custody question about {selectedState ?? "this state"}?
+        </h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Get a real answer in plain English. No account needed.
+        </p>
+      </div>
+
+      {!selectedState ? (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-sm text-muted-foreground">
+          Select a state on the map to ask a question.
+        </div>
+      ) : limitReached ? (
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-5">
+          <p className="text-sm leading-relaxed text-slate-700">
+            You've used your 3 free questions. Create a free account to get 10 questions per month and save your conversations.
+          </p>
+          <Button className="mt-4 gap-2" onClick={openSignup} data-testid="button-guest-map-signup">
+            Create Free Account
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-5 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Input
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder={`Ask anything about custody in ${selectedState}...`}
+              className="h-11 border-slate-200"
+              disabled={mutation.isPending}
+              data-testid="input-guest-state-question"
+            />
+            <Button
+              onClick={handleSubmit}
+              disabled={mutation.isPending || !question.trim()}
+              className="h-11 gap-2 px-5"
+              data-testid="button-guest-state-question-submit"
+            >
+              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+              Send
+            </Button>
+          </div>
+          {isGuest ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-guest-questions-remaining">
+              {remainingQuestions} of 3 free questions remaining
+            </p>
+          ) : null}
+          {error ? (
+            <p className="text-sm text-destructive" data-testid="text-guest-state-question-error">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      )}
+
+      <div className="mt-6 space-y-4" data-testid="guest-state-history">
+        {history.map((entry) => (
+          <div key={entry.id} className="space-y-3">
+            <div className="flex justify-end">
+              <div className="max-w-[90%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-3 text-sm leading-relaxed text-white shadow-sm sm:max-w-[80%]">
+                {entry.question}
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-primary">
+                <MessageSquare className="h-4 w-4" />
+              </div>
+              <div className="max-w-[92%] rounded-2xl rounded-tl-md bg-muted/70 px-4 py-3 text-sm leading-relaxed text-foreground sm:max-w-[82%]">
+                {entry.answer}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {mutation.isPending ? (
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-primary">
+              <MessageSquare className="h-4 w-4" />
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-2xl rounded-tl-md bg-muted/70 px-4 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Atlas is thinking...
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ScenarioPreviewSection() {
+  return (
+    <div className="space-y-5" data-testid="section-scenario-previews">
+      <div className="max-w-2xl">
+        <p
+          className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em]"
+          style={{ color: GOLD }}
+        >
+          SEE ATLAS IN ACTION
+        </p>
+        <h2 className="font-serif text-2xl font-semibold leading-tight" style={{ color: NAVY }}>
+          See Atlas In Action
+        </h2>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {GUEST_DEMO_SCENARIOS.map((scenario) => (
+          <Card
+            key={scenario.title}
+            className="border-slate-200/80 bg-white shadow-sm"
+            data-testid={`card-scenario-${scenario.state.toLowerCase()}`}
+          >
+            <CardContent className="flex h-full flex-col gap-4 p-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50">
+                  {scenario.state}
+                </Badge>
+                <Badge className="border-slate-800 bg-slate-900 text-white hover:bg-slate-900">
+                  {scenario.situation}
+                </Badge>
+              </div>
+
+              <div className="flex justify-end">
+                <div className="max-w-[92%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-3 text-sm leading-relaxed text-white">
+                  {scenario.question}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-primary">
+                  <MessageSquare className="h-4 w-4" />
+                </div>
+                <div className="rounded-2xl rounded-tl-md bg-muted/70 px-4 py-3 text-sm leading-relaxed text-foreground">
+                  {scenario.response}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={openSignup}
+                className="mt-auto inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                data-testid={`button-scenario-signup-${scenario.state.toLowerCase()}`}
+              >
+                Ask Atlas about your situation
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── State select dropdown (compare mode) ─────────────────────────────── */
 interface StateSelectProps {
   value: string | null;
@@ -1302,6 +1599,17 @@ export default function CustodyMapPage() {
           )}
         </div>
       </div>
+
+
+      {mode === "explore" ? (
+        <div className="space-y-8">
+          <GuestStateQAPanel selectedState={selectedState} />
+          <ScenarioPreviewSection />
+          <p className="text-center text-xs text-muted-foreground">
+            Scenario responses are illustrative examples. Atlas responses are general information only — not legal advice for your specific situation.
+          </p>
+        </div>
+      ) : null}
 
       {/* Trust message */}
       <div className="rounded-xl border bg-card p-4 flex gap-3 items-start shadow-sm" data-testid="card-trust-message">
