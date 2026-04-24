@@ -65,6 +65,7 @@ export interface Case {
   title: string;
   description: string | null;
   caseType: string | null;
+  situationType: string | null;
   jurisdictionState: string | null;
   stateCode: string | null;
   jurisdictionCounty: string | null;
@@ -152,6 +153,7 @@ export function mapCaseRow(r: any): Case {
     title: r.title ?? "Untitled case",
     description: r.description ?? null,
     caseType: r.case_type ?? null,
+    situationType: r.situation_type ?? null,
     jurisdictionState: r.jurisdiction_state ?? null,
     stateCode: r.state_code ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
@@ -239,6 +241,7 @@ export async function createCase(
   opts: {
     title: string;
     caseType?: string;
+    situationType?: string | null;
     status?: string;
     stateCode?: string | null;
     description?: string | null;
@@ -253,6 +256,7 @@ export async function createCaseWithDiagnostics(
   opts: {
     title: string;
     caseType?: string;
+    situationType?: string | null;
     status?: string;
     stateCode?: string | null;
     authToken?: string | null;
@@ -261,6 +265,9 @@ export async function createCaseWithDiagnostics(
 ): Promise<CreateCaseResult> {
   const normalizedTitle = opts.title.slice(0, 200);
   const normalizedStateCode = resolveUSStateCode(opts.stateCode) ?? "US";
+  const normalizedSituationType = opts.situationType?.trim()
+    ? opts.situationType.trim().slice(0, 80)
+    : null;
   const normalizedDescription = opts.description?.trim()
     ? opts.description.trim().slice(0, 1000)
     : null;
@@ -270,6 +277,7 @@ export async function createCaseWithDiagnostics(
     title: string;
     case_type: string;
     state_code: string;
+    situation_type?: string;
     description?: string;
   } = {
     user_id: userId,
@@ -277,6 +285,9 @@ export async function createCaseWithDiagnostics(
     case_type: opts.caseType ?? "custody",
     state_code: normalizedStateCode,
   };
+  if (normalizedSituationType) {
+    insertPayload.situation_type = normalizedSituationType;
+  }
   if (normalizedDescription) {
     insertPayload.description = normalizedDescription;
   }

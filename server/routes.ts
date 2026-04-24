@@ -4910,6 +4910,7 @@ Do not add facts not present in the provided evidence.`,
       const createCaseResult = await createCaseWithDiagnostics(user.id, {
         title: caseTitle,
         caseType: parsed.data.caseType ?? "custody",
+        situationType: parsed.data.situation_type ?? null,
         status: "active",
         stateCode: resolvedStateCode,
         authToken: asString(req.headers.authorization).replace("Bearer ", "").trim() || null,
