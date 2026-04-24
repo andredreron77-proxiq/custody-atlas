@@ -126,6 +126,7 @@ export function AuthButton() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [message, setMessage]   = useState<string | null>(null);
+  const [canMountDialogs, setCanMountDialogs] = useState(false);
   const qc = useQueryClient();
 
   function resetForm() {
@@ -160,6 +161,16 @@ export function AuthButton() {
     window.addEventListener("custody-atlas:open-auth", handleOpenAuth);
     return () => window.removeEventListener("custody-atlas:open-auth", handleOpenAuth);
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (isLoading) {
+      setCanMountDialogs(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setCanMountDialogs(true), 100);
+    return () => window.clearTimeout(timer);
+  }, [isLoading]);
 
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault();
@@ -313,15 +324,17 @@ export function AuthButton() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Dialog open={preferencesOpen} onOpenChange={setPreferencesOpen}>
-          <DialogContent className="left-1/2 top-1/2 max-h-[80vh] w-[calc(100vw-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden border-white/10 bg-slate-950 p-0 text-slate-100 sm:w-full">
-            <DialogHeader className="sr-only">
-              <DialogTitle>Communication Preferences</DialogTitle>
-              <DialogDescription>Customize how Atlas communicates with you.</DialogDescription>
-            </DialogHeader>
-            <CommunicationPreferences onClose={() => setPreferencesOpen(false)} />
-          </DialogContent>
-        </Dialog>
+        {canMountDialogs ? (
+          <Dialog open={preferencesOpen} onOpenChange={setPreferencesOpen}>
+            <DialogContent className="left-1/2 top-1/2 max-h-[80vh] w-[calc(100vw-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden border-white/10 bg-slate-950 p-0 text-slate-100 sm:w-full">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Communication Preferences</DialogTitle>
+                <DialogDescription>Customize how Atlas communicates with you.</DialogDescription>
+              </DialogHeader>
+              <CommunicationPreferences onClose={() => setPreferencesOpen(false)} />
+            </DialogContent>
+          </Dialog>
+        ) : null}
       </>
     );
   }
@@ -339,8 +352,9 @@ export function AuthButton() {
         Sign In
       </Button>
 
-      <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(true); }}>
-        <DialogContent className="sm:max-w-[360px] gap-0 p-6">
+      {canMountDialogs ? (
+        <Dialog open={open} onOpenChange={(v) => { if (!v) closeDialog(); else setOpen(true); }}>
+          <DialogContent className="sm:max-w-[360px] gap-0 p-6">
 
           {/* ── Forgot password view ──────────────────────────────────── */}
           {view === "forgot" ? (
@@ -553,8 +567,9 @@ export function AuthButton() {
               <TrustStrip />
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </>
   );
 }

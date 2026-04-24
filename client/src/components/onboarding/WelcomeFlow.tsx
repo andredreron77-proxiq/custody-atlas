@@ -41,26 +41,26 @@ const SITUATIONS: Array<{
 
 const READY_COPY: Record<SituationType, { text: string; cta: string; href: string; icon: typeof FileSearch }> = {
   more_time: {
-    text: "Start by uploading your current custody order. Atlas will tell you what it means.",
-    cta: "Upload a Document",
-    href: "/analyze",
-    icon: FileSearch,
+    text: "Tell Atlas what's going on and we'll figure out the best path forward together. No documents needed yet.",
+    cta: "Talk to Atlas About Your Situation",
+    href: "/ask",
+    icon: MessageSquare,
   },
   respond_to_filing: {
-    text: "Upload the document you received. Atlas will break it down in plain English.",
-    cta: "Upload a Document",
-    href: "/analyze",
+    text: "Upload what you were served with and Atlas will break it down in plain English.",
+    cta: "Upload the Document You Received",
+    href: "/upload-document",
     icon: FileSearch,
   },
   hearing_coming_up: {
-    text: "Ask Atlas what to expect at your hearing. It'll walk you through it.",
-    cta: "Ask Atlas a Question",
+    text: "Tell Atlas when your hearing is and what you have so far. We'll help you prepare step by step.",
+    cta: "Ask Atlas About Your Hearing",
     href: "/ask",
     icon: MessageSquare,
   },
   figuring_things_out: {
-    text: "Ask Atlas anything. There are no wrong questions.",
-    cta: "Ask Atlas a Question",
+    text: "There are no wrong questions. Atlas is ready when you are.",
+    cta: "Start Talking to Atlas",
     href: "/ask",
     icon: MessageSquare,
   },
@@ -68,13 +68,13 @@ const READY_COPY: Record<SituationType, { text: string; cta: string; href: strin
 
 const READY_HINT_COPY: Record<SituationType, string> = {
   hearing_coming_up:
-    "After this, upload your custody order so Atlas can walk you through what it means.",
+    "Start with what you know so far, and Atlas will help you prepare one step at a time.",
   respond_to_filing:
-    "After this, upload the document you received so Atlas can break it down for you.",
+    "Start by uploading what you received so Atlas can review it with you.",
   more_time:
-    "After this, try asking Atlas what your current order says about parenting time.",
+    "Start by telling Atlas what's happening, and it will help you sort out the next step.",
   figuring_things_out:
-    "There are no wrong questions. Atlas is ready when you are.",
+    "Start anywhere. Atlas is ready to help you make sense of it.",
 };
 
 const WELCOME_FLOW_ACTIVE_KEY = "custody-atlas:welcome-flow-active";
@@ -498,7 +498,7 @@ export function WelcomeFlow() {
                 <div>
                   <p className="text-sm font-semibold text-foreground">Your workspace is private to your account.</p>
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    You can change your case details, location, and documents later from Workspace.
+                    You can change your case details, location, and documents later.
                   </p>
                 </div>
               </div>
