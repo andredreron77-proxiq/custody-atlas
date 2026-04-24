@@ -18,10 +18,15 @@ const WARM_BG = "#f9f8f6";
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 const STATES_WITH_DATA = new Set([
-  "Alabama","Alaska","Arizona","California","Colorado","Florida","Georgia",
-  "Illinois","Indiana","Louisiana","Massachusetts","Michigan","Nevada",
-  "New Jersey","New York","North Carolina","Ohio","Oklahoma","Pennsylvania",
-  "Texas","Virginia","Washington",
+  "Alabama","Alaska","Arizona","Arkansas","California","Colorado",
+  "Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho",
+  "Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana",
+  "Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi",
+  "Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey",
+  "New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma",
+  "Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota",
+  "Tennessee","Texas","Utah","Vermont","Virginia","Washington",
+  "West Virginia","Wisconsin","Wyoming",
 ]);
 const STATES_COVERED = Array.from(STATES_WITH_DATA).sort();
 

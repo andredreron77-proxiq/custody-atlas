@@ -24,14 +24,6 @@ import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 
-const STATES_WITH_DATA = new Set([
-  "Alabama", "Alaska", "Arizona", "California", "Colorado",
-  "Florida", "Georgia", "Illinois", "Indiana", "Louisiana",
-  "Massachusetts", "Michigan", "Nevada", "New Jersey", "New York",
-  "North Carolina", "Ohio", "Oklahoma", "Pennsylvania", "Texas",
-  "Virginia", "Washington",
-]);
-
 const ALL_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
   "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
@@ -43,6 +35,8 @@ const ALL_STATES = [
   "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
   "West Virginia", "Wisconsin", "Wyoming",
 ];
+
+const STATES_WITH_DATA = new Set(ALL_STATES);
 
 function truncate(text: string, maxLen: number) {
   if (text.length <= maxLen) return text;
