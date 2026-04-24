@@ -163,7 +163,7 @@ function ProtectedWelcomeRoute() {
     Boolean(user) &&
     !welcomeDismissedAt &&
     Array.isArray(casesData?.cases) &&
-    casesData.cases.length === 0;
+    (casesData.cases.length === 0 || welcomeFlowActive);
 
   useEffect(() => {
     if (!isLoading && user && !isProfileLoading && !isCasesFetching && !shouldShowWelcome && !welcomeFlowActive) {
@@ -171,7 +171,7 @@ function ProtectedWelcomeRoute() {
     }
   }, [isCasesFetching, isLoading, isProfileLoading, navigate, shouldShowWelcome, user, welcomeFlowActive]);
 
-  if (isLoading || (user && isProfileLoading)) {
+  if (isLoading) {
     return <FullPageLoading />;
   }
 
