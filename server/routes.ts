@@ -76,7 +76,7 @@ import {
   getCaseById,
   createConversation,
   listConversations,
-  getConversationById,
+  getConversationByIdForCase,
   listMessages,
   getRecentConversationMessages,
   appendConversationMessage,
@@ -2008,8 +2008,8 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
 
         // 2. Resolve conversation: use the one sent by the client, or create a new one
         if (incomingConvId) {
-          const convRecord = await getConversationById(incomingConvId, userId);
-          if (!convRecord || convRecord.caseId !== effectiveCaseId) {
+          const convRecord = await getConversationByIdForCase(incomingConvId, effectiveCaseId, userId);
+          if (!convRecord) {
             console.warn(`[ask] Conversation mismatch. convId=${incomingConvId} caseId=${effectiveCaseId}`);
             return res.status(403).json({ error: "Conversation not found or does not belong to this case." });
           }

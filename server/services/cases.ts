@@ -548,7 +548,7 @@ export async function getConversationById(
   try {
     const { data, error } = await supabaseAdmin
       .from("conversations")
-      .select("*")
+      .select("id, case_id, title, conversation_type, last_message_at, created_at, updated_at")
       .eq("id", conversationId)
       .single();
     if (error || !data) return null;
@@ -559,7 +559,34 @@ export async function getConversationById(
 
     return {
       ...conversation,
-      userId: data.user_id ?? ownerCheck.userId,
+      userId: ownerCheck.userId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getConversationByIdForCase(
+  conversationId: string,
+  caseId: string,
+  userId: string,
+): Promise<Conversation | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const ownerCheck = await getCaseById(caseId, userId);
+    if (!ownerCheck) return null;
+
+    const { data, error } = await supabaseAdmin
+      .from("conversations")
+      .select("id, case_id, title, conversation_type, last_message_at, created_at, updated_at")
+      .eq("id", conversationId)
+      .eq("case_id", caseId)
+      .single();
+    if (error || !data) return null;
+
+    return {
+      ...mapConversation(data),
+      userId: ownerCheck.userId,
     };
   } catch {
     return null;
