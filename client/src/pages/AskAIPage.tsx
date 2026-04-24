@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, Link } from "wouter";
 import { MessageSquare, ArrowRight, Loader2, Lock, Zap, Shield, FolderOpen, ChevronDown, CheckCheck, Hash, Building2, Calendar, ClipboardList, CircleCheck, X, FileText, AlertTriangle, Check, ChevronRight, Files } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -221,6 +221,7 @@ export default function AskAIPage() {
     }>;
   } | null>(null);
   const [isInitializingGuidedConversation, setIsInitializingGuidedConversation] = useState(false);
+  const guidedInitRef = useRef(false);
   const { user } = useCurrentUser();
 
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
@@ -363,6 +364,7 @@ export default function AskAIPage() {
     setResolvedConversationId(conversationIdParam);
     setResolvedConversationType(undefined);
     setInitializedConversationPayload(null);
+    guidedInitRef.current = false;
   }, [activeCaseId, conversationIdParam]);
 
   useEffect(() => {
@@ -377,9 +379,10 @@ export default function AskAIPage() {
       return;
     }
 
-    if (!activeCase?.situationType || isInitializingGuidedConversation) return;
+    if (!activeCase?.situationType || guidedInitRef.current) return;
 
     let cancelled = false;
+    guidedInitRef.current = true;
     setIsInitializingGuidedConversation(true);
     void (async () => {
       try {
@@ -403,7 +406,7 @@ export default function AskAIPage() {
         setResolvedConversationType(data.conversation.threadType);
         setInitializedConversationPayload(data);
       } finally {
-        if (!cancelled) setIsInitializingGuidedConversation(false);
+        setIsInitializingGuidedConversation(false);
       }
     })();
 
@@ -415,7 +418,6 @@ export default function AskAIPage() {
     activeCaseId,
     caseConversationsData?.conversations,
     conversationIdParam,
-    isInitializingGuidedConversation,
     isLoadingCaseConversations,
     threadIdParam,
   ]);
