@@ -36,14 +36,25 @@ interface ThreadWithMessages {
     role: "user" | "assistant";
     messageText: string;
     structuredResponseJson: Record<string, unknown> | null;
+    messageMetadata?: Record<string, unknown> | null;
     createdAt: string;
   }>;
+}
+
+interface CaseConversationRecord {
+  id: string;
+  title: string | null;
+  threadType: string;
+  jurisdictionState: string | null;
+  jurisdictionCounty: string | null;
+  createdAt: string;
 }
 
 interface CaseRecord {
   id: string;
   title: string;
   status: string;
+  situationType?: string | null;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
 }
@@ -81,6 +92,23 @@ interface CaseActionItem {
   status: "open" | "done";
   sourceType: string;
   createdAt: string;
+}
+
+function guidedFlowLabel(situationType?: string | null): string | null {
+  switch (situationType) {
+    case "more_time":
+      return "Getting more parenting time";
+    case "respond_filing":
+    case "respond_to_filing":
+      return "Responding to a filing";
+    case "hearing_prep":
+    case "hearing_coming_up":
+      return "Preparing for your hearing";
+    case "figuring_things_out":
+      return "Exploring your options";
+    default:
+      return null;
+  }
 }
 
 function diffDaysFromNow(dateStr: string): number | null {
@@ -179,6 +207,20 @@ export default function AskAIPage() {
   const [showDocSelector, setShowDocSelector] = useState(false);
   const [showLinkCaseNudge, setShowLinkCaseNudge] = useState(true);
   const [hasChatMessages, setHasChatMessages] = useState(Boolean(initialQuestion));
+  const [resolvedConversationId, setResolvedConversationId] = useState<string | undefined>(conversationIdParam);
+  const [resolvedConversationType, setResolvedConversationType] = useState<string | undefined>(undefined);
+  const [initializedConversationPayload, setInitializedConversationPayload] = useState<{
+    conversation: CaseConversationRecord;
+    messages: Array<{
+      id: string;
+      role: "user" | "assistant";
+      messageText: string;
+      structuredResponseJson: Record<string, unknown> | null;
+      messageMetadata?: Record<string, unknown> | null;
+      createdAt: string;
+    }>;
+  } | null>(null);
+  const [isInitializingGuidedConversation, setIsInitializingGuidedConversation] = useState(false);
   const { user } = useCurrentUser();
 
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
@@ -197,22 +239,25 @@ export default function AskAIPage() {
     },
   });
 
+  const effectiveConversationId = conversationIdParam ?? resolvedConversationId;
+
   const { data: convMessagesData, isLoading: isLoadingConversation } = useQuery<{
     messages: Array<{
       id: string;
       role: "user" | "assistant";
       messageText: string;
       structuredResponseJson: Record<string, unknown> | null;
+      messageMetadata?: Record<string, unknown> | null;
       createdAt: string;
     }>;
   } | null>({
-    queryKey: ["/api/conversations", conversationIdParam, "messages"],
-    enabled: !!conversationIdParam,
+    queryKey: ["/api/conversations", effectiveConversationId, "messages"],
+    enabled: !!effectiveConversationId && !initializedConversationPayload,
     staleTime: 0,
     retry: false,
     queryFn: async () => {
-      if (!conversationIdParam) return null;
-      const res = await apiRequestRaw("GET", `/api/conversations/${conversationIdParam}/messages`);
+      if (!effectiveConversationId) return null;
+      const res = await apiRequestRaw("GET", `/api/conversations/${effectiveConversationId}/messages`);
       if (!res.ok) return null;
       return res.json();
     },
@@ -243,6 +288,19 @@ export default function AskAIPage() {
         country: "United States",
       }
     : null;
+
+  const { data: caseConversationsData, isLoading: isLoadingCaseConversations } = useQuery<{ conversations: CaseConversationRecord[] }>({
+    queryKey: ["/api/cases", activeCaseId, "conversations"],
+    enabled: !!activeCaseId && !threadIdParam,
+    staleTime: 0,
+    retry: false,
+    queryFn: async () => {
+      if (!activeCaseId) return { conversations: [] };
+      const res = await apiRequestRaw("GET", `/api/cases/${activeCaseId}/conversations`);
+      if (!res.ok) return { conversations: [] };
+      return res.json();
+    },
+  });
 
   const { data: documentsData } = useQuery<{ documents: DocumentRecord[] }>({
     queryKey: ["/api/documents"],
@@ -293,6 +351,83 @@ export default function AskAIPage() {
     isUrgentCase ? "urgent_case" : "active_case";
 
   const [caseJurisdictionApplied, setCaseJurisdictionApplied] = useState(false);
+
+  useEffect(() => {
+    if (caseIdParam) return;
+    if (activeCaseId) return;
+    if (cases.length !== 1) return;
+    setActiveCaseId(cases[0].id);
+  }, [activeCaseId, caseIdParam, cases]);
+
+  useEffect(() => {
+    setResolvedConversationId(conversationIdParam);
+    setResolvedConversationType(undefined);
+    setInitializedConversationPayload(null);
+  }, [activeCaseId, conversationIdParam]);
+
+  useEffect(() => {
+    if (threadIdParam || conversationIdParam || !activeCaseId) return;
+    if (isLoadingCaseConversations) return;
+
+    const latestConversation = caseConversationsData?.conversations?.[0];
+    if (latestConversation) {
+      setResolvedConversationId(latestConversation.id);
+      setResolvedConversationType(latestConversation.threadType);
+      setInitializedConversationPayload(null);
+      return;
+    }
+
+    if (!activeCase?.situationType || isInitializingGuidedConversation) return;
+
+    let cancelled = false;
+    setIsInitializingGuidedConversation(true);
+    void (async () => {
+      try {
+        const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
+          caseId: activeCaseId,
+        });
+        if (!res.ok) return;
+        const data = await res.json() as {
+          conversation: CaseConversationRecord;
+          messages: Array<{
+            id: string;
+            role: "user" | "assistant";
+            messageText: string;
+            structuredResponseJson: Record<string, unknown> | null;
+            messageMetadata?: Record<string, unknown> | null;
+            createdAt: string;
+          }>;
+        };
+        if (cancelled) return;
+        setResolvedConversationId(data.conversation.id);
+        setResolvedConversationType(data.conversation.threadType);
+        setInitializedConversationPayload(data);
+      } finally {
+        if (!cancelled) setIsInitializingGuidedConversation(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeCase?.situationType,
+    activeCaseId,
+    caseConversationsData?.conversations,
+    conversationIdParam,
+    isInitializingGuidedConversation,
+    isLoadingCaseConversations,
+    threadIdParam,
+  ]);
+
+  useEffect(() => {
+    if (!effectiveConversationId) return;
+    const matchingConversation = caseConversationsData?.conversations?.find((conversation) => conversation.id === effectiveConversationId);
+    if (matchingConversation?.threadType) {
+      setResolvedConversationType(matchingConversation.threadType);
+    }
+  }, [caseConversationsData?.conversations, effectiveConversationId]);
+
   useEffect(() => {
     if (caseJurisdictionApplied) return;
     if (jurisdiction) { setCaseJurisdictionApplied(true); return; }
@@ -330,11 +465,19 @@ export default function AskAIPage() {
       role: m.role,
       content: m.messageText,
       structured: (m.structuredResponseJson as any) ?? undefined,
+      metadata: m.messageMetadata ?? undefined,
+    })) ??
+    initializedConversationPayload?.messages?.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.messageText,
+      structured: (m.structuredResponseJson as any) ?? undefined,
+      metadata: m.messageMetadata ?? undefined,
     })) ??
     convMessagesData?.messages?.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.messageText,
       structured: (m.structuredResponseJson as any) ?? undefined,
+      metadata: m.messageMetadata ?? undefined,
     }));
 
   useEffect(() => {
@@ -347,6 +490,10 @@ export default function AskAIPage() {
   const answeringScopeLabel = activeCaseName
     ? `Answering from: ${activeCaseName}`
     : "Answering from: General Workspace";
+  const guidedContextLabel =
+    resolvedConversationType?.startsWith("guided_")
+      ? guidedFlowLabel(activeCase?.situationType)
+      : null;
   const selectedDocCount = chatSelectedDocumentIds ? chatSelectedDocumentIds.length : userDocuments.length;
   const userTier: UserTier = isProUser ? "pro" : "free";
 
@@ -374,7 +521,7 @@ export default function AskAIPage() {
     .slice(0, 2)
     .map(({ score, locked, daysUntilDue, ...raw }) => raw);
 
-  if ((threadIdParam && isLoadingThread) || (conversationIdParam && isLoadingConversation)) {
+  if ((threadIdParam && isLoadingThread) || (effectiveConversationId && !initializedConversationPayload && isLoadingConversation) || isInitializingGuidedConversation) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
@@ -642,19 +789,25 @@ export default function AskAIPage() {
         </div>
       </div>
 
-      <ChatBox
-        jurisdiction={jurisdiction}
-        initialQuestion={initialQuestion}
-        initialMessages={initialMessages}
-        initialThreadId={threadIdParam}
-        initialConversationId={conversationIdParam}
-        caseId={activeCaseId}
-        selectedDocumentIds={chatSelectedDocumentIds}
-        onSelectCase={(id) => setActiveCaseId(id)}
-        answeringScopeLabel={answeringScopeLabel}
-        className="flex-1 min-h-0"
-        onHasMessagesChange={setHasChatMessages}
-      />
-    </div>
-  );
+        {guidedContextLabel && (
+          <div className="px-1 text-xs text-muted-foreground">
+            Atlas is helping you with: {guidedContextLabel}
+          </div>
+        )}
+
+        <ChatBox
+          jurisdiction={jurisdiction}
+          initialQuestion={initialQuestion}
+          initialMessages={initialMessages}
+          initialThreadId={threadIdParam}
+          initialConversationId={effectiveConversationId}
+          caseId={activeCaseId}
+          selectedDocumentIds={chatSelectedDocumentIds}
+          onSelectCase={(id) => setActiveCaseId(id)}
+          answeringScopeLabel={answeringScopeLabel}
+          className="flex-1 min-h-0"
+          onHasMessagesChange={setHasChatMessages}
+        />
+      </div>
+    );
 }

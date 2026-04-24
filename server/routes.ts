@@ -15,6 +15,7 @@ import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtracto
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
+import { getGuidedFlowByConversationType, getGuidedFlowBySituationType, isGuidedConversationType } from "./lib/guidedFlows";
 import {
   buildExtractedFactsBlock,
   classifyDocumentQuestion,
@@ -80,6 +81,7 @@ import {
   getRecentConversationMessages,
   appendConversationMessage,
   listCaseMemory,
+  upsertCaseMemory,
 } from "./services/cases";
 import { generateCaseIntelligence } from "./services/caseIntelligence";
 import {
@@ -157,6 +159,96 @@ function getOpenAIDirectClient(): OpenAI {
   const key = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is not configured.");
   return new OpenAI({ apiKey: key });
+}
+
+interface GuidedMemorySnapshot {
+  memorySummary: string;
+  keyOpenQuestions: string[];
+  keyRisks: string[];
+}
+
+function readGuidedMemorySnapshot(entries: Array<{ memoryType: string; content: string }>): GuidedMemorySnapshot {
+  const readJsonArray = (memoryType: string): string[] => {
+    const raw = entries.find((entry) => entry.memoryType === memoryType)?.content ?? "[]";
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  return {
+    memorySummary: entries.find((entry) => entry.memoryType === "memory_summary")?.content ?? "",
+    keyOpenQuestions: readJsonArray("key_open_questions"),
+    keyRisks: readJsonArray("key_risks"),
+  };
+}
+
+async function refreshGuidedCaseMemory(params: {
+  userId: string;
+  caseId: string;
+  conversationType: string;
+  userQuestion: string;
+  assistantSummary: string;
+  existingMemories: Array<{ memoryType: string; content: string }>;
+}): Promise<void> {
+  const flow = getGuidedFlowByConversationType(params.conversationType);
+  if (!flow) return;
+
+  try {
+    const openai = getOpenAIClient();
+    const priorMemory = readGuidedMemorySnapshot(params.existingMemories);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      max_tokens: 450,
+      messages: [
+        {
+          role: "system",
+          content:
+            `${flow.systemContext}\n\nSummarize the latest guided-flow learning into case memory. Return JSON only with keys: memory_summary (string), key_open_questions (array of strings), key_risks (array of strings).\n` +
+            `Keep memory_summary under 600 characters. Keep arrays concise, deduplicated, and limited to 5 items each. If nothing belongs in an array, return [].`,
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            prior_memory_summary: priorMemory.memorySummary,
+            prior_key_open_questions: priorMemory.keyOpenQuestions,
+            prior_key_risks: priorMemory.keyRisks,
+            latest_user_message: params.userQuestion,
+            latest_assistant_summary: params.assistantSummary,
+          }),
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content;
+    if (!rawContent) return;
+
+    const parsed = JSON.parse(rawContent) as {
+      memory_summary?: unknown;
+      key_open_questions?: unknown;
+      key_risks?: unknown;
+    };
+
+    const memorySummary = typeof parsed.memory_summary === "string" ? parsed.memory_summary.trim().slice(0, 600) : "";
+    const keyOpenQuestions = Array.isArray(parsed.key_open_questions)
+      ? parsed.key_open_questions.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 5)
+      : [];
+    const keyRisks = Array.isArray(parsed.key_risks)
+      ? parsed.key_risks.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 5)
+      : [];
+
+    await Promise.all([
+      upsertCaseMemory(params.userId, params.caseId, "memory_summary", memorySummary || priorMemory.memorySummary || ""),
+      upsertCaseMemory(params.userId, params.caseId, "key_open_questions", JSON.stringify(keyOpenQuestions)),
+      upsertCaseMemory(params.userId, params.caseId, "key_risks", JSON.stringify(keyRisks)),
+    ]);
+  } catch (err) {
+    console.error("[guided] failed to refresh case memory:", err);
+  }
 }
 
 /** Shared address-component type used by both geocoding helpers. */
@@ -1885,6 +1977,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       // the system prompt, and persist the exchange after the AI responds.
       // This path is ADDITIVE — the legacy thread path below is fully preserved.
       let activeConversationId: string | undefined;
+      let activeConversationType: string | undefined;
 
       if (effectiveCaseId && userId) {
         // 1. Ownership check — server enforces this, never trust client claims
@@ -1921,6 +2014,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
             return res.status(403).json({ error: "Conversation not found or does not belong to this case." });
           }
           activeConversationId = incomingConvId;
+          activeConversationType = convRecord.threadType;
         } else {
           const newConv = await createConversation(userId, effectiveCaseId, {
             title: userQuestion.slice(0, 120),
@@ -1933,6 +2027,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
             // Non-fatal: fall back to legacy path rather than failing the whole request
           } else {
             activeConversationId = newConv.id;
+            activeConversationType = newConv.threadType;
           }
         }
       }
@@ -2119,9 +2214,25 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
               ? enrichedEarlyResponse.summary
               : "";
             Promise.all([
-              appendConversationMessage(activeConversationId, "user", userQuestion),
-              appendConversationMessage(activeConversationId, "assistant", earlySummary, enrichedEarlyResponse),
+              appendConversationMessage(activeConversationId, "user", userQuestion, {
+                caseId: effectiveCaseId ?? null,
+              }),
+              appendConversationMessage(activeConversationId, "assistant", earlySummary, {
+                caseId: effectiveCaseId ?? null,
+                structuredResponseJson: enrichedEarlyResponse,
+              }),
             ]).catch((err) => console.error("[ask] Failed to persist deterministic fact messages:", err));
+
+            if (effectiveCaseId && userId && isGuidedConversationType(activeConversationType)) {
+              refreshGuidedCaseMemory({
+                userId,
+                caseId: effectiveCaseId,
+                conversationType: activeConversationType ?? "general",
+                userQuestion,
+                assistantSummary: earlySummary,
+                existingMemories: resolvedCaseMemories,
+              }).catch((err) => console.error("[guided] deterministic memory refresh failed:", err));
+            }
           }
 
           return res.json({
@@ -2306,6 +2417,7 @@ The user is asking what they should do or how to take a specific action. Focus y
         buildSystemPrompt(
           effectiveJurisdiction.state,
           effectivePreferences.knowledgeLevel,
+          getGuidedFlowByConversationType(activeConversationType)?.systemContext ?? null,
         ) +
         `
 
@@ -2421,14 +2533,30 @@ COMMUNICATION PREFERENCES
       if (activeConversationId) {
         // Fire-and-forget — do not let persistence failures block the response
         Promise.all([
-          appendConversationMessage(activeConversationId, "user", userQuestion),
+          appendConversationMessage(activeConversationId, "user", userQuestion, {
+            caseId: effectiveCaseId ?? null,
+          }),
           appendConversationMessage(
             activeConversationId,
             "assistant",
             enrichedResponse.summary,
-            enrichedResponse as unknown as Record<string, unknown>,
+            {
+              caseId: effectiveCaseId ?? null,
+              structuredResponseJson: enrichedResponse as unknown as Record<string, unknown>,
+            },
           ),
         ]).catch((err) => console.error("[ask] Failed to persist case messages:", err));
+
+        if (effectiveCaseId && userId && isGuidedConversationType(activeConversationType)) {
+          refreshGuidedCaseMemory({
+            userId,
+            caseId: effectiveCaseId,
+            conversationType: activeConversationType ?? "general",
+            userQuestion,
+            assistantSummary: enrichedResponse.summary,
+            existingMemories: resolvedCaseMemories,
+          }).catch((err) => console.error("[guided] memory refresh failed:", err));
+        }
       }
 
       await trackQuestion(req);
@@ -4996,6 +5124,69 @@ Do not add facts not present in the provided evidence.`,
     } catch (err) {
       console.error("[cases] GET /api/cases error:", err);
       return res.status(500).json({ error: "Failed to list cases." });
+    }
+  });
+
+  /**
+   * POST /api/conversations/initialize-guided
+   * Create the first guided conversation + opening message for a case when none exists yet.
+   */
+  app.post("/api/conversations/initialize-guided", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const schema = z.object({
+      caseId: z.string().uuid(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid guided conversation payload." });
+    }
+
+    try {
+      const caseRecord = await getCaseById(parsed.data.caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const flow = getGuidedFlowBySituationType(caseRecord.situationType);
+      if (!flow) {
+        return res.status(400).json({ error: "This case does not have a guided flow." });
+      }
+
+      const existingConversations = await listConversations(caseRecord.id, user.id, 1);
+      if (existingConversations.length > 0) {
+        const latest = existingConversations[0];
+        const messages = await listMessages(latest.id, user.id);
+        return res.json({ conversation: latest, messages });
+      }
+
+      const conversation = await createConversation(user.id, caseRecord.id, {
+        title: caseRecord.title.slice(0, 120),
+        threadType: flow.conversationType,
+        jurisdictionState: caseRecord.jurisdictionState ?? undefined,
+        jurisdictionCounty: caseRecord.jurisdictionCounty ?? undefined,
+      });
+      if (!conversation) {
+        return res.status(503).json({ error: "Conversation storage unavailable." });
+      }
+
+      const firstMessage = await appendConversationMessage(
+        conversation.id,
+        "assistant",
+        flow.openingMessage,
+        {
+          caseId: caseRecord.id,
+          messageMetadata: { guided_flow: true, flow_type: flow.situationType },
+        },
+      );
+      if (!firstMessage) {
+        return res.status(503).json({ error: "Message storage unavailable." });
+      }
+
+      return res.status(201).json({
+        conversation,
+        messages: [firstMessage],
+      });
+    } catch (err) {
+      console.error("[cases] initialize-guided error:", err);
+      return res.status(500).json({ error: "Failed to initialize guided conversation." });
     }
   });
 

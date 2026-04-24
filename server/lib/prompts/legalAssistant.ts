@@ -22,6 +22,7 @@
 export function buildSystemPrompt(
   stateName: string,
   knowledgeLevel: "beginner" | "intermediate" | "advanced" = "beginner",
+  guidedSystemContext?: string | null,
 ): string {
   const readingLevelBlock = knowledgeLevel === "advanced"
     ? `READING LEVEL:
@@ -143,7 +144,7 @@ CAUTIONS — the cautions array must warn the reader about:
 
 OUTPUT FORMAT:
 You MUST respond with valid JSON matching this exact structure — no extra keys, no markdown code fences:
-${outputFormat}`;
+${outputFormat}${guidedSystemContext ? `\n\nGUIDED FLOW CONTEXT:\n${guidedSystemContext}` : ""}`;
 }
 
 /**

@@ -89,9 +89,11 @@ export interface Conversation {
 export interface ConversationMessage {
   id: string;
   conversationId: string;
+  caseId: string | null;
   role: "user" | "assistant";
   messageText: string;
   structuredResponseJson: Record<string, unknown> | null;
+  messageMetadata: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -205,9 +207,11 @@ function mapMessage(r: any): ConversationMessage {
   return {
     id: r.id,
     conversationId: r.conversation_id,
+    caseId: r.case_id ?? null,
     role: r.role as "user" | "assistant",
     messageText: r.message_text,
     structuredResponseJson: r.structured_response_json ?? null,
+    messageMetadata: r.message_metadata ?? null,
     createdAt: r.created_at,
   };
 }
@@ -627,7 +631,11 @@ export async function appendConversationMessage(
   conversationId: string,
   role: "user" | "assistant",
   messageText: string,
-  structuredResponseJson?: Record<string, unknown>,
+  options?: {
+    structuredResponseJson?: Record<string, unknown>;
+    caseId?: string | null;
+    messageMetadata?: Record<string, unknown> | null;
+  },
 ): Promise<ConversationMessage | null> {
   if (!supabaseAdmin) return null;
   try {
@@ -635,9 +643,11 @@ export async function appendConversationMessage(
       .from("messages")
       .insert({
         conversation_id: conversationId,
+        case_id: options?.caseId ?? null,
         role,
         message_text: messageText,
-        structured_response_json: structuredResponseJson ?? null,
+        structured_response_json: options?.structuredResponseJson ?? null,
+        message_metadata: options?.messageMetadata ?? null,
       })
       .select()
       .single();
@@ -713,6 +723,20 @@ export async function upsertCaseMemory(
 ): Promise<CaseMemory | null> {
   if (!supabaseAdmin) return null;
   try {
+    const { data: updatedRows, error: updateError } = await supabaseAdmin
+      .from("case_memory")
+      .update({ content })
+      .eq("case_id", caseId)
+      .eq("user_id", userId)
+      .eq("memory_type", memoryType)
+      .select()
+      .limit(1);
+
+    if (updateError) return null;
+    if ((updatedRows?.length ?? 0) > 0) {
+      return mapMemory(updatedRows[0]);
+    }
+
     const { data, error } = await supabaseAdmin
       .from("case_memory")
       .insert({

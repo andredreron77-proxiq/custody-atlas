@@ -57,6 +57,11 @@ type AskAssistantResponse = AILegalResponse & {
   questionsLimit?: number;
 } & JurisdictionMismatchInfo;
 
+type GuidedMessageMetadata = {
+  guided_flow?: boolean;
+  flow_type?: string;
+};
+
 function getSuggestedQuestions(state: string): string[] {
   const s = state || "my state";
   return [
@@ -505,6 +510,7 @@ export function ChatBox({
   const sendRef = useRef<(q: string, forcedCaseId?: string) => void>(() => {});
   const threadIdRef = useRef<string | undefined>(initialThreadId);
   const conversationIdRef = useRef<string | undefined>(initialConversationId);
+  const hydratedSourceRef = useRef<string>("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
@@ -728,6 +734,19 @@ export function ChatBox({
     const timer = setTimeout(() => sendRef.current(initialQuestion), 300);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const sourceId = initialConversationId ?? initialThreadId ?? "";
+    if (hydratedSourceRef.current !== sourceId) {
+      setMessages(initialMessages ?? []);
+      hydratedSourceRef.current = sourceId;
+      return;
+    }
+
+    if (sourceId && (initialMessages?.length ?? 0) > 0 && messages.length === 0) {
+      setMessages(initialMessages ?? []);
+    }
+  }, [initialConversationId, initialThreadId, initialMessages, messages.length]);
 
   useEffect(() => {
     conversationIdRef.current = initialConversationId;
@@ -961,8 +980,20 @@ export function ChatBox({
                     )}
                   </div>
                 ) : (
-                  <Card className="max-w-[85%]">
-                    <CardContent className="p-3.5">
+                  <Card
+                    className={`max-w-[85%] ${
+                      (msg.metadata as GuidedMessageMetadata | undefined)?.guided_flow
+                        ? "bg-muted/60 border-muted shadow-sm"
+                        : ""
+                    }`}
+                  >
+                    <CardContent
+                      className={`${
+                        (msg.metadata as GuidedMessageMetadata | undefined)?.guided_flow
+                          ? "p-4"
+                          : "p-3.5"
+                      }`}
+                    >
                       <p className="text-sm leading-relaxed">{msg.content}</p>
                     </CardContent>
                   </Card>

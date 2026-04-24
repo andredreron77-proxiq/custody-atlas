@@ -223,6 +223,7 @@ export const chatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   structured: aiLegalResponseSchema.optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
