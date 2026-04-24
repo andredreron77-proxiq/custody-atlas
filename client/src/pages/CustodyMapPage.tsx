@@ -130,11 +130,13 @@ interface GuestExchange {
   id: string;
   question: string;
   answer: string;
+  worthKnowing?: string | null;
 }
 
 type GuestMessage = {
   role: "user" | "assistant";
   content: string;
+  keyPoint?: string | null;
 };
 
 type Mode = "explore" | "compare";
@@ -852,9 +854,22 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
   const [guestMessages, setGuestMessages] = useState<GuestMessage[]>([]);
   const [questionsUsed, setQuestionsUsed] = useState(() => getGuestQuestionsUsed());
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const isGuest = !user;
   const remainingQuestions = Math.max(0, GUEST_QUESTION_LIMIT - questionsUsed);
   const limitReached = isGuest && questionsUsed >= GUEST_QUESTION_LIMIT;
+  const hasAskedFirstQuestion = guestMessages.some((message) => message.role === "user");
+  const suggestionChips = selectedState
+    ? [
+        `What are ${selectedState}'s rules if my ex wants to move?`,
+        `Can my child choose who to live with in ${selectedState}?`,
+        `What should I expect at a ${selectedState} custody hearing?`,
+      ]
+    : [
+        "What rights do I have if my ex wants to move?",
+        "Can my child choose who to live with?",
+        "What happens at a custody hearing?",
+      ];
   const exchanges = guestMessages.reduce<GuestExchange[]>((items, message, index) => {
     if (message.role !== "user") return items;
     const answer = guestMessages[index + 1];
@@ -862,6 +877,7 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
       id: `${index}`,
       question: message.content,
       answer: answer?.role === "assistant" ? answer.content : "",
+      worthKnowing: answer?.role === "assistant" ? answer.keyPoint ?? null : null,
     });
     return items;
   }, []);
@@ -915,6 +931,7 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
         {
           role: "assistant",
           content: response.summary,
+          keyPoint: response.key_points?.[0] ?? null,
         }
       ]);
       setQuestion("");
@@ -975,6 +992,7 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
         <div className="mt-5 space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row">
             <Input
+              ref={inputRef}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
@@ -998,6 +1016,24 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
               Send
             </Button>
           </div>
+          {!hasAskedFirstQuestion ? (
+            <div className="flex flex-wrap gap-2" data-testid="guest-question-suggestions">
+              {suggestionChips.map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  className="rounded-full border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => {
+                    setQuestion(chip);
+                    inputRef.current?.focus();
+                  }}
+                  data-testid={`guest-suggestion-${chip.slice(0, 20).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {isGuest ? (
             <p className="text-sm text-muted-foreground" data-testid="text-guest-questions-remaining">
               {remainingQuestions} of 3 free questions remaining
@@ -1012,21 +1048,28 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
       )}
 
       <div className="mt-6 space-y-4" data-testid="guest-state-history">
-        {history.map((entry) => (
+        {exchanges.map((entry) => (
           <div key={entry.id} className="space-y-3">
             <div className="flex justify-end">
-              <div className="max-w-[90%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-3 text-sm leading-relaxed text-white shadow-sm sm:max-w-[80%]">
+              <div className="max-w-[90%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-3 text-sm leading-relaxed text-white shadow-sm sm:max-w-[80%] dark:bg-slate-800">
                 {entry.question}
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-primary">
-                <MessageSquare className="h-4 w-4" />
+            {entry.answer ? (
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-primary">
+                  <MessageSquare className="h-4 w-4" />
+                </div>
+                <div className="max-w-[92%] rounded-2xl rounded-tl-md bg-muted/70 px-4 py-3 text-sm leading-relaxed text-foreground sm:max-w-[82%]">
+                  {entry.answer}
+                  {entry.worthKnowing ? (
+                    <p className="mt-2 text-sm italic text-muted-foreground">
+                      Worth knowing: {entry.worthKnowing}
+                    </p>
+                  ) : null}
+                </div>
               </div>
-              <div className="max-w-[92%] rounded-2xl rounded-tl-md bg-muted/70 px-4 py-3 text-sm leading-relaxed text-foreground sm:max-w-[82%]">
-                {entry.answer}
-              </div>
-            </div>
+            ) : null}
           </div>
         ))}
 

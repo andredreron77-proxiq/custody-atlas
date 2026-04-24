@@ -1919,6 +1919,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       } = parsed.data;
       const useGeneralWorkspace = req.body?.useGeneralWorkspace === true;
       const userId = (req as any).user?.id as string | undefined;
+      const isGuestDemoRequest = req.body?.isGuest === true;
       const usageOverage = (req as any).usageOverage as
         | {
             overageWarning: true;
@@ -2430,6 +2431,17 @@ The user is asking what they should do or how to take a specific action. Focus y
 COMMUNICATION PREFERENCES
 - Response format: ${effectivePreferences.responseFormat === "prose" ? "Use flowing prose paragraphs unless a numbered process is truly necessary." : "Use organized bullet points when they improve clarity."}
 - Explain legal terms: ${effectivePreferences.explainTerms ? "Yes — define legal terms when you use them." : "No — do not define basic legal terms unless the term is unusually technical."}` +
+        (isGuestDemoRequest
+          ? `
+
+---
+GUEST DEMO RESPONSE GUIDANCE
+- For this response, make the "summary" 3 to 5 sentences.
+- Always mention ${effectiveJurisdiction.state} by name in the summary.
+- Include at least one concrete, actionable piece of general information in the summary.
+- End the summary with one sentence about the next useful step the person can take.
+- Keep the tone warm, practical, and easy to understand.`
+          : "") +
         officialContactAddendum +
         caseJurisdictionAddendum +
         caseMemoryText +
