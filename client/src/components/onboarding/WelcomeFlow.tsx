@@ -278,7 +278,7 @@ export function WelcomeFlow() {
           type="button"
           onClick={skipFlow}
           disabled={isFinishing}
-          className="text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-60"
+          className="min-h-[44px] flex items-center text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-60"
           data-testid="button-welcome-skip-flow"
         >
           Skip setup
@@ -365,11 +365,12 @@ export function WelcomeFlow() {
 
             <div className="mt-6 flex flex-col items-end gap-3">
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-                <Button variant="outline" onClick={() => setStep(1)}>
+                <Button variant="outline" className="h-11" onClick={() => setStep(1)}>
                   <ArrowLeft className="h-4 w-4" />
                   Back
                 </Button>
                 <Button
+                  className="h-11"
                   disabled={!jurisdiction}
                   onClick={() => {
                     setStep(3);
@@ -382,7 +383,7 @@ export function WelcomeFlow() {
               </div>
               <button
                 type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="min-h-[44px] flex items-center text-sm text-muted-foreground hover:text-foreground"
                 onClick={() => setStep(3)}
                 data-testid="button-welcome-step-2-skip"
               >
@@ -422,11 +423,12 @@ export function WelcomeFlow() {
             )}
             <div className="mt-6 flex flex-col items-end gap-3">
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-                <Button variant="outline" onClick={() => setStep(2)}>
+                <Button variant="outline" className="h-11" onClick={() => setStep(2)}>
                   <ArrowLeft className="h-4 w-4" />
                   Back
                 </Button>
                 <Button
+                  className="h-11"
                   disabled={!caseName.trim() || isCreatingCase}
                   onClick={() => {
                     if (caseCreationFailed) {
@@ -446,7 +448,7 @@ export function WelcomeFlow() {
               </div>
               <button
                 type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="min-h-[44px] flex items-center text-sm text-muted-foreground hover:text-foreground"
                 onClick={() => setStep(4)}
                 data-testid="button-welcome-step-3-skip"
               >
@@ -487,7 +489,7 @@ export function WelcomeFlow() {
               </Button>
               <button
                 type="button"
-                className="text-sm text-muted-foreground hover:text-foreground"
+                className="min-h-[44px] flex items-center text-sm text-muted-foreground hover:text-foreground"
                 onClick={() => void finish("/workspace")}
                 disabled={isFinishing}
                 data-testid="button-welcome-go-workspace"

@@ -92,7 +92,7 @@ function CountyConfirmPanel({
           {/* Pre-selected primary county button */}
           <button
             onClick={() => onConfirm(jurisdiction.county)}
-            className="w-full flex items-center gap-2.5 rounded-md border border-amber-300 dark:border-amber-600 bg-white dark:bg-background px-3 py-2.5 text-left hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+            className="w-full min-h-[44px] flex items-center gap-2.5 rounded-md border border-amber-300 dark:border-amber-600 bg-white dark:bg-background px-3 py-2.5 text-left hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
             data-testid="button-county-primary"
           >
             <CheckCircle2 className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
@@ -106,7 +106,7 @@ function CountyConfirmPanel({
 
           <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center">
             <button
-              className="min-h-10 text-sm text-amber-700 dark:text-amber-300 underline underline-offset-2"
+              className="min-h-[44px] flex items-center text-sm text-amber-700 dark:text-amber-300 underline underline-offset-2"
               onClick={() => setShowManual(true)}
               data-testid="button-county-different"
             >
@@ -114,7 +114,7 @@ function CountyConfirmPanel({
             </button>
             <span className="hidden text-xs text-muted-foreground sm:inline">·</span>
             <button
-              className="min-h-10 text-sm text-muted-foreground"
+              className="min-h-[44px] flex items-center text-sm text-muted-foreground"
               onClick={onSkip}
               data-testid="button-county-skip"
             >
@@ -140,7 +140,7 @@ function CountyConfirmPanel({
               size="sm"
               disabled={!manualCounty.trim()}
               onClick={() => onConfirm(manualCounty.trim())}
-              className="flex-1 text-sm h-10"
+              className="flex-1 text-sm h-11"
               data-testid="button-county-confirm"
             >
               Use {manualCounty.trim() ? `${manualCounty.trim()} County` : "This County"}
@@ -149,7 +149,7 @@ function CountyConfirmPanel({
               size="sm"
               variant="ghost"
               onClick={() => { setShowManual(false); setManualCounty(""); }}
-              className="text-sm h-10"
+              className="text-sm h-11"
             >
               Back
             </Button>
@@ -219,7 +219,7 @@ function CountyDisambiguationPanel({
             size="sm"
             disabled={!county.trim()}
             onClick={() => onConfirm(county.trim())}
-            className="flex-1 text-sm h-10"
+            className="flex-1 text-sm h-11"
             data-testid="button-county-confirm"
           >
             Use {county.trim() ? `${county.trim()} County` : "This County"}
@@ -228,7 +228,7 @@ function CountyDisambiguationPanel({
             size="sm"
             variant="outline"
             onClick={onSkip}
-            className="text-sm h-10 text-muted-foreground"
+            className="text-sm h-11 text-muted-foreground"
             data-testid="button-county-skip"
           >
             Continue with {jurisdiction.state} only
@@ -288,10 +288,10 @@ function GpsErrorDisplay({ state, onRetry, onSwitchToZip }: {
           Or switch to ZIP code entry below.
         </p>
         <div className="flex flex-col gap-2 pt-1 sm:flex-row">
-          <Button size="sm" variant="outline" onClick={onRetry} className="text-sm h-10" data-testid="button-gps-retry">
+          <Button size="sm" variant="outline" onClick={onRetry} className="text-sm h-11" data-testid="button-gps-retry">
             Try Again
           </Button>
-          <Button size="sm" variant="ghost" onClick={onSwitchToZip} className="text-sm h-10" data-testid="button-switch-to-zip">
+          <Button size="sm" variant="ghost" onClick={onSwitchToZip} className="text-sm h-11" data-testid="button-switch-to-zip">
             Use ZIP Instead
             <ArrowRight className="w-3 h-3 ml-1" />
           </Button>
@@ -591,7 +591,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
               <Button
                 onClick={handleGpsDetect}
                 disabled={isGpsLoading || gpsState.status === "success"}
-                className="w-full"
+                className="w-full h-11"
                 data-testid="button-detect-location"
               >
                 {isGpsLoading ? (
@@ -729,7 +729,7 @@ export function LocationSelector({ onJurisdictionFound }: LocationSelectorProps)
                 <Button
                   type="submit"
                   disabled={zipCode.length < 5 || isZipLoading}
-                  className="w-full"
+                  className="w-full h-11"
                   data-testid="button-zip-submit"
                 >
                   {isZipLoading ? (
