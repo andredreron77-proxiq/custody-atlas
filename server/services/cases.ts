@@ -195,7 +195,7 @@ function mapConversation(r: any): Conversation {
     caseId: r.case_id,
     userId: r.user_id,
     title: r.title ?? null,
-    threadType: r.thread_type ?? "general",
+    threadType: r.conversation_type ?? r.thread_type ?? "general",
     jurisdictionState: r.jurisdiction_state ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     documentId: r.document_id ?? null,
@@ -501,14 +501,10 @@ export async function createConversation(
       .from("conversations")
       .insert({
         case_id: caseId,
-        user_id: userId,
         title: opts.title?.slice(0, 200) ?? null,
-        thread_type: opts.threadType ?? "general",
-        jurisdiction_state: opts.jurisdictionState ?? null,
-        jurisdiction_county: opts.jurisdictionCounty ?? null,
-        document_id: opts.documentId ?? null,
+        conversation_type: opts.threadType ?? "general",
       })
-      .select()
+      .select("id, case_id, title, conversation_type, last_message_at, created_at, updated_at")
       .single();
     if (error || !data) {
       console.error("[cases] createConversation error:", error?.message);
