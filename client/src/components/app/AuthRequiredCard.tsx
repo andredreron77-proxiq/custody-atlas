@@ -45,7 +45,9 @@ export function AuthRequiredCard({ feature }: AuthRequiredCardProps) {
   const { title, description, Icon } = FEATURE_COPY[feature];
 
   function handleSignIn() {
-    window.dispatchEvent(new CustomEvent("custody-atlas:open-auth"));
+    window.dispatchEvent(new CustomEvent("custody-atlas:open-auth", {
+      detail: { mode: "signup" },
+    }));
   }
 
   return (
