@@ -132,6 +132,11 @@ interface GuestExchange {
   answer: string;
 }
 
+type GuestMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 type Mode = "explore" | "compare";
 
 function openSignup() {
@@ -841,35 +846,48 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
   const { user } = useCurrentUser();
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState("");
-  const [history, setHistory] = useState<GuestExchange[]>([]);
+  const [guestMessages, setGuestMessages] = useState<GuestMessage[]>([]);
   const [questionsUsed, setQuestionsUsed] = useState(() => getGuestQuestionsUsed());
   const [error, setError] = useState<string | null>(null);
   const isGuest = !user;
   const remainingQuestions = Math.max(0, GUEST_QUESTION_LIMIT - questionsUsed);
   const limitReached = isGuest && questionsUsed >= GUEST_QUESTION_LIMIT;
+  const exchanges = guestMessages.reduce<GuestExchange[]>((items, message, index) => {
+    if (message.role !== "user") return items;
+    const answer = guestMessages[index + 1];
+    items.push({
+      id: `${index}`,
+      question: message.content,
+      answer: answer?.role === "assistant" ? answer.content : "",
+    });
+    return items;
+  }, []);
 
   useEffect(() => {
     setQuestionsUsed(getGuestQuestionsUsed());
   }, []);
 
+  useEffect(() => {
+    setGuestMessages([]);
+    setQuestion("");
+    setError(null);
+  }, [selectedState]);
+
   const mutation = useMutation({
-    mutationFn: async (prompt: string) => {
+    mutationFn: async (userQuestion: string) => {
       if (!selectedState) {
         throw new Error("Select a state on the map to ask a question.");
       }
 
       const res = await apiRequestRaw("POST", "/api/ask", {
-        question: prompt,
-        userQuestion: prompt,
+        question: userQuestion,
+        userQuestion,
         jurisdiction: {
           state: selectedState,
           county: "statewide",
           country: "United States",
         },
-        history: history.map((entry) => [
-          { role: "user" as const, content: entry.question },
-          { role: "assistant" as const, content: entry.answer },
-        ]).flat(),
+        history: guestMessages.concat({ role: "user", content: userQuestion }).slice(-16),
         isGuest: true,
       });
 
@@ -884,17 +902,17 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
 
       return res.json() as Promise<AILegalResponse>;
     },
-    onSuccess: (response, prompt) => {
-      setHistory((current) => [
+    onSuccess: (response, userQuestion) => {
+      setGuestMessages((current) => [
         ...current,
         {
-          id:
-            typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-              ? crypto.randomUUID()
-              : `${Date.now()}-${current.length}`,
-          question: prompt,
-          answer: response.summary,
+          role: "user",
+          content: userQuestion,
         },
+        {
+          role: "assistant",
+          content: response.summary,
+        }
       ]);
       setQuestion("");
       setError(null);
