@@ -66,6 +66,17 @@ const READY_COPY: Record<SituationType, { text: string; cta: string; href: strin
   },
 };
 
+const READY_HINT_COPY: Record<SituationType, string> = {
+  hearing_coming_up:
+    "After this, upload your custody order so Atlas can walk you through what it means.",
+  respond_to_filing:
+    "After this, upload the document you received so Atlas can break it down for you.",
+  more_time:
+    "After this, try asking Atlas what your current order says about parenting time.",
+  figuring_things_out:
+    "There are no wrong questions. Atlas is ready when you are.",
+};
+
 const WELCOME_FLOW_ACTIVE_KEY = "custody-atlas:welcome-flow-active";
 
 function lastNameFromDisplayName(name: string | null): string {
@@ -143,6 +154,7 @@ export function WelcomeFlow() {
   const [jurisdiction, setJurisdiction] = useState<Jurisdiction | null>(null);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
   const [caseName, setCaseName] = useState("");
+  const [caseNameTouched, setCaseNameTouched] = useState(false);
   const [caseError, setCaseError] = useState<string | null>(null);
   const [caseCreationFailed, setCaseCreationFailed] = useState(false);
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
@@ -163,7 +175,11 @@ export function WelcomeFlow() {
   }, [preferredName]);
 
   const currentReadyCopy = READY_COPY[situationType ?? "figuring_things_out"];
+  const currentReadyHint = READY_HINT_COPY[situationType ?? "figuring_things_out"];
   const ReadyIcon = currentReadyCopy.icon;
+  const trimmedCaseName = caseName.trim();
+  const showCaseNameValidation = caseNameTouched && !trimmedCaseName;
+  const showCaseNameHelper = !showCaseNameValidation && (!trimmedCaseName || !caseNameTouched);
 
   useEffect(() => {
     window.sessionStorage.setItem(WELCOME_FLOW_ACTIVE_KEY, "1");
@@ -411,10 +427,21 @@ export function WelcomeFlow() {
                 onFocus={() => {
                   if (!caseName && suggestedCaseName) setCaseName(suggestedCaseName);
                 }}
+                onBlur={() => setCaseNameTouched(true)}
                 placeholder={suggestedCaseName || "e.g. Smith v. Johnson"}
                 maxLength={200}
                 data-testid="input-welcome-case-name"
               />
+              {showCaseNameHelper ? (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Enter a name to continue — something simple works, like both last names.
+                </p>
+              ) : null}
+              {showCaseNameValidation ? (
+                <p className="mt-1.5 text-xs text-destructive">
+                  Please enter a case name to continue
+                </p>
+              ) : null}
             </div>
             {caseError && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100" role="alert">
@@ -429,7 +456,7 @@ export function WelcomeFlow() {
                 </Button>
                 <Button
                   className="h-11"
-                  disabled={!caseName.trim() || isCreatingCase}
+                  disabled={!trimmedCaseName || isCreatingCase}
                   onClick={() => {
                     if (caseCreationFailed) {
                       setStep(4);
@@ -487,16 +514,8 @@ export function WelcomeFlow() {
                 {isFinishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ReadyIcon className="h-4 w-4" />}
                 {currentReadyCopy.cta}
               </Button>
-              <button
-                type="button"
-                className="min-h-[44px] flex items-center text-sm text-muted-foreground hover:text-foreground"
-                onClick={() => void finish("/workspace")}
-                disabled={isFinishing}
-                data-testid="button-welcome-go-workspace"
-              >
-                Go to Workspace
-              </button>
             </div>
+            <p className="mt-3 text-center text-sm text-muted-foreground">{currentReadyHint}</p>
           </Panel>
         )}
       </div>
