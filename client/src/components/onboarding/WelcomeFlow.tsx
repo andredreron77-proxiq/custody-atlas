@@ -75,22 +75,28 @@ function lastNameFromDisplayName(name: string | null): string {
 }
 
 function StepIndicator({ step }: { step: number }) {
+  const stepLabels = ["Situation", "Location", "Your Case", "Ready"];
   return (
     <div className="grid grid-cols-4 gap-2" aria-label="Welcome progress">
-      {[1, 2, 3, 4].map((item) => {
+      {[1, 2, 3, 4].map((item, index) => {
         const isComplete = item < step;
         const isActive = item === step;
         return (
-          <div key={item} className="flex items-center gap-2">
-            <div
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors",
-                isComplete && "border-primary bg-primary text-primary-foreground",
-                isActive && "border-primary bg-primary/10 text-primary",
-                !isComplete && !isActive && "border-border bg-background text-muted-foreground",
-              )}
-            >
-              {isComplete ? <Check className="h-3.5 w-3.5" /> : item}
+          <div key={item} className="flex items-start gap-2">
+            <div className="flex flex-col items-center">
+              <div
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors",
+                  isComplete && "border-primary bg-primary text-primary-foreground",
+                  isActive && "border-primary bg-primary/10 text-primary",
+                  !isComplete && !isActive && "border-border bg-background text-muted-foreground",
+                )}
+              >
+                {isComplete ? <Check className="h-3.5 w-3.5" /> : item}
+              </div>
+              <div className="mt-1 text-center text-[10px] text-muted-foreground sm:hidden">
+                {stepLabels[index]}
+              </div>
             </div>
             <div
               className={cn(
@@ -263,7 +269,7 @@ export function WelcomeFlow() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-10" data-testid="welcome-flow">
-      <div className="mb-5 flex items-center justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">Welcome{preferredName ? `, ${preferredName.split(/\s+/)[0]}` : ""}</p>
           <p className="text-xs text-muted-foreground">Four quick choices, then Atlas gets out of your way.</p>
@@ -321,6 +327,7 @@ export function WelcomeFlow() {
             </div>
             <div className="mt-6 flex justify-end">
               <Button
+                className="w-full sm:w-auto"
                 disabled={!situationType || isSavingDisplayName}
                 onClick={() => void saveDisplayNameAndContinue()}
                 data-testid="button-welcome-step-1-next"
@@ -357,7 +364,7 @@ export function WelcomeFlow() {
             )}
 
             <div className="mt-6 flex flex-col items-end gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                 <Button variant="outline" onClick={() => setStep(1)}>
                   <ArrowLeft className="h-4 w-4" />
                   Back
@@ -414,7 +421,7 @@ export function WelcomeFlow() {
               </div>
             )}
             <div className="mt-6 flex flex-col items-end gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                 <Button variant="outline" onClick={() => setStep(2)}>
                   <ArrowLeft className="h-4 w-4" />
                   Back

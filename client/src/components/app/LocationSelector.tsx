@@ -104,17 +104,17 @@ function CountyConfirmPanel({
             </div>
           </button>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center">
             <button
-              className="text-xs text-amber-700 dark:text-amber-300 underline underline-offset-2"
+              className="min-h-10 text-sm text-amber-700 dark:text-amber-300 underline underline-offset-2"
               onClick={() => setShowManual(true)}
               data-testid="button-county-different"
             >
               My county is different
             </button>
-            <span className="text-xs text-muted-foreground">·</span>
+            <span className="hidden text-xs text-muted-foreground sm:inline">·</span>
             <button
-              className="text-xs text-muted-foreground"
+              className="min-h-10 text-sm text-muted-foreground"
               onClick={onSkip}
               data-testid="button-county-skip"
             >
@@ -135,12 +135,12 @@ function CountyConfirmPanel({
               if (e.key === "Enter" && manualCounty.trim()) onConfirm(manualCounty.trim());
             }}
           />
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               size="sm"
               disabled={!manualCounty.trim()}
               onClick={() => onConfirm(manualCounty.trim())}
-              className="flex-1 text-xs h-8"
+              className="flex-1 text-sm h-10"
               data-testid="button-county-confirm"
             >
               Use {manualCounty.trim() ? `${manualCounty.trim()} County` : "This County"}
@@ -149,7 +149,7 @@ function CountyConfirmPanel({
               size="sm"
               variant="ghost"
               onClick={() => { setShowManual(false); setManualCounty(""); }}
-              className="text-xs h-8"
+              className="text-sm h-10"
             >
               Back
             </Button>
@@ -214,12 +214,12 @@ function CountyDisambiguationPanel({
             if (e.key === "Enter" && county.trim()) onConfirm(county.trim());
           }}
         />
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             size="sm"
             disabled={!county.trim()}
             onClick={() => onConfirm(county.trim())}
-            className="flex-1 text-xs h-8"
+            className="flex-1 text-sm h-10"
             data-testid="button-county-confirm"
           >
             Use {county.trim() ? `${county.trim()} County` : "This County"}
@@ -228,7 +228,7 @@ function CountyDisambiguationPanel({
             size="sm"
             variant="outline"
             onClick={onSkip}
-            className="text-xs h-8 text-muted-foreground"
+            className="text-sm h-10 text-muted-foreground"
             data-testid="button-county-skip"
           >
             Continue with {jurisdiction.state} only
@@ -287,11 +287,11 @@ function GpsErrorDisplay({ state, onRetry, onSwitchToZip }: {
           Your browser blocked location access. To use GPS detection, allow location in your browser settings and try again.
           Or switch to ZIP code entry below.
         </p>
-        <div className="flex gap-2 pt-1">
-          <Button size="sm" variant="outline" onClick={onRetry} className="text-xs h-7" data-testid="button-gps-retry">
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+          <Button size="sm" variant="outline" onClick={onRetry} className="text-sm h-10" data-testid="button-gps-retry">
             Try Again
           </Button>
-          <Button size="sm" variant="ghost" onClick={onSwitchToZip} className="text-xs h-7" data-testid="button-switch-to-zip">
+          <Button size="sm" variant="ghost" onClick={onSwitchToZip} className="text-sm h-10" data-testid="button-switch-to-zip">
             Use ZIP Instead
             <ArrowRight className="w-3 h-3 ml-1" />
           </Button>
