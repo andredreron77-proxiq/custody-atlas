@@ -264,6 +264,23 @@ export function WelcomeFlow() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-10" data-testid="welcome-flow">
+      {import.meta.env.DEV ? (
+        <div
+          style={{
+            position: "fixed",
+            top: 8,
+            right: 8,
+            background: "red",
+            color: "white",
+            padding: "4px 8px",
+            borderRadius: 4,
+            zIndex: 9999,
+            fontSize: 12,
+          }}
+        >
+          Step {step} of 4
+        </div>
+      ) : null}
       <div className="mb-5 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">Welcome{preferredName ? `, ${preferredName.split(/\s+/)[0]}` : ""}</p>
