@@ -209,7 +209,7 @@ function mapMessage(r: any): ConversationMessage {
     conversationId: r.conversation_id,
     caseId: r.case_id ?? null,
     role: r.role as "user" | "assistant",
-    messageText: r.message_text,
+    messageText: r.content ?? r.message_text,
     structuredResponseJson: r.structured_response_json ?? null,
     messageMetadata: r.message_metadata ?? null,
     createdAt: r.created_at,
@@ -641,8 +641,7 @@ export async function appendConversationMessage(
         conversation_id: conversationId,
         case_id: options?.caseId ?? null,
         role,
-        message_text: messageText,
-        structured_response_json: options?.structuredResponseJson ?? null,
+        content: messageText,
         message_metadata: options?.messageMetadata ?? null,
       })
       .select()
