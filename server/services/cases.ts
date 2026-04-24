@@ -550,10 +550,17 @@ export async function getConversationById(
       .from("conversations")
       .select("*")
       .eq("id", conversationId)
-      .eq("user_id", userId)
       .single();
     if (error || !data) return null;
-    return mapConversation(data);
+
+    const conversation = mapConversation(data);
+    const ownerCheck = await getCaseById(conversation.caseId, userId);
+    if (!ownerCheck) return null;
+
+    return {
+      ...conversation,
+      userId: data.user_id ?? ownerCheck.userId,
+    };
   } catch {
     return null;
   }
