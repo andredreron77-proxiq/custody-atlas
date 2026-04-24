@@ -154,23 +154,26 @@ function getStateFill(opts: {
 }) {
   const { mode, stateName, selectedState, stateA, stateB, hoveredState, isDark } = opts;
   const hasData = STATES_WITH_DATA.has(stateName);
+  const darkBaseFill = "#93a8c4";
+  const darkHoverFill = "#b6c5db";
+  const darkSelectedFill = "#d7e3f4";
 
   if (mode === "explore") {
-    if (selectedState === stateName) return isDark ? "#2563eb" : "#0f172a";
+    if (selectedState === stateName) return isDark ? darkSelectedFill : "#0f172a";
     if (hoveredState === stateName) return hasData
-      ? (isDark ? "#1d4ed8" : "#334155")
+      ? (isDark ? darkHoverFill : "#334155")
       : (isDark ? "#334155" : "#94a3b8");
-    if (hasData) return isDark ? "#1e3a6e" : "#c7d5f0";
+    if (hasData) return isDark ? darkBaseFill : "#c7d5f0";
     return isDark ? "#1a2540" : "#e2e8f0";
   }
 
   // Compare mode
-  if (stateA === stateName) return isDark ? "#1d4ed8" : "#0f172a";
-  if (stateB === stateName) return isDark ? "#d97706" : "#b5922f";
+  if (stateA === stateName) return isDark ? darkSelectedFill : "#0f172a";
+  if (stateB === stateName) return isDark ? "#f4c66f" : "#b5922f";
   if (hoveredState === stateName) return hasData
-    ? (isDark ? "#1d4ed8" : "#334155")
+    ? (isDark ? darkHoverFill : "#334155")
     : (isDark ? "#334155" : "#94a3b8");
-  if (hasData) return isDark ? "#1e3a6e" : "#c7d5f0";
+  if (hasData) return isDark ? darkBaseFill : "#c7d5f0";
   return isDark ? "#1a2540" : "#e2e8f0";
 }
 
@@ -938,7 +941,7 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6" data-testid="card-guest-state-qa">
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6" data-testid="card-guest-state-qa">
       <p
         className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em]"
         style={{ color: GOLD }}
@@ -946,21 +949,21 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
         TRY ATLAS FREE
       </p>
       <div className="max-w-2xl">
-        <h2 className="font-serif text-2xl font-semibold leading-tight" style={{ color: NAVY }}>
+        <h2 className="font-serif text-2xl font-semibold leading-tight text-foreground">
           Have a custody question about {selectedState ?? "this state"}?
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-muted-foreground">
           Get a real answer in plain English. No account needed.
         </p>
       </div>
 
       {!selectedState ? (
-        <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-sm text-muted-foreground">
+        <div className="mt-5 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-5 text-sm text-muted-foreground">
           Select a state on the map to ask a question.
         </div>
       ) : limitReached ? (
-        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-5">
-          <p className="text-sm leading-relaxed text-slate-700">
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-5 dark:border-amber-800/50 dark:bg-amber-950/20">
+          <p className="text-sm leading-relaxed text-foreground">
             You've used your 3 free questions. Create a free account to get 10 questions per month and save your conversations.
           </p>
           <Button className="mt-4 gap-2" onClick={openSignup} data-testid="button-guest-map-signup">
@@ -981,7 +984,7 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
                 }
               }}
               placeholder={`Ask anything about custody in ${selectedState}...`}
-              className="h-11 border-slate-200"
+              className="h-11 border-input bg-background"
               disabled={mutation.isPending}
               data-testid="input-guest-state-question"
             />
@@ -1053,7 +1056,7 @@ function ScenarioPreviewSection() {
         >
           SEE ATLAS IN ACTION
         </p>
-        <h2 className="font-serif text-2xl font-semibold leading-tight" style={{ color: NAVY }}>
+        <h2 className="font-serif text-2xl font-semibold leading-tight text-foreground">
           See Atlas In Action
         </h2>
       </div>
@@ -1062,7 +1065,7 @@ function ScenarioPreviewSection() {
         {GUEST_DEMO_SCENARIOS.map((scenario) => (
           <Card
             key={scenario.title}
-            className="border-slate-200/80 bg-white shadow-sm"
+            className="border-border bg-card shadow-sm"
             data-testid={`card-scenario-${scenario.state.toLowerCase()}`}
           >
             <CardContent className="flex h-full flex-col gap-4 p-5">
