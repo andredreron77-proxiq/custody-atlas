@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { useTheme } from "next-themes";
 import { Link } from "wouter";
@@ -14,9 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequestRaw } from "@/lib/queryClient";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { PageHeader } from "@/components/app/PageShell";
+import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { fetchUsageState, incrementGuestQuestionsUsed } from "@/services/usageService";
 import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
@@ -438,27 +441,65 @@ interface ComparisonAISectionProps {
 function ComparisonAISection({ stateA, stateB }: ComparisonAISectionProps) {
   const [question, setQuestion] = useState("");
   const [aiResponse, setAiResponse] = useState<AILegalResponse | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
   const responseRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
+  const { data: usage } = useQuery({
+    queryKey: ["/api/usage", "comparison-ai", user?.id ?? "anon"],
+    queryFn: fetchUsageState,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
 
   const mutation = useMutation({
     mutationFn: async (q: string) => {
-      const res = await apiRequest("POST", "/api/ask-comparison", {
+      const res = await apiRequestRaw("POST", "/api/ask-comparison", {
         stateA,
         stateB,
         userQuestion: q,
       });
+      if (res.status === 429) {
+        setLimitReached(true);
+        throw new Error("QUESTION_LIMIT_REACHED");
+      }
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => ({}));
+        throw new Error(errorBody.error ?? "Failed to get AI response.");
+      }
       return res.json() as Promise<AILegalResponse>;
     },
     onSuccess: (data) => {
       setAiResponse(data);
+      if (!user) {
+        incrementGuestQuestionsUsed();
+      }
+      setLimitReached(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
       setTimeout(() => {
         responseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
     },
   });
 
+  useEffect(() => {
+    if (!usage) return;
+    setLimitReached(
+      usage.questionsLimit !== null && usage.questionsUsed >= usage.questionsLimit,
+    );
+  }, [usage]);
+
   const handleAsk = (q: string) => {
     if (!q.trim()) return;
+    if (
+      !user &&
+      usage &&
+      usage?.questionsLimit !== null &&
+      usage.questionsUsed >= usage.questionsLimit
+    ) {
+      setLimitReached(true);
+      return;
+    }
     setQuestion(q);
     setAiResponse(null);
     mutation.mutate(q);
@@ -470,6 +511,7 @@ function ComparisonAISection({ stateA, stateB }: ComparisonAISectionProps) {
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
           Ask Atlas about this comparison
         </p>
+        {limitReached ? <UpgradePromptCard type="question" className="mb-3" /> : null}
         <div className="flex flex-wrap gap-1.5 mb-3">
           {COMPARISON_CHIPS.map((chip) => (
             <button
@@ -509,7 +551,9 @@ function ComparisonAISection({ stateA, stateB }: ComparisonAISectionProps) {
           </Button>
         </div>
         {mutation.isError && (
-          <p className="text-xs text-destructive mt-2">Failed to get AI response. Please try again.</p>
+          <p className="text-xs text-destructive mt-2">
+            {limitReached ? "You've reached your question limit." : "Failed to get AI response. Please try again."}
+          </p>
         )}
       </div>
 

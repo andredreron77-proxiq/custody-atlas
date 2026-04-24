@@ -21,7 +21,10 @@ import { MicButton } from "./MicButton";
 import { TTSControls } from "./TTSControls";
 import { useSpeechRecording } from "@/hooks/useSpeechRecording";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { fetchUsageState } from "@/services/usageService";
+import {
+  fetchUsageState,
+  incrementGuestQuestionsUsed,
+} from "@/services/usageService";
 
 interface ChatBoxProps {
   initialConversationId?: string;
@@ -516,11 +519,20 @@ export function ChatBox({
   const { user } = useCurrentUser();
   const { data: usage } = useQuery({
     queryKey: ["/api/usage", "chatbox", user?.id ?? "anon"],
-    enabled: Boolean(user),
+    enabled: true,
     staleTime: 30_000,
     retry: false,
     queryFn: fetchUsageState,
   });
+
+  useEffect(() => {
+    if (!usage) return;
+    if (usage.questionsLimit !== null && usage.questionsUsed >= usage.questionsLimit) {
+      setLimitReached(true);
+    } else {
+      setLimitReached(false);
+    }
+  }, [usage]);
 
   const { state: micState, startRecording, stopRecording, cancelRecording } =
     useSpeechRecording({
@@ -621,6 +633,16 @@ export function ChatBox({
       return;
     }
 
+    if (
+      !user &&
+      usage &&
+      usage?.questionsLimit !== null &&
+      usage.questionsUsed >= usage.questionsLimit
+    ) {
+      setLimitReached(true);
+      return;
+    }
+
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setInput("");
     setIsLoading(true);
@@ -692,6 +714,9 @@ export function ChatBox({
         content: data.summary,
         structured: data,
       }]);
+      if (!user) {
+        incrementGuestQuestionsUsed();
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
 
       if (!(forcedCaseId ?? caseId)) {

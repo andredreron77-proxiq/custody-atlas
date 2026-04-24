@@ -21,7 +21,7 @@ const COPY: Record<LimitType, { title: string; description: string }> = {
   question: {
     title: "You've reached your free question limit",
     description:
-      "You've used your 25 free questions for this month. Upgrade to continue your custody conversation with higher limits and Pro-only features.",
+      "You've used your 10 free questions for this month. Upgrade to continue your custody conversation with higher limits and Pro-only features.",
   },
   document: {
     title: "You've reached your free analysis limit",
@@ -33,11 +33,28 @@ const COPY: Record<LimitType, { title: string; description: string }> = {
 export function UpgradePromptCard({ type, className }: UpgradePromptCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const { usage } = useUsage();
-  const copy = COPY[type];
+  const isAnonymousQuestionLimit = usage?.tier === "anonymous" && type === "question";
+  const copy = isAnonymousQuestionLimit
+    ? {
+        title: "You've reached your guest question limit",
+        description:
+          "You've used your 3 guest questions. Create a free account to keep going with 10 questions per month.",
+      }
+    : COPY[type];
 
   if (usage?.tier === "pro") {
     return null;
   }
+
+  const handlePrimaryAction = () => {
+    if (isAnonymousQuestionLimit) {
+      window.dispatchEvent(new CustomEvent("custody-atlas:open-auth", {
+        detail: { mode: "signup" },
+      }));
+      return;
+    }
+    setModalOpen(true);
+  };
 
   return (
     <>
@@ -51,13 +68,13 @@ export function UpgradePromptCard({ type, className }: UpgradePromptCardProps) {
               <p className="text-sm font-medium text-amber-900 dark:text-amber-200">{copy.title}</p>
               <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">{copy.description}</p>
             </div>
-            <Button size="sm" className="h-8" onClick={() => setModalOpen(true)}>
-              Upgrade to Pro
+            <Button size="sm" className="h-8" onClick={handlePrimaryAction}>
+              {isAnonymousQuestionLimit ? "Create a free account" : "Upgrade to Pro"}
             </Button>
           </div>
         </CardContent>
       </Card>
-      <UpgradeModal open={modalOpen} onOpenChange={setModalOpen} />
+      {!isAnonymousQuestionLimit ? <UpgradeModal open={modalOpen} onOpenChange={setModalOpen} /> : null}
     </>
   );
 }

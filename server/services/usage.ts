@@ -29,7 +29,7 @@ export interface UsageState {
 }
 
 export const TIER_LIMITS: Record<"free" | "pro", { questions: number; documents: number }> = {
-  free: { questions: 25,  documents: 1 },
+  free: { questions: 10,  documents: 1 },
   pro:  { questions: 200, documents: 10 },
 };
 
@@ -94,18 +94,20 @@ export async function getUsageState(req: Request): Promise<UsageState> {
 
 /**
  * Middleware: reject the request if the authenticated user has hit their
- * monthly question limit. Must be placed AFTER requireAuth.
+ * monthly question limit. Anonymous requests pass through; guest caps are
+ * enforced client-side via localStorage fingerprinting.
  */
 export async function checkQuestionLimit(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  const user = (req as any).user;
+  const user = (req as any).user ?? await getCurrentUser(req);
   if (!user) {
-    res.status(401).json({ error: "Authentication required.", code: "UNAUTHENTICATED" });
+    next();
     return;
   }
+  (req as any).user = user;
 
   const tier = await getUserTier(user.id);
   const limit = TIER_LIMITS[tier].questions;

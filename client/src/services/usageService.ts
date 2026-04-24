@@ -9,6 +9,11 @@ import { getAccessToken } from "@/lib/tokenStore";
 
 export type Tier = "anonymous" | "free" | "pro";
 
+export const FREE_TIER_QUESTION_LIMIT = 10;
+export const GUEST_QUESTION_LIMIT = 3;
+const GUEST_FINGERPRINT_KEY = "custody-atlas:guest-fingerprint";
+const GUEST_QUESTION_COUNT_KEY = "custody-atlas:guest-questions-used";
+
 export interface UsageState {
   isAuthenticated: boolean;
   tier: Tier;
@@ -24,12 +29,43 @@ const DEFAULT_USAGE: UsageState = {
   isAuthenticated: false,
   tier: "anonymous",
   questionsUsed: 0,
-  questionsLimit: null,
+  questionsLimit: GUEST_QUESTION_LIMIT,
   documentsUsed: 0,
   documentsLimit: null,
   isAtQuestionLimit: false,
   isAtDocumentLimit: false,
 };
+
+function canUseStorage() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+export function getGuestFingerprint(): string {
+  if (!canUseStorage()) return "guest";
+  const existing = window.localStorage.getItem(GUEST_FINGERPRINT_KEY);
+  if (existing) return existing;
+  const next =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  window.localStorage.setItem(GUEST_FINGERPRINT_KEY, next);
+  return next;
+}
+
+export function getGuestQuestionsUsed(): number {
+  if (!canUseStorage()) return 0;
+  getGuestFingerprint();
+  const raw = window.localStorage.getItem(GUEST_QUESTION_COUNT_KEY);
+  const parsed = raw ? Number.parseInt(raw, 10) : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+export function incrementGuestQuestionsUsed(): number {
+  if (!canUseStorage()) return 0;
+  const next = getGuestQuestionsUsed() + 1;
+  window.localStorage.setItem(GUEST_QUESTION_COUNT_KEY, String(next));
+  return next;
+}
 
 export async function fetchUsageState(): Promise<UsageState> {
   try {
@@ -40,6 +76,19 @@ export async function fetchUsageState(): Promise<UsageState> {
     });
     if (!res.ok) return DEFAULT_USAGE;
     const data = await res.json();
+    if (!data.isAuthenticated) {
+      const questionsUsed = getGuestQuestionsUsed();
+      return {
+        isAuthenticated: false,
+        tier: "anonymous",
+        questionsUsed,
+        questionsLimit: GUEST_QUESTION_LIMIT,
+        documentsUsed: 0,
+        documentsLimit: null,
+        isAtQuestionLimit: questionsUsed >= GUEST_QUESTION_LIMIT,
+        isAtDocumentLimit: false,
+      };
+    }
     return {
       isAuthenticated: data.isAuthenticated ?? false,
       tier: data.tier ?? "anonymous",

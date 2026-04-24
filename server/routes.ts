@@ -1890,7 +1890,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
     }
   });
 
-  app.post("/api/ask", requireAuth, checkQuestionLimit, async (req, res) => {
+  app.post("/api/ask", checkQuestionLimit, async (req, res) => {
     try {
       // Extend the base schema with optional case context fields
       const extendedAskSchema = askAIRequestSchema.extend({
@@ -2595,7 +2595,7 @@ COMMUNICATION PREFERENCES
     }
   });
 
-  app.post("/api/ask-comparison", requireAuth, async (req, res) => {
+  app.post("/api/ask-comparison", checkQuestionLimit, async (req, res) => {
     try {
       const schema = z.object({
         stateA: z.string().min(1),
@@ -2662,6 +2662,7 @@ COMMUNICATION PREFERENCES
         return res.status(500).json({ error: "AI response structure was unexpected." });
       }
 
+      await trackQuestion(req);
       return res.json(validated.data);
     } catch (err: any) {
       console.error("Ask comparison error:", err);
