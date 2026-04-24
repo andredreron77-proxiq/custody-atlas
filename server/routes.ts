@@ -2015,6 +2015,11 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
           }
           activeConversationId = incomingConvId;
           activeConversationType = convRecord.threadType;
+          console.log("[ask] activeConversationType resolved", {
+            conversationId: incomingConvId,
+            threadType: convRecord.threadType,
+            rawConvRecord: JSON.stringify(convRecord),
+          });
         } else {
           const newConv = await createConversation(userId, effectiveCaseId, {
             title: userQuestion.slice(0, 120),
