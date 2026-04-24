@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
-import { PageHeader } from "@/components/app/PageShell";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
@@ -156,17 +155,18 @@ function getStateFill(opts: {
 }) {
   const { mode, stateName, selectedState, stateA, stateB, hoveredState, isDark } = opts;
   const hasData = STATES_WITH_DATA.has(stateName);
-  const darkBaseFill = "#93a8c4";
-  const darkHoverFill = "#b6c5db";
-  const darkSelectedFill = "#d7e3f4";
+  const darkBaseFill = "#5b8db8";
+  const darkHoverFill = "#78a7ce";
+  const darkSelectedFill = "#8fbbe0";
+  const darkNoDataFill = "#2d3748";
 
   if (mode === "explore") {
     if (selectedState === stateName) return isDark ? darkSelectedFill : "#0f172a";
     if (hoveredState === stateName) return hasData
       ? (isDark ? darkHoverFill : "#334155")
-      : (isDark ? "#334155" : "#94a3b8");
+      : (isDark ? "#4a5568" : "#94a3b8");
     if (hasData) return isDark ? darkBaseFill : "#c7d5f0";
-    return isDark ? "#1a2540" : "#e2e8f0";
+    return isDark ? darkNoDataFill : "#e2e8f0";
   }
 
   // Compare mode
@@ -174,9 +174,9 @@ function getStateFill(opts: {
   if (stateB === stateName) return isDark ? "#f4c66f" : "#b5922f";
   if (hoveredState === stateName) return hasData
     ? (isDark ? darkHoverFill : "#334155")
-    : (isDark ? "#334155" : "#94a3b8");
+    : (isDark ? "#4a5568" : "#94a3b8");
   if (hasData) return isDark ? darkBaseFill : "#c7d5f0";
-  return isDark ? "#1a2540" : "#e2e8f0";
+  return isDark ? darkNoDataFill : "#e2e8f0";
 }
 
 /* ── StateInfoPanel ────────────────────────────────────────────────────
@@ -1329,43 +1329,47 @@ export default function CustodyMapPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
       {/* Page header */}
-      <PageHeader
-        eyebrow="Custody Map"
-        title="Custody Law Map"
-        subtitle={
-          mode === "explore"
-            ? "Explore how custody laws differ across states. Click any state to see a summary."
-            : "Select two states on the map — or use the dropdowns — to compare custody laws side by side."
-        }
-        right={
-          <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit" role="tablist" aria-label="Map mode">
-            <button
-              role="tab"
-              aria-selected={mode === "explore"}
-              onClick={() => switchMode("explore")}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                mode === "explore" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
-              }`}
-              data-testid="tab-explore"
-            >
-              <MapIcon className="w-3.5 h-3.5" />
-              Explore
-            </button>
-            <button
-              role="tab"
-              aria-selected={mode === "compare"}
-              onClick={() => switchMode("compare")}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                mode === "compare" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
-              }`}
-              data-testid="tab-compare"
-            >
-              <GitCompare className="w-3.5 h-3.5" />
-              Compare States
-            </button>
-          </div>
-        }
-      />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#b5922f]">
+            Custody Map
+          </p>
+          <h1 className="font-serif text-2xl font-semibold leading-tight text-foreground md:text-3xl" data-testid="page-title">
+            Custody Law Map
+          </h1>
+          <p className="mt-2 max-w-prose text-[15px] leading-relaxed text-muted-foreground">
+            {mode === "explore"
+              ? "Explore how custody laws differ across states. Click any state to see a summary."
+              : "Select two states on the map — or use the dropdowns — to compare custody laws side by side."}
+          </p>
+        </div>
+        <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit" role="tablist" aria-label="Map mode">
+          <button
+            role="tab"
+            aria-selected={mode === "explore"}
+            onClick={() => switchMode("explore")}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mode === "explore" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-explore"
+          >
+            <MapIcon className="w-3.5 h-3.5" />
+            Explore
+          </button>
+          <button
+            role="tab"
+            aria-selected={mode === "compare"}
+            onClick={() => switchMode("compare")}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mode === "compare" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-compare"
+          >
+            <GitCompare className="w-3.5 h-3.5" />
+            Compare States
+          </button>
+        </div>
+      </div>
 
       {/* ── Context header (shown when a state or pair is active) ────── */}
       {mode === "compare" && stateA && stateB && (
@@ -1387,11 +1391,11 @@ export default function CustodyMapPage() {
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#c7d5f0] border border-[#9aafd8] dark:bg-[#1e3a6e] dark:border-[#2563eb] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#c7d5f0] border border-[#9aafd8] dark:bg-[#5b8db8] dark:border-[#78a7ce] inline-block" />
               <span className="text-xs text-muted-foreground">Data available ({STATES_WITH_DATA.size} states)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] dark:bg-[#1a2540] dark:border-[#334155] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] dark:bg-[#2d3748] dark:border-[#4a5568] inline-block" />
               <span className="text-xs text-muted-foreground">Coming soon</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -1485,7 +1489,7 @@ export default function CustodyMapPage() {
 
           <div className="flex items-center gap-4 flex-wrap text-xs">
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#bfdbfe] border border-[#93c5fd] dark:bg-[#1e3a6e] dark:border-[#2563eb] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#bfdbfe] border border-[#93c5fd] dark:bg-[#5b8db8] dark:border-[#78a7ce] inline-block" />
               <span className="text-muted-foreground">Data available</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -1497,7 +1501,7 @@ export default function CustodyMapPage() {
               <span className="text-muted-foreground">State B</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] dark:bg-[#1a2540] dark:border-[#334155] inline-block" />
+              <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] dark:bg-[#2d3748] dark:border-[#4a5568] inline-block" />
               <span className="text-muted-foreground">Coming soon</span>
             </div>
             {!stateA && !stateB && (
