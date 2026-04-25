@@ -189,7 +189,7 @@ export const aiLegalResponseSchema = z.object({
   cautions: z.array(z.string()),
   disclaimer: z.string(),
   proactive_insights: z.array(z.object({
-    type: z.enum(["suggested_question", "contradiction", "assumption_challenge"]),
+    type: z.enum(["suggested_question", "contradiction", "assumption_challenge", "action", "deadline"]),
     text: z.string(),
     reason: z.string(),
   })).optional(),

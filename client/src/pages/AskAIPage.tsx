@@ -94,6 +94,11 @@ interface CaseActionItem {
   createdAt: string;
 }
 
+type GuidedMemoryChip = {
+  kind: "calendar" | "map" | "target";
+  label: string;
+};
+
 function guidedFlowLabel(situationType?: string | null): string | null {
   switch (situationType) {
     case "more_time":
@@ -119,6 +124,22 @@ function diffDaysFromNow(dateStr: string): number | null {
   const startOfTarget = new Date(d);
   startOfTarget.setHours(0, 0, 0, 0);
   return Math.round((startOfTarget.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatGuidedDate(dateStr: string): string | null {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function guidedProgressLabel(messageCount: number): string {
+  if (messageCount <= 2) return "Getting to know your situation";
+  if (messageCount <= 4) return "Building your case picture";
+  if (messageCount <= 6) return "Identifying what matters most";
+  return "Your case profile is taking shape";
 }
 
 function CasePickerMenu({
@@ -209,6 +230,7 @@ export default function AskAIPage() {
   const [hasChatMessages, setHasChatMessages] = useState(Boolean(initialQuestion));
   const [resolvedConversationId, setResolvedConversationId] = useState<string | undefined>(conversationIdParam);
   const [resolvedConversationType, setResolvedConversationType] = useState<string | undefined>(undefined);
+  const [chatMessageCount, setChatMessageCount] = useState(0);
   const [initializedConversationPayload, setInitializedConversationPayload] = useState<{
     conversation: CaseConversationRecord;
     messages: Array<{
@@ -496,6 +518,23 @@ export default function AskAIPage() {
     resolvedConversationType?.startsWith("guided_")
       ? guidedFlowLabel(activeCase?.situationType)
       : null;
+  const guidedMemoryChips: GuidedMemoryChip[] = [];
+  if (guidedContextLabel) {
+    guidedMemoryChips.push({ kind: "target", label: `Goal: ${guidedContextLabel}` });
+  }
+  if (rawHearingDate) {
+    const formattedHearingDate = formatGuidedDate(rawHearingDate);
+    if (formattedHearingDate) {
+      guidedMemoryChips.push({ kind: "calendar", label: `Hearing: ${formattedHearingDate}` });
+    }
+  }
+  if (jurisdiction?.state) {
+    const locationLabel = jurisdiction.county && jurisdiction.county !== "General"
+      ? `${jurisdiction.state}, ${jurisdiction.county} County`
+      : jurisdiction.state;
+    guidedMemoryChips.push({ kind: "map", label: locationLabel });
+  }
+  const guidedProgress = guidedContextLabel ? guidedProgressLabel(chatMessageCount) : null;
   const selectedDocCount = chatSelectedDocumentIds ? chatSelectedDocumentIds.length : userDocuments.length;
   const userTier: UserTier = isProUser ? "pro" : "free";
 
@@ -791,12 +830,6 @@ export default function AskAIPage() {
         </div>
       </div>
 
-        {guidedContextLabel && (
-          <div className="px-1 text-xs text-muted-foreground">
-            Atlas is helping you with: {guidedContextLabel}
-          </div>
-        )}
-
         <ChatBox
           jurisdiction={jurisdiction}
           initialQuestion={initialQuestion}
@@ -807,8 +840,12 @@ export default function AskAIPage() {
           selectedDocumentIds={chatSelectedDocumentIds}
           onSelectCase={(id) => setActiveCaseId(id)}
           answeringScopeLabel={answeringScopeLabel}
+          conversationType={resolvedConversationType}
+          guidedMemoryChips={guidedMemoryChips}
+          guidedProgressLabel={guidedProgress ?? undefined}
           className="flex-1 min-h-0"
           onHasMessagesChange={setHasChatMessages}
+          onMessageCountChange={setChatMessageCount}
         />
       </div>
     );

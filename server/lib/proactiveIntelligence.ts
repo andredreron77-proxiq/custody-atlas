@@ -1,5 +1,5 @@
 export interface ProactiveInsight {
-  type: "suggested_question" | "contradiction" | "assumption_challenge";
+  type: "suggested_question" | "contradiction" | "assumption_challenge" | "action" | "deadline";
   text: string;
   reason: string;
 }
@@ -46,12 +46,18 @@ Example: "You mentioned consistent visitation but your documents show 11 missed 
 3. ASSUMPTION CHALLENGES: Is the parent assuming something that may not be accurate? Challenge it respectfully.
 Example: "You mentioned the other parent won't get custody — your GAL report recommends the opposite."
 
+4. ACTION: Is there a concrete next step Atlas is implicitly recommending right now?
+Example: "Upload the custody order so we can compare the actual language to what you were told."
+
+5. DEADLINE: Is there a time-sensitive deadline or date the parent should pay attention to?
+Example: "Your hearing is close enough that you should confirm any filing cutoff with the clerk today."
+
 Return 1-2 insights maximum. Be specific. Be direct.
 Return JSON object with this shape:
 {
   "insights": [
     {
-      "type": "suggested_question | contradiction | assumption_challenge",
+      "type": "suggested_question | contradiction | assumption_challenge | action | deadline",
       "text": "Insight text",
       "reason": "Why this matters now"
     }
@@ -94,7 +100,9 @@ ${caseDocuments.map((doc, index) => `Document ${index + 1}:\n${doc.slice(0, 3000
       item !== null &&
       (((item as { type?: string }).type === "suggested_question") ||
         ((item as { type?: string }).type === "contradiction") ||
-        ((item as { type?: string }).type === "assumption_challenge")) &&
+        ((item as { type?: string }).type === "assumption_challenge") ||
+        ((item as { type?: string }).type === "action") ||
+        ((item as { type?: string }).type === "deadline")) &&
       typeof (item as { text?: string }).text === "string" &&
       typeof (item as { reason?: string }).reason === "string")
     .slice(0, 2);

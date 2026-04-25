@@ -2511,7 +2511,7 @@ GUEST DEMO RESPONSE GUIDANCE
         ? validated.data.prose_response.trim()
         : "";
       let proactiveInsights: Array<{
-        type: "suggested_question" | "contradiction" | "assumption_challenge";
+        type: "suggested_question" | "contradiction" | "assumption_challenge" | "action" | "deadline";
         text: string;
         reason: string;
       }> = [];
@@ -2559,6 +2559,9 @@ GUEST DEMO RESPONSE GUIDANCE
             enrichedResponse.summary,
             {
               caseId: effectiveCaseId ?? null,
+              messageMetadata: activeConversationType?.startsWith("guided_")
+                ? { guided_flow: true, flow_type: activeConversationType.replace(/^guided_/, "") }
+                : null,
               structuredResponseJson: enrichedResponse as unknown as Record<string, unknown>,
             },
           ),

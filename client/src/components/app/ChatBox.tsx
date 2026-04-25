@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
+import { useLocation } from "wouter";
 import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
   MessageSquare, RotateCcw, MapPin, Sparkles, UserCheck, BookmarkCheck,
-  FileSearch, Zap, Search, CheckCheck, BookmarkPlus, Info,
+  FileSearch, Zap, Search, CheckCheck, BookmarkPlus, Info, Upload, Calendar, Clock, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +22,7 @@ import { MicButton } from "./MicButton";
 import { TTSControls } from "./TTSControls";
 import { useSpeechRecording } from "@/hooks/useSpeechRecording";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { cn } from "@/lib/utils";
 import {
   fetchUsageState,
   incrementGuestQuestionsUsed,
@@ -39,6 +41,13 @@ interface ChatBoxProps {
   answeringScopeLabel?: string;
   className?: string;
   onHasMessagesChange?: (hasMessages: boolean) => void;
+  onMessageCountChange?: (count: number) => void;
+  conversationType?: string;
+  guidedProgressLabel?: string;
+  guidedMemoryChips?: Array<{
+    kind: "calendar" | "map" | "target";
+    label: string;
+  }>;
 }
 
 type CaseSelectionRequiredResponse = {
@@ -64,6 +73,46 @@ type GuidedMessageMetadata = {
   guided_flow?: boolean;
   flow_type?: string;
 };
+
+type GuidedInsight = {
+  type: "suggested_question" | "contradiction" | "assumption_challenge" | "action" | "deadline";
+  text: string;
+  reason: string;
+};
+
+type NextStepCardData =
+  | {
+      type: "upload";
+      title: string;
+      subtitle: string;
+      cta: string;
+      href: string;
+      icon: typeof Upload;
+    }
+  | {
+      type: "hearing";
+      title: string;
+      subtitle: string;
+      cta: string;
+      href: string;
+      icon: typeof Calendar;
+    }
+  | {
+      type: "attorney";
+      title: string;
+      subtitle: string;
+      cta: string;
+      href: string;
+      icon: typeof Scale;
+    }
+  | {
+      type: "deadline";
+      title: string;
+      subtitle: string;
+      cta: string;
+      dateLabel: string;
+      icon: typeof Clock;
+    };
 
 function getSuggestedQuestions(state: string): string[] {
   const s = state || "my state";
@@ -165,11 +214,15 @@ function StructuredResponse({
   caseId,
   onSelectSuggestedQuestion,
   showFollowUpChips,
+  summaryAnimate,
+  onSummaryAnimationComplete,
 }: {
   data: AILegalResponse;
   caseId?: string;
   onSelectSuggestedQuestion: (question: string) => void;
   showFollowUpChips?: boolean;
+  summaryAnimate?: boolean;
+  onSummaryAnimationComplete?: () => void;
 }) {
   const isFact = data.intent === "FACT";
   const isAction = data.intent === "ACTION";
@@ -177,6 +230,12 @@ function StructuredResponse({
   const proseResponse = data.prose_response?.trim() ?? "";
   const [confirmingValue, setConfirmingValue] = useState<string | null>(null);
   const [confirmedValues, setConfirmedValues] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (isFact && summaryAnimate) {
+      onSummaryAnimationComplete?.();
+    }
+  }, [isFact, onSummaryAnimationComplete, summaryAnimate]);
 
   async function confirmFact(factType: string, value: string) {
     if (!caseId || !factType) return;
@@ -278,7 +337,13 @@ function StructuredResponse({
       )}
 
       {!isFact && (
-        <div className="text-[14.5px] leading-[1.65] text-foreground">{data.summary}</div>
+        <div className="text-[14.5px] leading-[1.65] text-foreground">
+          <AnimatedAssistantText
+            text={data.summary}
+            animate={Boolean(summaryAnimate)}
+            onComplete={onSummaryAnimationComplete}
+          />
+        </div>
       )}
 
       {!isFact && proseResponse && (
@@ -289,7 +354,7 @@ function StructuredResponse({
             .filter(Boolean)
             .map((paragraph, index) => (
               <p key={index} className="text-[14.5px] leading-[1.75] text-foreground/88">
-                {paragraph}
+                <AnimatedAssistantText text={paragraph} animate={false} />
               </p>
             ))}
         </div>
@@ -475,6 +540,265 @@ function FollowUpChips({
   );
 }
 
+function getMessageKey(message: ChatMessage, index: number): string {
+  return `${index}:${message.role}:${message.content}`;
+}
+
+function getRevealDelayForSegment(segment: string): number {
+  const normalized = segment.toLowerCase();
+  const empatheticPattern = /(i understand|that'?s hard|this is a lot|i hear you|take your time)/;
+  const factualPattern = /(\d+[\.\)]|\bdeadline\b|\bfile\b|\bupload\b|\border\b|\bhearing\b|\bcourt\b|:|;)/;
+  if (empatheticPattern.test(normalized)) return 55;
+  if (factualPattern.test(normalized)) return 20;
+  return 35;
+}
+
+function buildRevealWords(text: string): Array<{ word: string; delay: number }> {
+  const segments = text.match(/[^.!?]+[.!?]?/g) ?? [text];
+  return segments.flatMap((segment) => {
+    const words = segment.trim().split(/\s+/).filter(Boolean);
+    const delay = getRevealDelayForSegment(segment);
+    return words.map((word) => ({ word, delay }));
+  });
+}
+
+function extractGuidedReplyChips(text: string): string[] {
+  const normalized = text.toLowerCase();
+
+  if (/\b(hearing|date|when|deadline|how soon|timeline|this week|next week|month)\b/.test(normalized)) {
+    return ["This week", "Within a month", "Already passed"];
+  }
+
+  if (/\b(document|documents|paperwork|papers|order|served|upload|copy|filing)\b/.test(normalized)) {
+    return ["Yes, I have it", "No, I don't have it yet", "I have some documents"];
+  }
+
+  if (/\b(other parent|ex\b|their parent|communication|talk to|co-parent|lawyers only)\b/.test(normalized)) {
+    return ["We can communicate", "Communication is difficult", "Through lawyers only"];
+  }
+
+  if (/\b(live with|lives with|living situation|primary home|resides|share time equally)\b/.test(normalized)) {
+    return ["Child lives with me", "Child lives with them", "We share time equally"];
+  }
+
+  return ["Tell me more", "What should I do next?", "I'm not sure"];
+}
+
+function extractDateLabel(text: string): string | null {
+  const patterns = [
+    /\b(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?/i,
+    /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return match[0];
+  }
+  return null;
+}
+
+function detectNextStepCard(
+  message: ChatMessage,
+  jurisdiction: Jurisdiction,
+  caseId?: string,
+): NextStepCardData | null {
+  const summary = message.structured?.summary ?? message.content;
+  const normalized = `${summary}\n${message.structured?.prose_response ?? ""}`.toLowerCase();
+  const proactiveInsights = (message.structured?.proactive_insights ?? []) as GuidedInsight[];
+  const actionInsight = proactiveInsights.find((insight) => insight.type === "action");
+  const deadlineInsight = proactiveInsights.find((insight) => insight.type === "deadline");
+
+  if (deadlineInsight || /\b(deadline|file by|due by|due date)\b/.test(normalized)) {
+    return {
+      type: "deadline",
+      title: "Watch this deadline",
+      subtitle: deadlineInsight?.text ?? summary,
+      cta: "Review deadline",
+      dateLabel: extractDateLabel(deadlineInsight?.text ?? normalized) ?? "Deadline mentioned",
+      icon: Clock,
+    };
+  }
+
+  if (actionInsight?.text.toLowerCase().includes("upload") || /\bupload\b/.test(normalized)) {
+    return {
+      type: "upload",
+      title: "Upload the document",
+      subtitle: actionInsight?.text ?? summary,
+      cta: "Upload document",
+      href: "/upload-document",
+      icon: Upload,
+    };
+  }
+
+  if (/\bhearing\b/.test(normalized) && /\bprepare|preparation|prepared\b/.test(normalized)) {
+    const params = new URLSearchParams();
+    params.set("q", "I need help preparing for my hearing.");
+    if (caseId) params.set("case", caseId);
+    return {
+      type: "hearing",
+      title: "Build your hearing prep plan",
+      subtitle: summary,
+      cta: "Continue hearing prep",
+      href: `/ask?${params.toString()}`,
+      icon: Calendar,
+    };
+  }
+
+  if (/\b(attorney|lawyer)\b/.test(normalized)) {
+    const params = new URLSearchParams();
+    params.set("state", jurisdiction.state);
+    params.set("county", jurisdiction.county);
+    return {
+      type: "attorney",
+      title: "Find local legal support",
+      subtitle: summary,
+      cta: "See resources",
+      href: `/resources?${params.toString()}`,
+      icon: Scale,
+    };
+  }
+
+  return null;
+}
+
+function AnimatedAssistantText({
+  text,
+  animate,
+  onComplete,
+}: {
+  text: string;
+  animate: boolean;
+  onComplete?: () => void;
+}) {
+  const [visibleWordCount, setVisibleWordCount] = useState(animate ? 0 : Number.MAX_SAFE_INTEGER);
+
+  useEffect(() => {
+    if (!animate) {
+      setVisibleWordCount(Number.MAX_SAFE_INTEGER);
+      onComplete?.();
+      return;
+    }
+
+    const revealWords = buildRevealWords(text);
+    const cappedWords = revealWords.slice(0, 150);
+    const timers: number[] = [];
+    let elapsed = 0;
+
+    setVisibleWordCount(0);
+
+    cappedWords.forEach((entry, index) => {
+      elapsed += entry.delay;
+      timers.push(window.setTimeout(() => {
+        setVisibleWordCount(index + 1);
+      }, elapsed));
+    });
+
+    timers.push(window.setTimeout(() => {
+      setVisibleWordCount(Number.MAX_SAFE_INTEGER);
+      onComplete?.();
+    }, elapsed + 20));
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [animate, onComplete, text]);
+
+  if (!animate || visibleWordCount === Number.MAX_SAFE_INTEGER) {
+    return <>{text}</>;
+  }
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const visible = words.slice(0, visibleWordCount);
+  const remainder = words.slice(150);
+  const overflow = visibleWordCount >= 150 && remainder.length > 0 ? ` ${remainder.join(" ")}` : "";
+
+  return <>{visible.join(" ")}{overflow}</>;
+}
+
+function GuidedReplyChips({
+  chips,
+  visible,
+  disabled,
+  onSelect,
+}: {
+  chips: string[];
+  visible: boolean;
+  disabled: boolean;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap gap-2 transition-opacity duration-300",
+        visible ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
+    >
+      {chips.map((chip) => (
+        <button
+          key={chip}
+          type="button"
+          onClick={() => onSelect(chip)}
+          disabled={disabled}
+          className="min-h-11 rounded-full border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          {chip}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function NextStepCard({
+  card,
+  visible,
+}: {
+  card: NextStepCardData;
+  visible: boolean;
+}) {
+  const [, navigate] = useLocation();
+  const [showDeadline, setShowDeadline] = useState(false);
+  const Icon = card.icon;
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-card px-4 py-3 shadow-sm transition-opacity duration-300",
+        visible ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-primary">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">{card.title}</p>
+          <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{card.subtitle}</p>
+          {card.type === "deadline" && showDeadline ? (
+            <div className="mt-3 inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200">
+              {card.dateLabel}
+            </div>
+          ) : null}
+          <div className="mt-3">
+            <Button
+              type="button"
+              size="sm"
+              className="min-h-11"
+              onClick={() => {
+                if (card.type === "deadline") {
+                  setShowDeadline(true);
+                  return;
+                }
+                navigate(card.href);
+              }}
+            >
+              {card.cta}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ChatBox({
   jurisdiction,
   initialQuestion,
@@ -488,10 +812,15 @@ export function ChatBox({
   answeringScopeLabel,
   className,
   onHasMessagesChange,
+  onMessageCountChange,
+  conversationType,
+  guidedProgressLabel,
+  guidedMemoryChips = [],
 }: ChatBoxProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [proOverageNotice, setProOverageNotice] = useState<{
     questionsUsed: number;
@@ -514,6 +843,12 @@ export function ChatBox({
   const threadIdRef = useRef<string | undefined>(initialThreadId);
   const conversationIdRef = useRef<string | undefined>(initialConversationId);
   const hydratedSourceRef = useRef<string>("");
+  const hydratingMessagesRef = useRef(Boolean((initialMessages?.length ?? 0) > 0));
+  const previousMessageCountRef = useRef(messages.length);
+  const [completedAssistantAnimations, setCompletedAssistantAnimations] = useState<Set<string>>(
+    () => new Set((initialMessages ?? []).map((message, index) => message.role === "assistant" ? getMessageKey(message, index) : "").filter(Boolean)),
+  );
+  const [activeAnimationKey, setActiveAnimationKey] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
@@ -524,6 +859,7 @@ export function ChatBox({
     retry: false,
     queryFn: fetchUsageState,
   });
+  const isGuidedConversation = Boolean(conversationType?.startsWith("guided_"));
 
   useEffect(() => {
     if (!usage) return;
@@ -613,7 +949,7 @@ export function ChatBox({
 
   const sendMessage = async (question: string, forcedCaseId?: string) => {
     const trimmed = question.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || isAnimating) return;
 
     if (!jurisdiction.state || !jurisdiction.county) {
       toast({
@@ -713,6 +1049,12 @@ export function ChatBox({
         role: "assistant",
         content: data.summary,
         structured: data,
+        metadata: isGuidedConversation
+          ? {
+              guided_flow: true,
+              flow_type: conversationType?.replace(/^guided_/, ""),
+            }
+          : undefined,
       }]);
       if (!user) {
         incrementGuestQuestionsUsed();
@@ -763,12 +1105,14 @@ export function ChatBox({
   useEffect(() => {
     const sourceId = initialConversationId ?? initialThreadId ?? "";
     if (hydratedSourceRef.current !== sourceId) {
+      hydratingMessagesRef.current = true;
       setMessages(initialMessages ?? []);
       hydratedSourceRef.current = sourceId;
       return;
     }
 
     if (sourceId && (initialMessages?.length ?? 0) > 0 && messages.length === 0) {
+      hydratingMessagesRef.current = true;
       setMessages(initialMessages ?? []);
     }
   }, [initialConversationId, initialThreadId, initialMessages, messages.length]);
@@ -787,8 +1131,52 @@ export function ChatBox({
     onHasMessagesChange?.(messages.length > 0);
   }, [messages.length, onHasMessagesChange]);
 
+  useEffect(() => {
+    onMessageCountChange?.(messages.length);
+  }, [messages.length, onMessageCountChange]);
+
+  useEffect(() => {
+    if (hydratingMessagesRef.current) {
+      setCompletedAssistantAnimations(
+        new Set(
+          messages
+            .map((message, index) => message.role === "assistant" ? getMessageKey(message, index) : "")
+            .filter(Boolean),
+        ),
+      );
+      setActiveAnimationKey(null);
+      setIsAnimating(false);
+      previousMessageCountRef.current = messages.length;
+      hydratingMessagesRef.current = false;
+      return;
+    }
+
+    if (!isGuidedConversation) {
+      previousMessageCountRef.current = messages.length;
+      setActiveAnimationKey(null);
+      setIsAnimating(false);
+      return;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    const grew = messages.length > previousMessageCountRef.current;
+    if (grew && lastMessage?.role === "assistant") {
+      const nextKey = getMessageKey(lastMessage, messages.length - 1);
+      if (!completedAssistantAnimations.has(nextKey)) {
+        setActiveAnimationKey(nextKey);
+        setIsAnimating(true);
+      }
+    }
+
+    previousMessageCountRef.current = messages.length;
+  }, [completedAssistantAnimations, isGuidedConversation, messages]);
+
   const clearConversation = () => {
     setMessages([]);
+    setCompletedAssistantAnimations(new Set());
+    setActiveAnimationKey(null);
+    setIsAnimating(false);
+    previousMessageCountRef.current = 0;
     setLimitReached(false);
     setProOverageNotice(null);
     setSavedToWorkspace(!!caseId);
@@ -808,6 +1196,32 @@ export function ChatBox({
         className="min-h-0 flex-1 overflow-y-auto pr-1"
         style={{ paddingBottom: "0.5rem" }}
       >
+        {isGuidedConversation && (guidedProgressLabel || guidedMemoryChips.length > 0) && (
+          <div className="mb-4 space-y-2">
+            {guidedProgressLabel ? (
+              <div className="border-l-2 border-[#b5922f] pl-2 text-center text-xs text-muted-foreground sm:text-left">
+                {guidedProgressLabel}
+              </div>
+            ) : null}
+            {guidedMemoryChips.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {guidedMemoryChips.map((chip) => {
+                  const Icon = chip.kind === "calendar" ? Calendar : chip.kind === "map" ? MapPin : Target;
+                  return (
+                    <div
+                      key={`${chip.kind}-${chip.label}`}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+                    >
+                      <Icon className="h-3 w-3" />
+                      <span>{chip.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {hasMessages && (
           <div className="rounded-lg border bg-muted/30 px-3 py-2.5 flex items-start justify-between gap-3 mb-4">
             <div className="space-y-1 min-w-0 flex-1">
@@ -865,7 +1279,7 @@ export function ChatBox({
                 <button
                   key={i}
                   onClick={() => sendMessage(q)}
-                  disabled={isLoading}
+                  disabled={isLoading || isAnimating}
                   className="text-left text-[14px] leading-snug px-4 py-2.5 rounded-lg border bg-background hover:bg-muted/50 hover:border-primary/30 transition-colors text-foreground/70 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 group"
                   data-testid={`button-suggested-${i}`}
                 >
@@ -880,30 +1294,50 @@ export function ChatBox({
         {hasMessages && (
           <div className="space-y-3 pb-2">
             {messages.map((msg, i) => (
-              <div
-                key={i}
-                ref={i === messages.length - 1 && msg.role === "assistant" ? latestAssistantRef : null}
-                className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
-                data-testid={`message-${msg.role}-${i}`}
-              >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                </div>
+              (() => {
+                const messageKey = getMessageKey(msg, i);
+                const isAssistant = msg.role === "assistant";
+                const animateAssistant =
+                  isGuidedConversation &&
+                  isAssistant &&
+                  activeAnimationKey === messageKey &&
+                  !completedAssistantAnimations.has(messageKey);
+                const revealComplete = !isAssistant || completedAssistantAnimations.has(messageKey) || !isGuidedConversation;
+                const hasFutureUserReply = messages.slice(i + 1).some((entry) => entry.role === "user");
+                const shouldShowGuidedAffordances =
+                  isGuidedConversation &&
+                  isAssistant &&
+                  !hasFutureUserReply &&
+                  !isLoading &&
+                  revealComplete;
+                const chipOptions = isAssistant ? extractGuidedReplyChips(msg.structured?.summary ?? msg.content) : [];
+                const nextStepCard = isAssistant ? detectNextStepCard(msg, jurisdiction, caseId) : null;
 
-                {msg.role === "user" ? (
-                  <Card className="max-w-[80%] bg-primary text-primary-foreground border-primary/20">
-                    <CardContent className="p-3.5">
-                      <p className="text-sm leading-relaxed text-primary-foreground">{msg.content}</p>
-                    </CardContent>
-                  </Card>
-                ) : msg.structured ? (
-                  <div className="w-full flex-1 min-w-0 space-y-1.5">
+                return (
+                  <div
+                    key={i}
+                    ref={i === messages.length - 1 && msg.role === "assistant" ? latestAssistantRef : null}
+                    className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+                    data-testid={`message-${msg.role}-${i}`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        msg.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                    </div>
+
+                    {msg.role === "user" ? (
+                      <Card className="max-w-[80%] bg-primary text-primary-foreground border-primary/20">
+                        <CardContent className="p-3.5">
+                          <p className="text-sm leading-relaxed text-primary-foreground">{msg.content}</p>
+                        </CardContent>
+                      </Card>
+                    ) : msg.structured ? (
+                      <div className="w-full flex-1 min-w-0 space-y-1.5">
                     {(() => {
                       const structuredResponse = msg.structured as AskAssistantResponse;
                       return structuredResponse.jurisdictionMismatch &&
@@ -953,8 +1387,8 @@ export function ChatBox({
                         </div>
                       );
                     })()}
-                    <Card className="border-border shadow-sm" data-testid={`card-response-${i}`}>
-                      <CardHeader className="px-3.5 pb-1.5 pt-3">
+                      <Card className="border-border shadow-sm" data-testid={`card-response-${i}`}>
+                        <CardHeader className="px-3.5 pb-1.5 pt-3">
                         <div className="flex items-center justify-between gap-2">
                           <Badge variant="outline" className="text-xs font-normal gap-1">
                             <Scale className="w-3 h-3" />
@@ -968,6 +1402,12 @@ export function ChatBox({
                           data={msg.structured}
                           caseId={caseId}
                           showFollowUpChips={i === messages.length - 1 && !isLoading}
+                          summaryAnimate={animateAssistant}
+                          onSummaryAnimationComplete={() => {
+                            setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
+                            setActiveAnimationKey((current) => current === messageKey ? null : current);
+                            setIsAnimating(false);
+                          }}
                           onSelectSuggestedQuestion={(question) => {
                             setInput(question);
                             setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
@@ -1003,27 +1443,69 @@ export function ChatBox({
                         )}
                       </>
                     )}
+                        {shouldShowGuidedAffordances ? (
+                          <div className="space-y-3 pt-1">
+                            {nextStepCard ? <NextStepCard card={nextStepCard} visible={shouldShowGuidedAffordances} /> : null}
+                            <GuidedReplyChips
+                              chips={chipOptions}
+                              visible={shouldShowGuidedAffordances}
+                              disabled={isLoading || isAnimating}
+                              onSelect={(value) => {
+                                setInput(value);
+                                setTimeout(() => sendMessage(value), 0);
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="max-w-[85%] space-y-3">
+                        <Card
+                          className={`${
+                            (msg.metadata as GuidedMessageMetadata | undefined)?.guided_flow || isGuidedConversation
+                              ? "bg-muted/60 border-muted shadow-sm"
+                              : ""
+                          }`}
+                        >
+                          <CardContent
+                            className={`${
+                              (msg.metadata as GuidedMessageMetadata | undefined)?.guided_flow || isGuidedConversation
+                                ? "p-4"
+                                : "p-3.5"
+                            }`}
+                          >
+                            <p className="text-sm leading-relaxed">
+                              <AnimatedAssistantText
+                                text={msg.content}
+                                animate={animateAssistant}
+                                onComplete={() => {
+                                  setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
+                                  setActiveAnimationKey((current) => current === messageKey ? null : current);
+                                  setIsAnimating(false);
+                                }}
+                              />
+                            </p>
+                          </CardContent>
+                        </Card>
+                        {shouldShowGuidedAffordances ? (
+                          <>
+                            {nextStepCard ? <NextStepCard card={nextStepCard} visible={shouldShowGuidedAffordances} /> : null}
+                            <GuidedReplyChips
+                              chips={chipOptions}
+                              visible={shouldShowGuidedAffordances}
+                              disabled={isLoading || isAnimating}
+                              onSelect={(value) => {
+                                setInput(value);
+                                setTimeout(() => sendMessage(value), 0);
+                              }}
+                            />
+                          </>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <Card
-                    className={`max-w-[85%] ${
-                      (msg.metadata as GuidedMessageMetadata | undefined)?.guided_flow
-                        ? "bg-muted/60 border-muted shadow-sm"
-                        : ""
-                    }`}
-                  >
-                    <CardContent
-                      className={`${
-                        (msg.metadata as GuidedMessageMetadata | undefined)?.guided_flow
-                          ? "p-4"
-                          : "p-3.5"
-                      }`}
-                    >
-                      <p className="text-sm leading-relaxed">{msg.content}</p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
+                );
+              })()
             ))}
 
             {isLoading && (
@@ -1135,7 +1617,7 @@ export function ChatBox({
                       ? `Ask a question about custody in ${jurisdiction.state}...`
                       : "Ask a question about child custody laws..."
                   }
-                  disabled={isLoading || limitReached || !!pendingCaseSelection}
+                  disabled={isLoading || isAnimating || limitReached || !!pendingCaseSelection}
                   className="resize-none min-h-[72px] max-h-40 pr-3 text-sm"
                   rows={hasMessages ? 2 : 3}
                   data-testid="input-question"
@@ -1161,12 +1643,12 @@ export function ChatBox({
                     onStart={startRecording}
                     onStop={stopRecording}
                     onCancel={cancelRecording}
-                    disabled={isLoading || limitReached || !!pendingCaseSelection}
+                    disabled={isLoading || isAnimating || limitReached || !!pendingCaseSelection}
                   />
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!input.trim() || input.trim().length < 5 || isLoading || limitReached || !!pendingCaseSelection}
+                    disabled={!input.trim() || input.trim().length < 5 || isLoading || isAnimating || limitReached || !!pendingCaseSelection}
                     data-testid="button-send"
                     title="Send message"
                     className="h-10 w-10"
