@@ -339,7 +339,7 @@ function StructuredResponse({
       {!isFact && (
         <div className="text-[14.5px] leading-[1.65] text-foreground">
           <AnimatedAssistantText
-            text={data.summary}
+            content={data.summary}
             animate={Boolean(summaryAnimate)}
             onComplete={onSummaryAnimationComplete}
           />
@@ -354,7 +354,7 @@ function StructuredResponse({
             .filter(Boolean)
             .map((paragraph, index) => (
               <p key={index} className="text-[14.5px] leading-[1.75] text-foreground/88">
-                <AnimatedAssistantText text={paragraph} animate={false} />
+                <AnimatedAssistantText content={paragraph} animate={false} />
               </p>
             ))}
         </div>
@@ -643,49 +643,74 @@ function detectNextStepCard(
 }
 
 function AnimatedAssistantText({
-  text,
+  content,
   animate,
   onComplete,
 }: {
-  text: string;
+  content: string;
   animate: boolean;
   onComplete?: () => void;
 }) {
-  const [displayedText, setDisplayedText] = useState(animate ? "" : text);
+  const wordsRef = useRef<string[]>([]);
+  const indexRef = useRef(0);
+  const intervalRef = useRef<number | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  const [displayedText, setDisplayedText] = useState(animate ? "" : content);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    console.log("[guided reveal] effect start", { animate, textLength: text.length });
+    console.log("[guided reveal] effect start", { animate, contentLength: content.length });
+
+    if (intervalRef.current !== null) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
 
     if (!animate) {
-      setDisplayedText(text);
-      onComplete?.();
+      setDisplayedText(content);
+      onCompleteRef.current?.();
       return;
     }
 
-    const words = text.split(/\s+/).filter(Boolean);
-    const animatedWords = words.slice(0, 150);
-    const remainingText = words.slice(150).join(" ");
-    let index = 0;
+    const allWords = content.split(/\s+/).filter(Boolean);
+    const animatedWords = allWords.slice(0, 150);
+    const remainingText = allWords.slice(150).join(" ");
 
+    wordsRef.current = animatedWords;
+    indexRef.current = 0;
     setDisplayedText("");
 
-    const interval = window.setInterval(() => {
-      index += 1;
-      const nextText = animatedWords.slice(0, index).join(" ");
-      if (index >= animatedWords.length) {
+    if (animatedWords.length === 0) {
+      setDisplayedText(content);
+      onCompleteRef.current?.();
+      return;
+    }
+
+    intervalRef.current = window.setInterval(() => {
+      indexRef.current += 1;
+      const nextText = wordsRef.current.slice(0, indexRef.current).join(" ");
+
+      if (indexRef.current >= wordsRef.current.length) {
         const finalText = remainingText ? `${nextText} ${remainingText}` : nextText;
         setDisplayedText(finalText);
-        window.clearInterval(interval);
-        onComplete?.();
+        if (intervalRef.current !== null) {
+          window.clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        onCompleteRef.current?.();
         return;
       }
+
       setDisplayedText(nextText);
     }, 35);
 
     return () => {
-      window.clearInterval(interval);
+      if (intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, [animate, onComplete, text]);
+  }, [content]);
 
   return <>{displayedText}</>;
 }
@@ -821,6 +846,7 @@ export function ChatBox({
   const hydratedSourceRef = useRef<string>("");
   const hydratingMessagesRef = useRef(Boolean((initialMessages?.length ?? 0) > 0));
   const previousMessageCountRef = useRef(messages.length);
+  const previousAutoScrollMessageCountRef = useRef(messages.length);
   const [completedAssistantAnimations, setCompletedAssistantAnimations] = useState<Set<string>>(
     () => new Set((initialMessages ?? []).map((message, index) => message.role === "assistant" ? getMessageKey(message, index) : "").filter(Boolean)),
   );
@@ -867,6 +893,8 @@ export function ChatBox({
 
   useEffect(() => {
     if (messages.length === 0) return;
+    if (messages.length === previousAutoScrollMessageCountRef.current) return;
+    previousAutoScrollMessageCountRef.current = messages.length;
     if (!isNearBottom) return;
     const last = messages[messages.length - 1];
     const timer = setTimeout(() => {
@@ -877,21 +905,7 @@ export function ChatBox({
       }
     }, 100);
     return () => clearTimeout(timer);
-  }, [isNearBottom, messages]);
-
-  useEffect(() => {
-    if (isLoading) return;
-    if (messages.length === 0) return;
-    if (!isNearBottom) return;
-    const timer = setTimeout(() => {
-      latestAssistantRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [isLoading, isNearBottom, messages.length]);
-
-  useEffect(() => {
-    updateScrollState();
-  }, [messages.length]);
+  }, [isNearBottom, messages.length]);
 
   const ensureAndSave = async (
     userText: string,
@@ -1468,7 +1482,7 @@ export function ChatBox({
                           >
                             <p className="text-sm leading-relaxed">
                               <AnimatedAssistantText
-                                text={msg.content}
+                                content={msg.content}
                                 animate={animateAssistant}
                                 onComplete={() => {
                                   setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
