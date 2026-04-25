@@ -542,10 +542,6 @@ function FollowUpChips({
   );
 }
 
-function getMessageKey(message: ChatMessage, index: number): string {
-  return `${index}:${message.role}:${message.content}`;
-}
-
 function extractGuidedReplyChips(text: string): string[] {
   const normalized = text.toLowerCase();
 
@@ -754,9 +750,11 @@ function GuidedReplyChips({
 function NextStepCard({
   card,
   visible,
+  onContinueHearingPrep,
 }: {
   card: NextStepCardData;
   visible: boolean;
+  onContinueHearingPrep?: () => void;
 }) {
   const [, navigate] = useLocation();
   const [showDeadline, setShowDeadline] = useState(false);
@@ -789,6 +787,10 @@ function NextStepCard({
               onClick={() => {
                 if (card.type === "deadline") {
                   setShowDeadline(true);
+                  return;
+                }
+                if (card.type === "hearing") {
+                  onContinueHearingPrep?.();
                   return;
                 }
                 navigate(card.href);
@@ -848,13 +850,8 @@ export function ChatBox({
   const conversationIdRef = useRef<string | undefined>(initialConversationId);
   const hydratedSourceRef = useRef<string>("");
   const hydratingMessagesRef = useRef(Boolean((initialMessages?.length ?? 0) > 0));
-  const previousMessageCountRef = useRef(messages.length);
   const previousAutoScrollMessageCountRef = useRef(messages.length);
-  const lastAnimatedMessageKeyRef = useRef<string | null>(null);
-  const [completedAssistantAnimations, setCompletedAssistantAnimations] = useState<Set<string>>(
-    () => new Set((initialMessages ?? []).map((message, index) => message.role === "assistant" ? getMessageKey(message, index) : "").filter(Boolean)),
-  );
-  const [activeAnimationKey, setActiveAnimationKey] = useState<string | null>(null);
+  const lastAnimatedAssistantIndexRef = useRef<number>(-1);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1144,50 +1141,37 @@ export function ChatBox({
   }, [messages.length, onMessageCountChange]);
 
   useEffect(() => {
+    const lastAssistantIndex = messages.reduce((last, message, index) => (
+      message.role === "assistant" ? index : last
+    ), -1);
+
     if (hydratingMessagesRef.current) {
-      setCompletedAssistantAnimations(
-        new Set(
-          messages
-            .map((message, index) => message.role === "assistant" ? getMessageKey(message, index) : "")
-            .filter(Boolean),
-        ),
-      );
-      setActiveAnimationKey(null);
+      lastAnimatedAssistantIndexRef.current = lastAssistantIndex;
       setIsAnimating(false);
-      lastAnimatedMessageKeyRef.current = null;
-      previousMessageCountRef.current = messages.length;
       hydratingMessagesRef.current = false;
       return;
     }
 
     if (!isGuidedConversation) {
-      previousMessageCountRef.current = messages.length;
-      setActiveAnimationKey(null);
       setIsAnimating(false);
       return;
     }
 
-    const lastMessage = messages[messages.length - 1];
-    const grew = messages.length > previousMessageCountRef.current;
-    if (grew && lastMessage?.role === "assistant") {
-      const nextKey = getMessageKey(lastMessage, messages.length - 1);
-      if (!completedAssistantAnimations.has(nextKey) && lastAnimatedMessageKeyRef.current !== nextKey) {
-        setActiveAnimationKey(nextKey);
-        setIsAnimating(true);
-        lastAnimatedMessageKeyRef.current = nextKey;
-      }
+    if (lastAssistantIndex !== -1 && lastAssistantIndex !== lastAnimatedAssistantIndexRef.current) {
+      setIsAnimating(true);
+      lastAnimatedAssistantIndexRef.current = lastAssistantIndex;
+      return;
     }
 
-    previousMessageCountRef.current = messages.length;
-  }, [completedAssistantAnimations, isGuidedConversation, messages]);
+    if (lastAssistantIndex === -1) {
+      setIsAnimating(false);
+    }
+  }, [isGuidedConversation, messages]);
 
   const clearConversation = () => {
     setMessages([]);
-    setCompletedAssistantAnimations(new Set());
-    setActiveAnimationKey(null);
     setIsAnimating(false);
-    lastAnimatedMessageKeyRef.current = null;
-    previousMessageCountRef.current = 0;
+    lastAnimatedAssistantIndexRef.current = -1;
     setLimitReached(false);
     setProOverageNotice(null);
     setSavedToWorkspace(!!caseId);
@@ -1200,6 +1184,14 @@ export function ChatBox({
 
   const jurisdictionLabel = formatJurisdictionLabel(jurisdiction.state, jurisdiction.county);
   const hasMessages = messages.length > 0;
+  const lastAssistantIndex = messages.reduce((last, message, index) => (
+    message.role === "assistant" ? index : last
+  ), -1);
+  const handleContinueHearingPrep = () => {
+    setInput("What documents do I need for my hearing?");
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 150);
+  };
 
   return (
     <div ref={wrapperRef} className={`flex min-h-0 flex-1 flex-col gap-4 ${className ?? ""}`}>
@@ -1308,14 +1300,12 @@ export function ChatBox({
           <div className="space-y-3 pb-2">
             {messages.map((msg, i) => (
               (() => {
-                const messageKey = getMessageKey(msg, i);
                 const isAssistant = msg.role === "assistant";
                 const animateAssistant =
                   isGuidedConversation &&
                   isAssistant &&
-                  activeAnimationKey === messageKey &&
-                  !completedAssistantAnimations.has(messageKey);
-                const revealComplete = !isAssistant || completedAssistantAnimations.has(messageKey) || !isGuidedConversation;
+                  i === lastAssistantIndex;
+                const revealComplete = !isAssistant || !isGuidedConversation || !animateAssistant || !isAnimating;
                 const hasFutureUserReply = messages.slice(i + 1).some((entry) => entry.role === "user");
                 const shouldShowGuidedAffordances =
                   isGuidedConversation &&
@@ -1427,10 +1417,7 @@ export function ChatBox({
                           summaryAnimate={animateAssistant}
                           isGuidedConversation={isGuidedConversation}
                           onSummaryAnimationComplete={() => {
-                            setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
-                            setActiveAnimationKey((current) => current === messageKey ? null : current);
                             setIsAnimating(false);
-                            lastAnimatedMessageKeyRef.current = messageKey;
                           }}
                           onSelectSuggestedQuestion={(question) => {
                             setInput(question);
@@ -1469,7 +1456,7 @@ export function ChatBox({
                     )}
                         {shouldShowGuidedAffordances ? (
                           <div className="space-y-3 pt-1">
-                            {nextStepCard ? <NextStepCard card={nextStepCard} visible={shouldShowGuidedAffordances} /> : null}
+                            {nextStepCard ? <NextStepCard card={nextStepCard} visible={shouldShowGuidedAffordances} onContinueHearingPrep={handleContinueHearingPrep} /> : null}
                             <GuidedReplyChips
                               chips={chipOptions}
                               visible={shouldShowGuidedAffordances}
@@ -1503,10 +1490,7 @@ export function ChatBox({
                                 content={msg.content}
                                 animate={animateAssistant}
                                 onComplete={() => {
-                                  setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
-                                  setActiveAnimationKey((current) => current === messageKey ? null : current);
                                   setIsAnimating(false);
-                                  lastAnimatedMessageKeyRef.current = messageKey;
                                 }}
                               />
                             </p>
@@ -1514,7 +1498,7 @@ export function ChatBox({
                         </Card>
                         {shouldShowGuidedAffordances ? (
                           <>
-                            {nextStepCard ? <NextStepCard card={nextStepCard} visible={shouldShowGuidedAffordances} /> : null}
+                            {nextStepCard ? <NextStepCard card={nextStepCard} visible={shouldShowGuidedAffordances} onContinueHearingPrep={handleContinueHearingPrep} /> : null}
                             <GuidedReplyChips
                               chips={chipOptions}
                               visible={shouldShowGuidedAffordances}
