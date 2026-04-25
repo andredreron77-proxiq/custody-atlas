@@ -544,30 +544,8 @@ function getMessageKey(message: ChatMessage, index: number): string {
   return `${index}:${message.role}:${message.content}`;
 }
 
-function getRevealDelayForSegment(segment: string): number {
-  const normalized = segment.toLowerCase();
-  const empatheticPattern = /(i understand|that'?s hard|this is a lot|i hear you|take your time)/;
-  const factualPattern = /(\d+[\.\)]|\bdeadline\b|\bfile\b|\bupload\b|\border\b|\bhearing\b|\bcourt\b|:|;)/;
-  if (empatheticPattern.test(normalized)) return 55;
-  if (factualPattern.test(normalized)) return 20;
-  return 35;
-}
-
-function buildRevealWords(text: string): Array<{ word: string; delay: number }> {
-  const segments = text.match(/[^.!?]+[.!?]?/g) ?? [text];
-  return segments.flatMap((segment) => {
-    const words = segment.trim().split(/\s+/).filter(Boolean);
-    const delay = getRevealDelayForSegment(segment);
-    return words.map((word) => ({ word, delay }));
-  });
-}
-
 function extractGuidedReplyChips(text: string): string[] {
   const normalized = text.toLowerCase();
-
-  if (/\b(hearing|date|when|deadline|how soon|timeline|this week|next week|month)\b/.test(normalized)) {
-    return ["This week", "Within a month", "Already passed"];
-  }
 
   if (/\b(document|documents|paperwork|papers|order|served|upload|copy|filing)\b/.test(normalized)) {
     return ["Yes, I have it", "No, I don't have it yet", "I have some documents"];
@@ -579,6 +557,10 @@ function extractGuidedReplyChips(text: string): string[] {
 
   if (/\b(live with|lives with|living situation|primary home|resides|share time equally)\b/.test(normalized)) {
     return ["Child lives with me", "Child lives with them", "We share time equally"];
+  }
+
+  if (/\b(hearing|date|when|deadline|how soon|timeline|this week|next week|month)\b/.test(normalized)) {
+    return ["This week", "Within a month", "Already passed"];
   }
 
   return ["Tell me more", "What should I do next?", "I'm not sure"];
@@ -669,49 +651,43 @@ function AnimatedAssistantText({
   animate: boolean;
   onComplete?: () => void;
 }) {
-  const [visibleWordCount, setVisibleWordCount] = useState(animate ? 0 : Number.MAX_SAFE_INTEGER);
+  const [displayedText, setDisplayedText] = useState(animate ? "" : text);
 
   useEffect(() => {
+    console.log("[guided reveal] effect start", { animate, textLength: text.length });
+
     if (!animate) {
-      setVisibleWordCount(Number.MAX_SAFE_INTEGER);
+      setDisplayedText(text);
       onComplete?.();
       return;
     }
 
-    const revealWords = buildRevealWords(text);
-    const cappedWords = revealWords.slice(0, 150);
-    const timers: number[] = [];
-    let elapsed = 0;
+    const words = text.split(/\s+/).filter(Boolean);
+    const animatedWords = words.slice(0, 150);
+    const remainingText = words.slice(150).join(" ");
+    let index = 0;
 
-    setVisibleWordCount(0);
+    setDisplayedText("");
 
-    cappedWords.forEach((entry, index) => {
-      elapsed += entry.delay;
-      timers.push(window.setTimeout(() => {
-        setVisibleWordCount(index + 1);
-      }, elapsed));
-    });
-
-    timers.push(window.setTimeout(() => {
-      setVisibleWordCount(Number.MAX_SAFE_INTEGER);
-      onComplete?.();
-    }, elapsed + 20));
+    const interval = window.setInterval(() => {
+      index += 1;
+      const nextText = animatedWords.slice(0, index).join(" ");
+      if (index >= animatedWords.length) {
+        const finalText = remainingText ? `${nextText} ${remainingText}` : nextText;
+        setDisplayedText(finalText);
+        window.clearInterval(interval);
+        onComplete?.();
+        return;
+      }
+      setDisplayedText(nextText);
+    }, 35);
 
     return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
+      window.clearInterval(interval);
     };
   }, [animate, onComplete, text]);
 
-  if (!animate || visibleWordCount === Number.MAX_SAFE_INTEGER) {
-    return <>{text}</>;
-  }
-
-  const words = text.split(/\s+/).filter(Boolean);
-  const visible = words.slice(0, visibleWordCount);
-  const remainder = words.slice(150);
-  const overflow = visibleWordCount >= 150 && remainder.length > 0 ? ` ${remainder.join(" ")}` : "";
-
-  return <>{visible.join(" ")}{overflow}</>;
+  return <>{displayedText}</>;
 }
 
 function GuidedReplyChips({
@@ -849,6 +825,7 @@ export function ChatBox({
     () => new Set((initialMessages ?? []).map((message, index) => message.role === "assistant" ? getMessageKey(message, index) : "").filter(Boolean)),
   );
   const [activeAnimationKey, setActiveAnimationKey] = useState<string | null>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
@@ -860,6 +837,13 @@ export function ChatBox({
     queryFn: fetchUsageState,
   });
   const isGuidedConversation = Boolean(conversationType?.startsWith("guided_"));
+
+  const updateScrollState = () => {
+    const container = messageListRef.current;
+    if (!container) return;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    setIsNearBottom(distanceFromBottom <= 100);
+  };
 
   useEffect(() => {
     if (!usage) return;
@@ -883,6 +867,7 @@ export function ChatBox({
 
   useEffect(() => {
     if (messages.length === 0) return;
+    if (!isNearBottom) return;
     const last = messages[messages.length - 1];
     const timer = setTimeout(() => {
       if (last.role === "assistant") {
@@ -892,16 +877,21 @@ export function ChatBox({
       }
     }, 100);
     return () => clearTimeout(timer);
-  }, [messages]);
+  }, [isNearBottom, messages]);
 
   useEffect(() => {
     if (isLoading) return;
     if (messages.length === 0) return;
+    if (!isNearBottom) return;
     const timer = setTimeout(() => {
       latestAssistantRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 150);
     return () => clearTimeout(timer);
-  }, [isLoading]);
+  }, [isLoading, isNearBottom, messages.length]);
+
+  useEffect(() => {
+    updateScrollState();
+  }, [messages.length]);
 
   const ensureAndSave = async (
     userText: string,
@@ -1180,6 +1170,7 @@ export function ChatBox({
     setLimitReached(false);
     setProOverageNotice(null);
     setSavedToWorkspace(!!caseId);
+    setIsNearBottom(true);
     threadIdRef.current = undefined;
     conversationIdRef.current = undefined;
     messageListRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -1193,6 +1184,7 @@ export function ChatBox({
     <div ref={wrapperRef} className={`flex min-h-0 flex-1 flex-col gap-4 ${className ?? ""}`}>
       <div
         ref={messageListRef}
+        onScroll={updateScrollState}
         className="min-h-0 flex-1 overflow-y-auto pr-1"
         style={{ paddingBottom: "0.5rem" }}
       >
@@ -1531,6 +1523,22 @@ export function ChatBox({
       </div>
 
       <div className="sticky bottom-0 z-20 bg-background pb-2 pt-2">
+        {!isNearBottom && hasMessages ? (
+          <div className="mb-2 flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 gap-2 rounded-full"
+              onClick={() => {
+                bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                setIsNearBottom(true);
+              }}
+            >
+              Scroll to latest
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
         <Card className="border-2 border-primary/15 shadow-md bg-card">
           <CardContent className="p-4 space-y-3">
             {!hasMessages && (
