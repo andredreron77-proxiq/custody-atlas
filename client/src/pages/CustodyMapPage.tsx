@@ -27,6 +27,10 @@ import {
 import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
+const IS_DEV = import.meta.env.DEV;
+const NAVY = "#0f172a";
+const GOLD = "#b5922f";
+const WARM_BG = "#f9f8f6";
 
 const ALL_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",

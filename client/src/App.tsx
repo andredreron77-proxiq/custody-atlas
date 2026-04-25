@@ -1,5 +1,5 @@
 import { Switch, Route, useLocation } from "wouter";
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -39,6 +39,31 @@ import type { ComponentType } from "react";
 
 function AppFooter() {
   return <MinimalFooter />;
+}
+
+class CustodyMapErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-8 text-center">
+          <p className="text-red-500 font-mono text-sm">
+            {this.state.error.message}
+          </p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 /** Scroll the window to the top on every route change. */
@@ -193,7 +218,13 @@ function Router() {
       <Route path="/" component={HomeRoute} />
       <Route path="/location" component={LocationPage} />
       <Route path="/jurisdiction/:state/:county" component={JurisdictionPage} />
-      <Route path="/custody-map" component={CustodyMapPage} />
+      <Route path="/custody-map">
+        {() => (
+          <CustodyMapErrorBoundary>
+            <CustodyMapPage />
+          </CustodyMapErrorBoundary>
+        )}
+      </Route>
       <Route path="/custody-laws/:stateSlug" component={CustodyLawsStatePage} />
       <Route path="/custody-questions/:slug" component={CustodyQuestionsPage} />
       <Route path="/q/:stateSlug/:topic/:slug" component={PublicQAPage} />
