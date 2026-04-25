@@ -713,7 +713,7 @@ function AnimatedAssistantText({
         intervalRef.current = null;
       }
     };
-  }, [content]);
+  }, [animate, content]);
 
   return <>{displayedText}</>;
 }
@@ -850,6 +850,7 @@ export function ChatBox({
   const hydratingMessagesRef = useRef(Boolean((initialMessages?.length ?? 0) > 0));
   const previousMessageCountRef = useRef(messages.length);
   const previousAutoScrollMessageCountRef = useRef(messages.length);
+  const lastAnimatedMessageKeyRef = useRef<string | null>(null);
   const [completedAssistantAnimations, setCompletedAssistantAnimations] = useState<Set<string>>(
     () => new Set((initialMessages ?? []).map((message, index) => message.role === "assistant" ? getMessageKey(message, index) : "").filter(Boolean)),
   );
@@ -1153,6 +1154,7 @@ export function ChatBox({
       );
       setActiveAnimationKey(null);
       setIsAnimating(false);
+      lastAnimatedMessageKeyRef.current = null;
       previousMessageCountRef.current = messages.length;
       hydratingMessagesRef.current = false;
       return;
@@ -1169,9 +1171,10 @@ export function ChatBox({
     const grew = messages.length > previousMessageCountRef.current;
     if (grew && lastMessage?.role === "assistant") {
       const nextKey = getMessageKey(lastMessage, messages.length - 1);
-      if (!completedAssistantAnimations.has(nextKey)) {
+      if (!completedAssistantAnimations.has(nextKey) && lastAnimatedMessageKeyRef.current !== nextKey) {
         setActiveAnimationKey(nextKey);
         setIsAnimating(true);
+        lastAnimatedMessageKeyRef.current = nextKey;
       }
     }
 
@@ -1183,6 +1186,7 @@ export function ChatBox({
     setCompletedAssistantAnimations(new Set());
     setActiveAnimationKey(null);
     setIsAnimating(false);
+    lastAnimatedMessageKeyRef.current = null;
     previousMessageCountRef.current = 0;
     setLimitReached(false);
     setProOverageNotice(null);
@@ -1426,6 +1430,7 @@ export function ChatBox({
                             setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
                             setActiveAnimationKey((current) => current === messageKey ? null : current);
                             setIsAnimating(false);
+                            lastAnimatedMessageKeyRef.current = messageKey;
                           }}
                           onSelectSuggestedQuestion={(question) => {
                             setInput(question);
@@ -1501,6 +1506,7 @@ export function ChatBox({
                                   setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
                                   setActiveAnimationKey((current) => current === messageKey ? null : current);
                                   setIsAnimating(false);
+                                  lastAnimatedMessageKeyRef.current = messageKey;
                                 }}
                               />
                             </p>
