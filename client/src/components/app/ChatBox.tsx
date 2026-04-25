@@ -591,7 +591,7 @@ function detectNextStepCard(
     return {
       type: "deadline",
       title: "Watch this deadline",
-      subtitle: deadlineInsight?.text ?? summary,
+      subtitle: "Confirm your filing deadlines with the court",
       cta: "Review deadline",
       dateLabel: extractDateLabel(deadlineInsight?.text ?? normalized) ?? "Deadline mentioned",
       icon: Clock,
@@ -602,7 +602,7 @@ function detectNextStepCard(
     return {
       type: "upload",
       title: "Upload the document",
-      subtitle: actionInsight?.text ?? summary,
+      subtitle: "Atlas can analyze it and explain what it means",
       cta: "Upload document",
       href: "/upload-document",
       icon: Upload,
@@ -616,7 +616,7 @@ function detectNextStepCard(
     return {
       type: "hearing",
       title: "Build your hearing prep plan",
-      subtitle: summary,
+      subtitle: "Let's make sure you're ready for court",
       cta: "Continue hearing prep",
       href: `/ask?${params.toString()}`,
       icon: Calendar,
@@ -630,7 +630,7 @@ function detectNextStepCard(
     return {
       type: "attorney",
       title: "Find local legal support",
-      subtitle: summary,
+      subtitle: "Get guidance specific to your situation",
       cta: "See resources",
       href: `/resources?${params.toString()}`,
       icon: Scale,
@@ -1323,7 +1323,7 @@ export function ChatBox({
                       .join("\n")
                   : "";
                 const chipOptions = isAssistant ? extractGuidedReplyChips(chipSourceText) : [];
-                const nextStepCard = isAssistant ? detectNextStepCard(msg, jurisdiction, caseId) : null;
+                const nextStepCard = isAssistant && i >= 2 ? detectNextStepCard(msg, jurisdiction, caseId) : null;
 
                 return (
                   <div
