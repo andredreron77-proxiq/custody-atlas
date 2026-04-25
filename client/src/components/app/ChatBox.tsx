@@ -216,6 +216,7 @@ function StructuredResponse({
   showFollowUpChips,
   summaryAnimate,
   onSummaryAnimationComplete,
+  isGuidedConversation = false,
 }: {
   data: AILegalResponse;
   caseId?: string;
@@ -223,6 +224,7 @@ function StructuredResponse({
   showFollowUpChips?: boolean;
   summaryAnimate?: boolean;
   onSummaryAnimationComplete?: () => void;
+  isGuidedConversation?: boolean;
 }) {
   const isFact = data.intent === "FACT";
   const isAction = data.intent === "ACTION";
@@ -346,7 +348,7 @@ function StructuredResponse({
         </div>
       )}
 
-      {!isFact && proseResponse && (
+      {!isFact && !isGuidedConversation && proseResponse && (
         <div className="space-y-3">
           {proseResponse
             .split(/\n{2,}/)
@@ -422,7 +424,7 @@ function StructuredResponse({
         <FollowUpChips onSelect={onSelectSuggestedQuestion} disabled={false} highlighted />
       )}
 
-      {isAction && !proseResponse && keyPoints.length > 0 && (
+      {!isGuidedConversation && isAction && !proseResponse && keyPoints.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
@@ -449,7 +451,7 @@ function StructuredResponse({
         </div>
       )}
 
-      {!isAction && !proseResponse && keyPoints.length > 0 && (
+      {!isGuidedConversation && !isAction && !proseResponse && keyPoints.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -468,9 +470,9 @@ function StructuredResponse({
         </div>
       )}
 
-      <CautionsList cautions={data.cautions} />
+      {!isGuidedConversation && <CautionsList cautions={data.cautions} />}
 
-      {data.questions_to_ask_attorney.length > 0 && (
+      {!isGuidedConversation && data.questions_to_ask_attorney.length > 0 && (
         <div className="rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 p-3 space-y-2">
           <div className="flex items-center gap-1.5">
             <HelpCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -687,6 +689,7 @@ function AnimatedAssistantText({
     }
 
     intervalRef.current = window.setInterval(() => {
+      console.log("[reveal] tick", indexRef.current);
       indexRef.current += 1;
       const nextText = wordsRef.current.slice(0, indexRef.current).join(" ");
 
@@ -1316,7 +1319,16 @@ export function ChatBox({
                   !hasFutureUserReply &&
                   !isLoading &&
                   revealComplete;
-                const chipOptions = isAssistant ? extractGuidedReplyChips(msg.structured?.summary ?? msg.content) : [];
+                const chipSourceText = isAssistant
+                  ? [
+                      msg.structured?.summary ?? "",
+                      msg.structured?.prose_response ?? "",
+                      msg.content ?? "",
+                    ]
+                      .filter(Boolean)
+                      .join("\n")
+                  : "";
+                const chipOptions = isAssistant ? extractGuidedReplyChips(chipSourceText) : [];
                 const nextStepCard = isAssistant ? detectNextStepCard(msg, jurisdiction, caseId) : null;
 
                 return (
@@ -1409,6 +1421,7 @@ export function ChatBox({
                           caseId={caseId}
                           showFollowUpChips={i === messages.length - 1 && !isLoading}
                           summaryAnimate={animateAssistant}
+                          isGuidedConversation={isGuidedConversation}
                           onSummaryAnimationComplete={() => {
                             setCompletedAssistantAnimations((prev) => new Set(prev).add(messageKey));
                             setActiveAnimationKey((current) => current === messageKey ? null : current);
