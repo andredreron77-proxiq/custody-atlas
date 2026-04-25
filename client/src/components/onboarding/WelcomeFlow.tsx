@@ -307,9 +307,23 @@ export function WelcomeFlow() {
         {step === 1 && (
           <Panel
             heading="Let's start with your situation."
-            subtext="This helps Atlas give you answers that actually apply to your case."
+            subtext=""
           >
-            <div className="grid gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="welcome-display-name">What should we call you? (optional)</Label>
+              <Input
+                id="welcome-display-name"
+                value={displayNameDraft}
+                onChange={(event) => setDisplayNameDraft(event.target.value)}
+                placeholder="First name or nickname"
+                maxLength={80}
+                data-testid="input-welcome-display-name"
+              />
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              This helps Atlas give you answers that actually apply to your case.
+            </p>
+            <div className="mt-5 grid gap-3">
               {SITUATIONS.map((item) => (
                 <button
                   key={item.value}
@@ -329,17 +343,6 @@ export function WelcomeFlow() {
                   <span className="text-sm font-medium text-foreground">{item.title}</span>
                 </button>
               ))}
-            </div>
-            <div className="mt-5 space-y-2">
-              <Label htmlFor="welcome-display-name">What should we call you? (optional)</Label>
-              <Input
-                id="welcome-display-name"
-                value={displayNameDraft}
-                onChange={(event) => setDisplayNameDraft(event.target.value)}
-                placeholder="First name or nickname"
-                maxLength={80}
-                data-testid="input-welcome-display-name"
-              />
             </div>
             <div className="mt-6 flex justify-end">
               <Button

@@ -420,7 +420,7 @@ function StructuredResponse({
         </div>
       )}
 
-      {showFollowUpChips && (
+      {showFollowUpChips && !isGuidedConversation && (
         <FollowUpChips onSelect={onSelectSuggestedQuestion} disabled={false} highlighted />
       )}
 
