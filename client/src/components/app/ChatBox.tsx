@@ -1377,7 +1377,7 @@ export function ChatBox({
                 const revealComplete = !isAssistant || !isGuidedConversation || !animateAssistant || !isAnimating;
                 const hasFutureUserReply = messages.slice(i + 1).some((entry) => entry.role === "user");
                 const shouldShowGuidedAffordances =
-                  isGuidedConversation &&
+                  !isGuidedConversation &&
                   isAssistant &&
                   !hasFutureUserReply &&
                   !isLoading &&
@@ -1489,6 +1489,7 @@ export function ChatBox({
                             setIsAnimating(false);
                           }}
                           onSelectSuggestedQuestion={(question) => {
+                            if (isGuidedConversation) return;
                             setInput(question);
                             setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
                           }}
