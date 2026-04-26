@@ -6227,6 +6227,10 @@ Do not add facts not present in the provided evidence.`,
           messageMetadata: {
             guided_flow: true,
             flow_type: "hearing_prep",
+            ...(extracted.triggerSnapshot ? {
+              trigger_snapshot: true,
+              snapshot_state: nextState,
+            } : {}),
           },
         }),
       ]);

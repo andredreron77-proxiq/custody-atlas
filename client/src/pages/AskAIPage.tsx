@@ -837,6 +837,7 @@ export default function AskAIPage() {
           initialThreadId={threadIdParam}
           initialConversationId={effectiveConversationId}
           caseId={activeCaseId}
+          caseName={activeCase?.title ?? undefined}
           selectedDocumentIds={chatSelectedDocumentIds}
           onSelectCase={(id) => setActiveCaseId(id)}
           answeringScopeLabel={answeringScopeLabel}

@@ -15,6 +15,7 @@ import type { ChatMessage, AILegalResponse, Jurisdiction, ConversationHistoryIte
 import { apiRequestRaw } from "@/lib/queryClient";
 import { UpgradePromptCard } from "./UpgradePromptCard";
 import UpgradeModal from "./UpgradeModal";
+import { SnapshotCard, type GuidedSnapshotState } from "./SnapshotCard";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { registerChatBoxHandler, unregisterChatBoxHandler } from "@/lib/aiEntry";
 import { trackEvent } from "@/lib/analytics";
@@ -55,6 +56,7 @@ interface ChatBoxProps {
   onHasMessagesChange?: (hasMessages: boolean) => void;
   onMessageCountChange?: (count: number) => void;
   conversationType?: string;
+  caseName?: string;
   guidedProgressLabel?: string;
   guidedMemoryChips?: Array<{
     kind: "calendar" | "map" | "target";
@@ -99,6 +101,8 @@ type GuidedConversationMessageResponse = {
 type GuidedMessageMetadata = {
   guided_flow?: boolean;
   flow_type?: string;
+  trigger_snapshot?: boolean;
+  snapshot_state?: GuidedSnapshotState;
 };
 
 type GuidedInsight = {
@@ -847,6 +851,7 @@ export function ChatBox({
   onHasMessagesChange,
   onMessageCountChange,
   conversationType,
+  caseName,
   guidedProgressLabel,
   guidedMemoryChips = [],
 }: ChatBoxProps) {
@@ -1097,9 +1102,14 @@ export function ChatBox({
         setMessages((prev) => [...prev, {
           role: "assistant",
           content: data.message.messageText,
-          metadata: data.message.messageMetadata ?? {
+          metadata: {
+            ...(data.message.messageMetadata ?? {}),
             guided_flow: true,
             flow_type: conversationType?.replace(/^guided_/, ""),
+            ...(data.triggerSnapshot ? {
+              trigger_snapshot: true,
+              snapshot_state: data.snapshotState as GuidedSnapshotState | undefined,
+            } : {}),
           },
         }]);
       } else {
@@ -1393,6 +1403,12 @@ export function ChatBox({
                   : "";
                 const chipOptions = isAssistant ? extractGuidedReplyChips(chipSourceText) : [];
                 const nextStepCard = isAssistant && i >= 2 ? detectNextStepCard(msg, jurisdiction, caseId) : null;
+                const snapshotState = (msg.metadata as GuidedMessageMetadata | undefined)?.snapshot_state;
+                const shouldRenderSnapshot =
+                  Boolean((msg.metadata as GuidedMessageMetadata | undefined)?.trigger_snapshot) &&
+                  Boolean(snapshotState);
+                const snapshotCaseName = caseName?.trim() || answeringScopeLabel?.trim() || "Your case";
+                const snapshotJurisdictionLabel = formatJurisdictionLabel(jurisdiction.state, jurisdiction.county);
 
                 return (
                   <div
@@ -1579,6 +1595,13 @@ export function ChatBox({
                               }}
                             />
                           </>
+                        ) : null}
+                        {shouldRenderSnapshot ? (
+                          <SnapshotCard
+                            caseName={snapshotCaseName}
+                            jurisdictionLabel={snapshotJurisdictionLabel}
+                            snapshot={snapshotState!}
+                          />
                         ) : null}
                       </div>
                     )}
