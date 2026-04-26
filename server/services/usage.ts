@@ -2,7 +2,7 @@
  * server/services/usage.ts
  *
  * Supabase-backed usage tracking service.
- * Tracks monthly question and document usage per user in the usage_limits table.
+ * Tracks question and document usage per user in the usage_limits table.
  *
  * Expected usage_limits table schema:
  *   user_id        uuid  NOT NULL (FK → auth.users)
@@ -61,6 +61,20 @@ async function getCurrentUsage(userId: string): Promise<{ questionsUsed: number;
   }
 }
 
+async function getLifetimeQuestionUsage(userId: string): Promise<number> {
+  if (!supabaseAdmin) return 0;
+  try {
+    const { data } = await supabaseAdmin
+      .from("usage_limits")
+      .select("questions_used")
+      .eq("user_id", userId);
+
+    return (data ?? []).reduce((total, row) => total + (row.questions_used ?? 0), 0);
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Return the full usage state for the requesting user.
  */
@@ -80,7 +94,11 @@ export async function getUsageState(req: Request): Promise<UsageState> {
 
   const tier = await getUserTier(user.id);
   const limits = TIER_LIMITS[tier];
-  const { questionsUsed, documentsUsed } = await getCurrentUsage(user.id);
+  const currentUsage = await getCurrentUsage(user.id);
+  const { documentsUsed } = currentUsage;
+  const questionsUsed = tier === "free"
+    ? await getLifetimeQuestionUsage(user.id)
+    : currentUsage.questionsUsed;
 
   return {
     isAuthenticated: true,
@@ -94,7 +112,7 @@ export async function getUsageState(req: Request): Promise<UsageState> {
 
 /**
  * Middleware: reject the request if the authenticated user has hit their
- * monthly question limit. Anonymous requests pass through; guest caps are
+ * question limit. Anonymous requests pass through; guest caps are
  * enforced client-side via localStorage fingerprinting.
  */
 export async function checkQuestionLimit(
@@ -111,7 +129,9 @@ export async function checkQuestionLimit(
 
   const tier = await getUserTier(user.id);
   const limit = TIER_LIMITS[tier].questions;
-  const { questionsUsed } = await getCurrentUsage(user.id);
+  const questionsUsed = tier === "free"
+    ? await getLifetimeQuestionUsage(user.id)
+    : (await getCurrentUsage(user.id)).questionsUsed;
 
   if (questionsUsed >= limit) {
     if (tier === "pro") {
@@ -126,7 +146,7 @@ export async function checkQuestionLimit(
     }
 
     res.status(429).json({
-      error: `Monthly question limit of ${limit} reached. Upgrade to Pro for more.`,
+      error: `Free question limit of ${limit} reached. Upgrade to Pro to continue.`,
       code: "QUESTION_LIMIT_REACHED",
       limit,
       used: questionsUsed,

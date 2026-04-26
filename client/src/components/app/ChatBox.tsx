@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { ChatMessage, AILegalResponse, Jurisdiction, ConversationHistoryItem } from "@shared/schema";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { UpgradePromptCard } from "./UpgradePromptCard";
+import UpgradeModal from "./UpgradeModal";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { registerChatBoxHandler, unregisterChatBoxHandler } from "@/lib/aiEntry";
 import { trackEvent } from "@/lib/analytics";
@@ -36,6 +37,8 @@ const THINKING_MESSAGES = [
   "Let me think through this...",
   "Working on it...",
 ];
+
+const UPGRADE_NUDGE_DISMISSED_KEY = "custody-atlas:upgrade-nudge-dismissed";
 
 interface ChatBoxProps {
   initialConversationId?: string;
@@ -837,6 +840,8 @@ export function ChatBox({
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(THINKING_MESSAGES[0]);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeNudgeDismissed, setUpgradeNudgeDismissed] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [proOverageNotice, setProOverageNotice] = useState<{
     questionsUsed: number;
@@ -874,6 +879,11 @@ export function ChatBox({
     queryFn: fetchUsageState,
   });
   const isGuidedConversation = Boolean(conversationType?.startsWith("guided_"));
+  const isFreeUser = usage?.isAuthenticated && usage.tier === "free";
+  const shouldShowUpgradeNudge =
+    Boolean(isFreeUser) &&
+    usage?.questionsUsed === 5 &&
+    !upgradeNudgeDismissed;
 
   const updateScrollState = () => {
     const container = messageListRef.current;
@@ -890,6 +900,11 @@ export function ChatBox({
       setLimitReached(false);
     }
   }, [usage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setUpgradeNudgeDismissed(window.sessionStorage.getItem(UPGRADE_NUDGE_DISMISSED_KEY) === "1");
+  }, []);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -1603,6 +1618,37 @@ export function ChatBox({
             )}
 
             {limitReached && <UpgradePromptCard type="question" />}
+            {shouldShowUpgradeNudge ? (
+              <div className="rounded-lg border border-[#dcc98a] bg-[#fdf9ee] px-3.5 py-3 text-[#0f172a]">
+                <p className="text-sm font-medium">
+                  You've used 5 of your 10 free questions.
+                </p>
+                <p className="mt-1 text-sm leading-relaxed">
+                  Upgrade to Pro for 200 questions and unlimited documents.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setUpgradeModalOpen(true)}
+                  >
+                    Upgrade to Pro
+                  </Button>
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-[#0f172a]/70 hover:text-[#0f172a]"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.sessionStorage.setItem(UPGRADE_NUDGE_DISMISSED_KEY, "1");
+                      }
+                      setUpgradeNudgeDismissed(true);
+                    }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {proOverageNotice && (
               <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-950/30 px-3.5 py-3">
                 <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
@@ -1704,6 +1750,7 @@ export function ChatBox({
           </CardContent>
         </Card>
       </div>
+      <UpgradeModal open={upgradeModalOpen} onOpenChange={setUpgradeModalOpen} />
     </div>
   );
 }

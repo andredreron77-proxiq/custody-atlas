@@ -59,7 +59,7 @@ const sections = [
   {
     heading: "7. Subscription and Billing",
     body: [
-      "Free tier accounts are subject to monthly usage limits. Paid Pro subscriptions are billed through Stripe. Subscription fees are non-refundable except as required by applicable law. We reserve the right to change pricing with 30 days' notice.",
+      "Free tier accounts are subject to lifetime usage limits. Paid Pro subscriptions are billed through Stripe and include monthly usage allowances. Subscription fees are non-refundable except as required by applicable law. We reserve the right to change pricing with 30 days' notice.",
     ],
   },
   {

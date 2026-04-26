@@ -1089,7 +1089,7 @@ function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) 
       ) : limitReached ? (
         <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-5 dark:border-amber-800/50 dark:bg-amber-950/20">
           <p className="text-sm leading-relaxed text-foreground">
-            You've used your 3 free questions. Create a free account to get 10 questions per month and save your conversations.
+            You've used your 3 free questions. Create a free account to get 10 questions total and save your conversations.
           </p>
           <Button className="mt-4 gap-2" onClick={openSignup} data-testid="button-guest-map-signup">
             Create Free Account

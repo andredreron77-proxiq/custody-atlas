@@ -21,7 +21,7 @@ const COPY: Record<LimitType, { title: string; description: string }> = {
   question: {
     title: "You've reached your free question limit",
     description:
-      "You've used your 10 free questions for this month. Upgrade to continue your custody conversation with higher limits and Pro-only features.",
+      "You've used your 10 free questions total. Upgrade to continue your custody conversation with higher limits and Pro-only features.",
   },
   document: {
     title: "You've reached your free analysis limit",
@@ -38,7 +38,7 @@ export function UpgradePromptCard({ type, className }: UpgradePromptCardProps) {
     ? {
         title: "You've reached your guest question limit",
         description:
-          "You've used your 3 guest questions. Create a free account to keep going with 10 questions per month.",
+          "You've used your 3 guest questions. Create a free account to keep going with 10 questions total.",
       }
     : COPY[type];
 
