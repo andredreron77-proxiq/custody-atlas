@@ -6217,6 +6217,11 @@ Do not add facts not present in the provided evidence.`,
 
       const extracted = extractAtlasResponse(rawResponse);
       const nextState = normalizeHearingPrepState(extracted.state ?? currentState);
+      const shouldTriggerSnapshot =
+        extracted.triggerSnapshot &&
+        nextState.hearing_type !== null &&
+        nextState.top_concern !== null &&
+        nextState.waypoints_complete.length >= 4;
 
       const [savedUserMessage, savedAssistantMessage] = await Promise.all([
         appendConversationMessage(conversationId, "user", parsed.data.content, {
@@ -6227,7 +6232,7 @@ Do not add facts not present in the provided evidence.`,
           messageMetadata: {
             guided_flow: true,
             flow_type: "hearing_prep",
-            ...(extracted.triggerSnapshot ? {
+            ...(shouldTriggerSnapshot ? {
               trigger_snapshot: true,
               snapshot_state: nextState,
             } : {}),
@@ -6269,12 +6274,12 @@ Do not add facts not present in the provided evidence.`,
         questionText: parsed.data.content,
         responseJson: {
           summary: extracted.cleanResponse,
-          triggerSnapshot: extracted.triggerSnapshot,
+          triggerSnapshot: shouldTriggerSnapshot,
           snapshotState: nextState,
         },
       }).catch(() => {});
 
-      if (extracted.triggerSnapshot) {
+      if (shouldTriggerSnapshot) {
         responseBody.triggerSnapshot = true;
         responseBody.snapshotState = nextState;
       }
