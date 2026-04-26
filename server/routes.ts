@@ -16,7 +16,7 @@ import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
 import {
-  extractAtlasResponse,
+  extractWaypointStateFromConversation,
   getGuidedFlowByConversationType,
   getGuidedFlowBySituationType,
   HEARING_PREP_INITIAL_STATE,
@@ -6223,10 +6223,17 @@ Do not add facts not present in the provided evidence.`,
         return res.status(500).json({ error: "No response received from AI service." });
       }
 
-      const extracted = extractAtlasResponse(rawResponse);
-      const nextState = normalizeHearingPrepState(extracted.state ?? currentState);
+      const cleanedResponse = rawResponse;
+      const nextState = normalizeHearingPrepState(await extractWaypointStateFromConversation([
+        ...priorMessages.map((message) => ({
+          role: message.role,
+          content: message.messageText,
+        })),
+        { role: "user", content: parsed.data.content },
+        { role: "assistant", content: cleanedResponse },
+      ], currentState));
       const shouldTriggerSnapshot =
-        extracted.triggerSnapshot &&
+        !currentState.snapshot_complete &&
         nextState.hearing_type !== null &&
         nextState.top_concern !== null &&
         nextState.waypoints_complete.length >= 4;
@@ -6238,7 +6245,7 @@ Do not add facts not present in the provided evidence.`,
         appendConversationMessage(conversationId, "user", parsed.data.content, {
           caseId: caseRecord.id,
         }),
-        appendConversationMessage(conversationId, "assistant", extracted.cleanResponse, {
+        appendConversationMessage(conversationId, "assistant", cleanedResponse, {
           caseId: caseRecord.id,
           messageMetadata: {
             guided_flow: true,
@@ -6257,7 +6264,7 @@ Do not add facts not present in the provided evidence.`,
 
       await updateConversationGuidedState(conversationId, user.id, nextState as unknown as Record<string, unknown>);
 
-      if (extracted.childSafetyFlag) {
+      if (nextState.child_safety_flag) {
         recordChildSafetySignal({
           conversationId,
           caseId: caseRecord.id,
@@ -6274,7 +6281,7 @@ Do not add facts not present in the provided evidence.`,
         caseId: caseRecord.id,
         conversationType: conversation.threadType,
         userQuestion: parsed.data.content,
-        assistantSummary: extracted.cleanResponse,
+        assistantSummary: cleanedResponse,
         existingMemories,
       }).catch((err) => console.error("[guided] memory refresh failed:", err));
 
@@ -6284,7 +6291,7 @@ Do not add facts not present in the provided evidence.`,
         jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
         questionText: parsed.data.content,
         responseJson: {
-          summary: extracted.cleanResponse,
+          summary: cleanedResponse,
           triggerSnapshot: shouldTriggerSnapshot,
           snapshotState: nextState,
         },
@@ -6298,7 +6305,7 @@ Do not add facts not present in the provided evidence.`,
 
       responseBody.message = {
         ...savedAssistantMessage,
-        content: extracted.cleanResponse,
+        content: cleanedResponse,
       };
 
       return res.status(201).json(responseBody);

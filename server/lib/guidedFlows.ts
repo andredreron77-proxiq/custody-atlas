@@ -1,3 +1,5 @@
+import OpenAI from "openai";
+
 export const GUIDED_FLOW_UNIVERSAL_INSTRUCTIONS =
   `You are Atlas, a knowledgeable guide for parents navigating custody — not a lawyer. When a question requires legal strategy or a specific legal opinion, say plainly: 'This is where a lawyer should weigh in. Here's what I can help you think through in the meantime.' Never promise outcomes. Never speak with more certainty than the facts support. If you don't know something, say so and suggest where to find the answer.`;
 
@@ -65,6 +67,13 @@ export const HEARING_PREP_INITIAL_STATE: HearingPrepWaypointState = {
   snapshot_complete: false,
   waypoints_complete: [],
 };
+
+function getGuidedFlowsOpenAIClient(): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+  });
+}
 
 const GUIDED_FLOWS: Record<GuidedSituationType, GuidedFlowDefinition> = {
   more_time: {
@@ -135,6 +144,7 @@ export function extractAtlasResponse(rawResponse: string): {
   triggerSnapshot: boolean;
   childSafetyFlag: boolean;
 } {
+  console.log("[Atlas] looking for state block, raw includes ATLAS_STATE:", rawResponse.includes("ATLAS_STATE"));
   const stateMatch = rawResponse.match(/<!--ATLAS_STATE:([\s\S]*?)-->/);
   const triggerSnapshot = rawResponse.includes("<!--ATLAS_TRIGGER:SNAPSHOT-->");
 
@@ -237,7 +247,6 @@ If the parent describes child abuse or immediate danger to the children:
     immediate danger, call 911. To report abuse, DFCS can be reached at
     1-855-422-4453. This changes what you need to do right now — and what to say in
     court. I can help you think through next steps when you're ready."
-  → Add "child_safety_flag": true to your state block.
 
 RULE 7: HEARING TYPE TRANSLATIONS
 When the parent names a hearing type, translate it clearly before asking the next
@@ -271,22 +280,6 @@ question. Use these translations:
   "I don't know" / unclear:
     "That's okay. Look at the top of the paper they sent you — there's usually a
     word like 'temporary,' 'final,' or 'modification.' What do you see?"
-
----
-
-OUTPUT FORMAT — required every turn
-
-After your natural message to the parent, end with this block on its own line.
-The server strips it before display. Never mention this block to the parent.
-
-<!--ATLAS_STATE:{"hearing_date":null,"hearing_type":null,"top_concern":null,"concern_category":null,"current_schedule":null,"order_status":null,"recent_changes":null,"representation_status":null,"child_safety_flag":false,"waypoints_complete":[]}-->
-
-Fill values as they resolve. Add waypoint number to waypoints_complete when resolved.
-
-When waypoints_complete contains [1,2,3,4,5], your response must be:
-  "Okay. I think I've got the picture. Let me show you what I'm seeing — and what
-  I'd do if I were in your shoes this week."
-followed by: <!--ATLAS_TRIGGER:SNAPSHOT-->
 
 ---
 
@@ -382,4 +375,65 @@ Return plain natural language only. No hidden state blocks. No markdown code fen
 
 RESOLVED SNAPSHOT STATE REFERENCE:
 ${JSON.stringify(params.snapshotState, null, 2)}`;
+}
+
+export async function extractWaypointStateFromConversation(
+  messages: Array<{ role: string; content: string }>,
+  currentState: HearingPrepWaypointState,
+): Promise<HearingPrepWaypointState> {
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 300,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You extract structured data from custody hearing conversations.
+Return ONLY valid JSON matching this schema exactly — no other text:
+{
+  hearing_date: string | null,
+  hearing_type: 'temporary_custody'|'final'|'status_conference'|
+    'modification'|'contempt'|'ex_parte'|'mediation'|'unknown'|null,
+  top_concern: string | null,
+  concern_category: 'resource_gap'|'evidence_gap'|'fairness_fear'|
+    'child_wellbeing'|'self_doubt'|null,
+  current_schedule: string | null,
+  order_status: 'court_order'|'written_agreement'|'informal'|'none'|null,
+  recent_changes: string[] | null,
+  representation_status: 'has_attorney'|'pro_se_choice'|
+    'pro_se_necessity'|null,
+  child_safety_flag: boolean,
+  waypoints_complete: number[]
+}
+Rules:
+- hearing_date: ISO date string if mentioned, otherwise null
+- waypoints_complete: include waypoint number only when you have 
+  a confident non-null value for its primary field:
+  1=hearing_type, 2=top_concern, 3=current_schedule, 
+  4=recent_changes (use [] if explicitly none), 5=representation_status
+- child_safety_flag: true only if abuse or self-harm mentioned
+- Return null for any field not clearly stated in the conversation
+- Return ONLY the JSON object, no markdown, no explanation`,
+        },
+        {
+          role: "user",
+          content: `Extract waypoint state from this conversation:\n${JSON.stringify(messages)}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return currentState;
+
+    const parsed = JSON.parse(rawContent) as HearingPrepWaypointState;
+    return {
+      ...parsed,
+      snapshot_complete: currentState.snapshot_complete ?? false,
+    };
+  } catch (err) {
+    console.error("[Atlas] Failed to parse extracted waypoint state:", err);
+    return currentState;
+  }
 }
