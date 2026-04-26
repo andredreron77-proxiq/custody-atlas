@@ -80,6 +80,7 @@ export interface Conversation {
   userId: string;
   title: string | null;
   threadType: string;
+  guidedState: Record<string, unknown> | null;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
   documentId: string | null;
@@ -196,6 +197,7 @@ function mapConversation(r: any): Conversation {
     userId: r.user_id,
     title: r.title ?? null,
     threadType: r.conversation_type ?? r.thread_type ?? "general",
+    guidedState: r.guided_state ?? null,
     jurisdictionState: r.jurisdiction_state ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     documentId: r.document_id ?? null,
@@ -504,7 +506,7 @@ export async function createConversation(
         title: opts.title?.slice(0, 200) ?? null,
         conversation_type: opts.threadType ?? "general",
       })
-      .select("id, case_id, title, conversation_type, last_message_at, created_at, updated_at")
+      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
       .single();
     if (error || !data) {
       console.error("[cases] createConversation error:", error?.message);
@@ -548,7 +550,7 @@ export async function getConversationById(
   try {
     const { data, error } = await supabaseAdmin
       .from("conversations")
-      .select("id, case_id, title, conversation_type, last_message_at, created_at, updated_at")
+      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
       .eq("id", conversationId)
       .single();
     if (error || !data) return null;
@@ -578,7 +580,7 @@ export async function getConversationByIdForCase(
 
     const { data, error } = await supabaseAdmin
       .from("conversations")
-      .select("id, case_id, title, conversation_type, last_message_at, created_at, updated_at")
+      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
       .eq("id", conversationId)
       .eq("case_id", caseId)
       .single();
@@ -689,6 +691,33 @@ export async function appendConversationMessage(
   } catch (err) {
     console.error("[cases] appendConversationMessage exception:", err);
     return null;
+  }
+}
+
+export async function updateConversationGuidedState(
+  conversationId: string,
+  userId: string,
+  guidedState: Record<string, unknown> | null,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+  try {
+    const ownerCheck = await getConversationById(conversationId, userId);
+    if (!ownerCheck) return false;
+
+    const { error } = await supabaseAdmin
+      .from("conversations")
+      .update({ guided_state: guidedState })
+      .eq("id", conversationId);
+
+    if (error) {
+      console.warn("[cases] updateConversationGuidedState error:", error.message, error.code);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("[cases] updateConversationGuidedState exception:", err);
+    return false;
   }
 }
 

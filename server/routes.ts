@@ -15,7 +15,15 @@ import { extractText, DOCX_MIME, SUPPORTED_MIME_TYPES } from "./documentExtracto
 import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
-import { getGuidedFlowByConversationType, getGuidedFlowBySituationType, isGuidedConversationType } from "./lib/guidedFlows";
+import {
+  extractAtlasResponse,
+  getGuidedFlowByConversationType,
+  getGuidedFlowBySituationType,
+  HEARING_PREP_INITIAL_STATE,
+  hearingPrepSystemPrompt,
+  isGuidedConversationType,
+  type HearingPrepWaypointState,
+} from "./lib/guidedFlows";
 import {
   buildExtractedFactsBlock,
   classifyDocumentQuestion,
@@ -76,11 +84,13 @@ import {
   getCaseById,
   createConversation,
   listConversations,
+  getConversationById,
   getConversationByIdForCase,
   listMessages,
   getRecentConversationMessages,
   appendConversationMessage,
   listCaseMemory,
+  updateConversationGuidedState,
   upsertCaseMemory,
 } from "./services/cases";
 import { generateCaseIntelligence } from "./services/caseIntelligence";
@@ -248,6 +258,85 @@ async function refreshGuidedCaseMemory(params: {
     ]);
   } catch (err) {
     console.error("[guided] failed to refresh case memory:", err);
+  }
+}
+
+function normalizeHearingPrepState(value: unknown): HearingPrepWaypointState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...HEARING_PREP_INITIAL_STATE };
+  }
+
+  const candidate = value as Partial<HearingPrepWaypointState>;
+
+  return {
+    hearing_date: typeof candidate.hearing_date === "string" ? candidate.hearing_date : null,
+    hearing_type: typeof candidate.hearing_type === "string" ? candidate.hearing_type : null,
+    top_concern: typeof candidate.top_concern === "string" ? candidate.top_concern : null,
+    concern_category: typeof candidate.concern_category === "string" ? candidate.concern_category : null,
+    current_schedule: typeof candidate.current_schedule === "string" ? candidate.current_schedule : null,
+    order_status: typeof candidate.order_status === "string" ? candidate.order_status : null,
+    recent_changes: Array.isArray(candidate.recent_changes)
+      ? candidate.recent_changes.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : null,
+    representation_status: typeof candidate.representation_status === "string"
+      ? candidate.representation_status
+      : null,
+    child_safety_flag: Boolean(candidate.child_safety_flag),
+    waypoints_complete: Array.isArray(candidate.waypoints_complete)
+      ? candidate.waypoints_complete.filter((item): item is number => typeof item === "number")
+      : [],
+  };
+}
+
+function computeDaysUntilHearing(dateValue?: string | null): number | null {
+  if (!dateValue) return null;
+  const target = new Date(dateValue);
+  if (Number.isNaN(target.getTime())) return null;
+  const diffMs = target.getTime() - Date.now();
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+}
+
+async function recordChildSafetySignal(params: {
+  conversationId: string;
+  caseId: string;
+  userId: string;
+}): Promise<void> {
+  if (!supabaseAdmin) return;
+
+  const requestedInsert = await supabaseAdmin
+    .from("signals")
+    .insert({
+      signal_type: "child_safety",
+      conversation_id: params.conversationId,
+      user_id: params.userId,
+      created_at: new Date().toISOString(),
+    });
+
+  if (!requestedInsert.error) return;
+
+  console.warn("[guided] child safety signal insert failed; attempting fallback", {
+    message: requestedInsert.error.message,
+    code: requestedInsert.error.code,
+  });
+
+  const fallbackInsert = await supabaseAdmin
+    .from("signals")
+    .insert({
+      case_id: params.caseId,
+      type: "child_safety",
+      title: "Possible child safety concern",
+      detail: "Guided hearing prep conversation flagged a possible child safety concern.",
+      due_date: null,
+      source_document_ids: null,
+      dismissed: false,
+      score: null,
+    });
+
+  if (fallbackInsert.error) {
+    console.warn("[guided] child safety fallback insert failed", {
+      message: fallbackInsert.error.message,
+      code: fallbackInsert.error.code,
+    });
   }
 }
 
@@ -6058,6 +6147,138 @@ Do not add facts not present in the provided evidence.`,
     } catch (err) {
       console.error("[cases] PATCH action error:", err);
       return res.status(500).json({ error: "Failed to update action." });
+    }
+  });
+
+  /**
+   * POST /api/conversations/:conversationId/messages
+   * Append a guided-flow message and return the assistant reply.
+   */
+  app.post("/api/conversations/:conversationId/messages", requireAuth, checkQuestionLimit, async (req, res) => {
+    const user = (req as any).user;
+    const conversationId = asString(req.params.conversationId);
+
+    const schema = z.object({
+      content: z.string().trim().min(1, "Message is required").max(4000, "Message is too long"),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request body." });
+    }
+
+    try {
+      const conversation = await getConversationById(conversationId, user.id);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found." });
+      }
+
+      if (conversation.threadType !== "guided_hearing_prep") {
+        return res.status(400).json({ error: "Direct conversation messaging is only supported for the guided hearing prep flow right now." });
+      }
+
+      const caseRecord = await getCaseById(conversation.caseId, user.id);
+      if (!caseRecord) {
+        return res.status(404).json({ error: "Case not found." });
+      }
+
+      const existingMemories = await listCaseMemory(caseRecord.id, user.id);
+
+      const currentState = normalizeHearingPrepState(conversation.guidedState);
+      const systemPrompt = hearingPrepSystemPrompt({
+        case_name: caseRecord.title,
+        jurisdiction_county: caseRecord.jurisdictionCounty ?? "Unknown County",
+        jurisdiction_state: caseRecord.jurisdictionState ?? "Unknown State",
+        days_until_hearing: computeDaysUntilHearing(currentState.hearing_date),
+        waypoint_state_json: JSON.stringify(currentState),
+      });
+
+      const priorMessages = await getRecentConversationMessages(conversationId, 24);
+      const openAIMessages = [
+        { role: "system" as const, content: systemPrompt },
+        ...priorMessages.map((message) => ({
+          role: message.role as "user" | "assistant",
+          content: message.messageText,
+        })),
+        { role: "user" as const, content: parsed.data.content },
+      ];
+
+      const completion = await getOpenAIClient().chat.completions.create({
+        model: "gpt-4o",
+        messages: openAIMessages,
+        max_tokens: 900,
+        temperature: 0.4,
+      });
+
+      const rawResponse = completion.choices[0]?.message?.content?.trim();
+      if (!rawResponse) {
+        return res.status(500).json({ error: "No response received from AI service." });
+      }
+
+      const extracted = extractAtlasResponse(rawResponse);
+      const nextState = normalizeHearingPrepState(extracted.state ?? currentState);
+
+      const [savedUserMessage, savedAssistantMessage] = await Promise.all([
+        appendConversationMessage(conversationId, "user", parsed.data.content, {
+          caseId: caseRecord.id,
+        }),
+        appendConversationMessage(conversationId, "assistant", extracted.cleanResponse, {
+          caseId: caseRecord.id,
+          messageMetadata: {
+            guided_flow: true,
+            flow_type: "hearing_prep",
+          },
+        }),
+      ]);
+
+      if (!savedAssistantMessage || !savedUserMessage) {
+        return res.status(500).json({ error: "Failed to persist conversation messages." });
+      }
+
+      await updateConversationGuidedState(conversationId, user.id, nextState as unknown as Record<string, unknown>);
+
+      if (extracted.childSafetyFlag) {
+        recordChildSafetySignal({
+          conversationId,
+          caseId: caseRecord.id,
+          userId: user.id,
+        }).catch((err) => console.error("[guided] child safety signal write failed:", err));
+      }
+
+      const responseBody: Record<string, unknown> = {
+        message: savedAssistantMessage,
+      };
+
+      refreshGuidedCaseMemory({
+        userId: user.id,
+        caseId: caseRecord.id,
+        conversationType: conversation.threadType,
+        userQuestion: parsed.data.content,
+        assistantSummary: extracted.cleanResponse,
+        existingMemories,
+      }).catch((err) => console.error("[guided] memory refresh failed:", err));
+
+      await trackQuestion(req);
+      saveQuestion(user.id, {
+        jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",
+        jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
+        questionText: parsed.data.content,
+        responseJson: {
+          summary: extracted.cleanResponse,
+          triggerSnapshot: extracted.triggerSnapshot,
+          snapshotState: nextState,
+        },
+      }).catch(() => {});
+
+      if (extracted.triggerSnapshot) {
+        responseBody.triggerSnapshot = true;
+        responseBody.snapshotState = nextState;
+      }
+
+      return res.status(201).json(responseBody);
+    } catch (err) {
+      console.error("[guided] POST conversation message error:", err);
+      return res.status(500).json({ error: "Failed to send message." });
     }
   });
 

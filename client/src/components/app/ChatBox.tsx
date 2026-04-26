@@ -81,6 +81,21 @@ type AskAssistantResponse = AILegalResponse & {
   questionsLimit?: number;
 } & JurisdictionMismatchInfo;
 
+type GuidedConversationMessageResponse = {
+  message: {
+    id: string;
+    conversationId: string;
+    caseId: string | null;
+    role: "assistant";
+    messageText: string;
+    structuredResponseJson: Record<string, unknown> | null;
+    messageMetadata: Record<string, unknown> | null;
+    createdAt: string;
+  };
+  triggerSnapshot?: boolean;
+  snapshotState?: Record<string, unknown>;
+};
+
 type GuidedMessageMetadata = {
   guided_flow?: boolean;
   flow_type?: string;
@@ -1030,17 +1045,27 @@ export function ChatBox({
       .map((m) => ({ role: m.role, content: m.content }));
 
     try {
-      const res = await apiRequestRaw("POST", "/api/ask", {
-        jurisdiction: {
-          state: jurisdiction.state,
-          county: jurisdiction.county,
-        },
-        userQuestion: trimmed,
-        history: (forcedCaseId ?? caseId) ? undefined : historySnapshot.length > 0 ? historySnapshot : undefined,
-        ...((forcedCaseId ?? caseId) ? { caseId: (forcedCaseId ?? caseId), conversationId: conversationIdRef.current } : {}),
-        ...(documentId ? { documentId } : {}),
-        ...(selectedDocumentIds !== undefined ? { selectedDocumentIds } : {}),
-      });
+      const isGuidedMessageRoute = Boolean(
+        isGuidedConversation &&
+        (forcedCaseId ?? caseId) &&
+        conversationIdRef.current,
+      );
+
+      const res = isGuidedMessageRoute
+        ? await apiRequestRaw("POST", `/api/conversations/${conversationIdRef.current}/messages`, {
+            content: trimmed,
+          })
+        : await apiRequestRaw("POST", "/api/ask", {
+            jurisdiction: {
+              state: jurisdiction.state,
+              county: jurisdiction.county,
+            },
+            userQuestion: trimmed,
+            history: (forcedCaseId ?? caseId) ? undefined : historySnapshot.length > 0 ? historySnapshot : undefined,
+            ...((forcedCaseId ?? caseId) ? { caseId: (forcedCaseId ?? caseId), conversationId: conversationIdRef.current } : {}),
+            ...(documentId ? { documentId } : {}),
+            ...(selectedDocumentIds !== undefined ? { selectedDocumentIds } : {}),
+          });
 
       if (res.status === 429) {
         setLimitReached(true);
@@ -1054,9 +1079,9 @@ export function ChatBox({
         throw new Error(errData.error || `Server error (${res.status})`);
       }
 
-      const rawData: AskAssistantResponse | CaseSelectionRequiredResponse = await res.json();
+      const rawData: AskAssistantResponse | CaseSelectionRequiredResponse | GuidedConversationMessageResponse = await res.json();
 
-      if ((rawData as CaseSelectionRequiredResponse).type === "case_selection_required") {
+      if (!isGuidedMessageRoute && (rawData as CaseSelectionRequiredResponse).type === "case_selection_required") {
         const selection = rawData as CaseSelectionRequiredResponse;
         setPendingCaseSelection({
           message: selection.message,
@@ -1067,37 +1092,50 @@ export function ChatBox({
         return;
       }
 
-      const data = rawData as AskAssistantResponse;
-      if ((forcedCaseId ?? caseId) && data.conversationId && !conversationIdRef.current) {
-        conversationIdRef.current = data.conversationId;
-        setSavedToWorkspace(true);
-        queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
-      }
+      if (isGuidedMessageRoute) {
+        const data = rawData as GuidedConversationMessageResponse;
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: data.message.messageText,
+          metadata: data.message.messageMetadata ?? {
+            guided_flow: true,
+            flow_type: conversationType?.replace(/^guided_/, ""),
+          },
+        }]);
+      } else {
+        const data = rawData as AskAssistantResponse;
+        if ((forcedCaseId ?? caseId) && data.conversationId && !conversationIdRef.current) {
+          conversationIdRef.current = data.conversationId;
+          setSavedToWorkspace(true);
+          queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+        }
 
-      if (data.overageWarning && typeof data.questionsUsed === "number" && typeof data.questionsLimit === "number") {
-        setProOverageNotice({
-          questionsUsed: data.questionsUsed,
-          questionsLimit: data.questionsLimit,
-        });
-      }
+        if (data.overageWarning && typeof data.questionsUsed === "number" && typeof data.questionsLimit === "number") {
+          setProOverageNotice({
+            questionsUsed: data.questionsUsed,
+            questionsLimit: data.questionsLimit,
+          });
+        }
 
-      setMessages((prev) => [...prev, {
-        role: "assistant",
-        content: data.summary,
-        structured: data,
-        metadata: isGuidedConversation
-          ? {
-              guided_flow: true,
-              flow_type: conversationType?.replace(/^guided_/, ""),
-            }
-          : undefined,
-      }]);
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: data.summary,
+          structured: data,
+          metadata: isGuidedConversation
+            ? {
+                guided_flow: true,
+                flow_type: conversationType?.replace(/^guided_/, ""),
+              }
+            : undefined,
+        }]);
+      }
       if (!user) {
         incrementGuestQuestionsUsed();
       }
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
 
-      if (!(forcedCaseId ?? caseId)) {
+      if (!isGuidedMessageRoute && !(forcedCaseId ?? caseId)) {
+        const data = rawData as AskAssistantResponse;
         ensureAndSave(trimmed, data.summary, data as unknown as Record<string, unknown>);
       }
     } catch (err: any) {
