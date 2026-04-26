@@ -22,6 +22,7 @@ import {
   HEARING_PREP_INITIAL_STATE,
   hearingPrepSystemPrompt,
   isGuidedConversationType,
+  postSnapshotSystemPrompt,
   type HearingPrepWaypointState,
 } from "./lib/guidedFlows";
 import {
@@ -282,6 +283,7 @@ function normalizeHearingPrepState(value: unknown): HearingPrepWaypointState {
       ? candidate.representation_status
       : null,
     child_safety_flag: Boolean(candidate.child_safety_flag),
+    snapshot_complete: Boolean(candidate.snapshot_complete),
     waypoints_complete: Array.isArray(candidate.waypoints_complete)
       ? candidate.waypoints_complete.filter((item): item is number => typeof item === "number")
       : [],
@@ -6185,13 +6187,19 @@ Do not add facts not present in the provided evidence.`,
       const existingMemories = await listCaseMemory(caseRecord.id, user.id);
 
       const currentState = normalizeHearingPrepState(conversation.guidedState);
-      const systemPrompt = hearingPrepSystemPrompt({
+      const promptParams = {
         case_name: caseRecord.title,
         jurisdiction_county: caseRecord.jurisdictionCounty ?? "Unknown County",
         jurisdiction_state: caseRecord.jurisdictionState ?? "Unknown State",
         days_until_hearing: computeDaysUntilHearing(currentState.hearing_date),
         waypoint_state_json: JSON.stringify(currentState),
-      });
+      };
+      const systemPrompt = currentState.snapshot_complete
+        ? postSnapshotSystemPrompt({
+            ...promptParams,
+            snapshotState: currentState,
+          })
+        : hearingPrepSystemPrompt(promptParams);
 
       const priorMessages = await getRecentConversationMessages(conversationId, 24);
       const openAIMessages = [
@@ -6222,6 +6230,9 @@ Do not add facts not present in the provided evidence.`,
         nextState.hearing_type !== null &&
         nextState.top_concern !== null &&
         nextState.waypoints_complete.length >= 4;
+      if (shouldTriggerSnapshot) {
+        nextState.snapshot_complete = true;
+      }
 
       const [savedUserMessage, savedAssistantMessage] = await Promise.all([
         appendConversationMessage(conversationId, "user", parsed.data.content, {
