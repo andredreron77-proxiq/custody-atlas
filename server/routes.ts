@@ -5368,16 +5368,52 @@ Do not add facts not present in the provided evidence.`,
         return res.status(404).json({ error: "Case not found." });
       }
 
-      const saved = await upsertCaseMemory(
-        user.id,
-        caseId,
-        "hearing_prep_snapshot",
-        JSON.stringify({
-          conversationId: parsed.data.conversationId,
-          snapshotState: parsed.data.snapshotState ?? null,
-          actions: parsed.data.actions ?? [],
-        }),
-      );
+      const snapshotContent = JSON.stringify({
+        conversationId: parsed.data.conversationId,
+        snapshotState: parsed.data.snapshotState ?? null,
+        actions: parsed.data.actions ?? [],
+        savedAt: new Date().toISOString(),
+      });
+
+      console.log("[Atlas] saving snapshot for case:", caseId, "memory_type field exists in case_memory?");
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Snapshot storage is unavailable." });
+      }
+
+      const { data: updatedRows, error: updateError } = await supabaseAdmin
+        .from("case_memory")
+        .update({ content: snapshotContent })
+        .eq("case_id", caseId)
+        .eq("user_id", user.id)
+        .eq("memory_type", "hearing_prep_snapshot")
+        .select()
+        .limit(1);
+
+      if (updateError) {
+        console.error("[Atlas] snapshot save update error:", updateError);
+      }
+
+      let saved = Array.isArray(updatedRows) && updatedRows.length > 0 ? updatedRows[0] : null;
+
+      if (!saved) {
+        const { data: insertedRow, error: insertError } = await supabaseAdmin
+          .from("case_memory")
+          .insert({
+            case_id: caseId,
+            user_id: user.id,
+            memory_type: "hearing_prep_snapshot",
+            content: snapshotContent,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error("[Atlas] snapshot save insert error:", insertError);
+        } else {
+          saved = insertedRow;
+        }
+      }
 
       if (!saved) {
         return res.status(500).json({ error: "Failed to save snapshot." });
@@ -5385,7 +5421,8 @@ Do not add facts not present in the provided evidence.`,
 
       return res.json({ success: true });
     } catch (err) {
-      console.error("[cases] POST snapshot error:", err);
+      console.error("[Atlas] snapshot save error:", err);
+      console.error("[Atlas] snapshot save error detail:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
       return res.status(500).json({ error: "Failed to save snapshot." });
     }
   });
