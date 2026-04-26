@@ -6260,8 +6260,12 @@ Do not add facts not present in the provided evidence.`,
         waypoint_state_json: JSON.stringify(currentState),
       };
       const priorMessages = await getRecentConversationMessages(conversationId, 24);
+      const isPostSnapshot = currentState.snapshot_complete === true;
 
-      if (currentState.snapshot_complete === true) {
+      console.log("[Atlas] snapshot_complete flag:", currentState.snapshot_complete);
+      console.log("[Atlas] waypoints_complete:", currentState.waypoints_complete);
+
+      if (isPostSnapshot) {
         const nextPostSnapshotTurn = (currentState.post_snapshot_turn ?? 0) + 1;
         const systemPrompt = postSnapshotSystemPrompt({
           case_name: conversation.title ?? caseRecord.title ?? "Your case",
@@ -6377,10 +6381,19 @@ Do not add facts not present in the provided evidence.`,
         { role: "assistant", content: cleanedResponse },
       ], currentState));
       const shouldTriggerSnapshot =
-        !currentState.snapshot_complete &&
+        !isPostSnapshot &&
         nextState.hearing_type !== null &&
         nextState.top_concern !== null &&
         nextState.waypoints_complete.length >= 5;
+      console.log(
+        "[Atlas] triggerSnapshot check - hearing_type:",
+        nextState?.hearing_type,
+        "top_concern:",
+        nextState?.top_concern,
+        "waypoints length:",
+        nextState?.waypoints_complete?.length,
+      );
+      console.log("[Atlas] will trigger snapshot:", shouldTriggerSnapshot);
       if (shouldTriggerSnapshot) {
         nextState.snapshot_complete = true;
       }
