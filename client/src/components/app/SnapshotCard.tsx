@@ -58,10 +58,12 @@ export function SnapshotCard({
   caseName,
   jurisdictionLabel,
   snapshot,
+  actions,
 }: {
   caseName: string;
   jurisdictionLabel: string;
   snapshot: GuidedSnapshotState;
+  actions?: string[];
 }) {
   const recentChanges = Array.isArray(snapshot.recent_changes) && snapshot.recent_changes.length > 0
     ? snapshot.recent_changes.join(", ")
@@ -136,9 +138,19 @@ export function SnapshotCard({
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#b5922f]">
           What To Do This Week
         </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Atlas is building your action plan...
-        </p>
+        {Array.isArray(actions) && actions.length > 0 ? (
+          <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-foreground">
+            {actions.map((action, index) => (
+              <li key={`${index}-${action}`} className="leading-relaxed">
+                {action}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Atlas is building your action plan...
+          </p>
+        )}
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">

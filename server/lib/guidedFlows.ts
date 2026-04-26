@@ -408,7 +408,9 @@ Return ONLY valid JSON matching this schema exactly — no other text:
   waypoints_complete: number[]
 }
 Rules:
-- hearing_date: ISO date string if mentioned, otherwise null
+- hearing_date: ISO date string if a date is mentioned. If the user gives 
+  a month and day but no year, assume the year is 2026. If the date has 
+  already passed in 2026, use 2027. Return null if no date mentioned.
 - waypoints_complete: include waypoint number only when you have 
   a confident non-null value for its primary field:
   1=hearing_type, 2=top_concern, 3=current_schedule, 
@@ -435,5 +437,59 @@ Rules:
   } catch (err) {
     console.error("[Atlas] Failed to parse extracted waypoint state:", err);
     return currentState;
+  }
+}
+
+export async function generateSnapshotActions(
+  state: HearingPrepWaypointState,
+  caseName: string,
+): Promise<string[]> {
+  const fallbackActions = [
+    "Write down every interaction with your co-parent from the past 30 days — dates, times, and what was said or missed.",
+    "Gather any texts, emails, or documents that show your involvement in your children's daily life.",
+    "Write a one-page summary of what you want the judge to know. Three points, no more.",
+  ];
+
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 400,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You generate 3 specific, concrete action items for a parent preparing
+for a custody hearing. Each action must be something they can do THIS
+WEEK. Be specific to their situation. No legal advice. No 'consult a
+lawyer.' No generic platitudes. Return ONLY a JSON array of 3 strings,
+no other text, no markdown.`,
+        },
+        {
+          role: "user",
+          content: `Generate 3 action items for this parent:
+Hearing type: ${state.hearing_type ?? "unknown"}
+Their concern: ${state.top_concern ?? "unknown"}
+Current arrangement: ${state.current_schedule ?? "unknown"}
+Recent changes: ${Array.isArray(state.recent_changes) ? state.recent_changes.join(", ") : "none"}
+Representation: ${state.representation_status ?? "unknown"}
+Jurisdiction: Georgia
+Case name: ${caseName}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return fallbackActions;
+
+    const parsed = JSON.parse(rawContent);
+    if (Array.isArray(parsed) && parsed.length === 3 && parsed.every((item) => typeof item === "string")) {
+      return parsed;
+    }
+
+    return fallbackActions;
+  } catch (err) {
+    console.error("[Atlas] Failed to generate snapshot actions:", err);
+    return fallbackActions;
   }
 }

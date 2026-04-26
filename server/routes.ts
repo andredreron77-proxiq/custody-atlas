@@ -17,6 +17,7 @@ import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
 import {
   extractWaypointStateFromConversation,
+  generateSnapshotActions,
   getGuidedFlowByConversationType,
   getGuidedFlowBySituationType,
   HEARING_PREP_INITIAL_STATE,
@@ -6236,7 +6237,7 @@ Do not add facts not present in the provided evidence.`,
         !currentState.snapshot_complete &&
         nextState.hearing_type !== null &&
         nextState.top_concern !== null &&
-        nextState.waypoints_complete.length >= 4;
+        nextState.waypoints_complete.length >= 5;
       if (shouldTriggerSnapshot) {
         nextState.snapshot_complete = true;
       }
@@ -6286,6 +6287,9 @@ Do not add facts not present in the provided evidence.`,
       }).catch((err) => console.error("[guided] memory refresh failed:", err));
 
       await trackQuestion(req);
+      const snapshotActions = shouldTriggerSnapshot
+        ? await generateSnapshotActions(nextState, caseRecord.title)
+        : [];
       saveQuestion(user.id, {
         jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",
         jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
@@ -6294,6 +6298,7 @@ Do not add facts not present in the provided evidence.`,
           summary: cleanedResponse,
           triggerSnapshot: shouldTriggerSnapshot,
           snapshotState: nextState,
+          actions: snapshotActions,
         },
       }).catch(() => {});
 
@@ -6301,6 +6306,7 @@ Do not add facts not present in the provided evidence.`,
         console.log("[Atlas] Snapshot triggered, state:", JSON.stringify(nextState));
         responseBody.triggerSnapshot = true;
         responseBody.snapshotState = nextState;
+        responseBody.actions = snapshotActions;
       }
 
       responseBody.message = {

@@ -98,6 +98,7 @@ type GuidedConversationMessageResponse = {
   };
   triggerSnapshot?: boolean;
   snapshotState?: Record<string, unknown>;
+  actions?: string[];
 };
 
 type GuidedMessageMetadata = {
@@ -105,6 +106,7 @@ type GuidedMessageMetadata = {
   flow_type?: string;
   trigger_snapshot?: boolean;
   snapshot_state?: GuidedSnapshotState;
+  snapshot_actions?: string[];
 };
 
 type GuidedInsight = {
@@ -1161,6 +1163,7 @@ export function ChatBox({
             ...(data.triggerSnapshot ? {
               trigger_snapshot: true,
               snapshot_state: data.snapshotState as GuidedSnapshotState | undefined,
+              snapshot_actions: Array.isArray(data.actions) ? data.actions : undefined,
             } : {}),
           },
         }]);
@@ -1456,6 +1459,7 @@ export function ChatBox({
                 const chipOptions = isAssistant ? extractGuidedReplyChips(chipSourceText) : [];
                 const nextStepCard = isAssistant && i >= 2 ? detectNextStepCard(msg, jurisdiction, caseId) : null;
                 const snapshotState = (msg.metadata as GuidedMessageMetadata | undefined)?.snapshot_state;
+                const snapshotActions = (msg.metadata as GuidedMessageMetadata | undefined)?.snapshot_actions;
                 const shouldRenderSnapshot =
                   Boolean((msg.metadata as GuidedMessageMetadata | undefined)?.trigger_snapshot) &&
                   Boolean(snapshotState);
@@ -1653,6 +1657,7 @@ export function ChatBox({
                             caseName={snapshotCaseName}
                             jurisdictionLabel={snapshotJurisdictionLabel}
                             snapshot={snapshotState!}
+                            actions={snapshotActions}
                           />
                         ) : null}
                       </div>
