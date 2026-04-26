@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
+import ReactMarkdown from "react-markdown";
 import {
   Send, Loader2, Bot, User, AlertTriangle,
   CheckCircle2, HelpCircle, Scale, ShieldAlert, ChevronRight,
@@ -163,6 +164,53 @@ const FOLLOW_UP_QUESTIONS = [
   "How long does the custody process typically take?",
   "What happens if we can't agree outside of court?",
 ];
+
+function stripAtlasHiddenBlocks(content: string): string {
+  return content
+    .replace(/<!--ATLAS_STATE:[\s\S]*?-->/g, "")
+    .replace(/<!--ATLAS_TRIGGER:[\s\S]*?-->/g, "")
+    .trim();
+}
+
+function MarkdownAssistantMessage({
+  content,
+  className,
+}: {
+  content: string;
+  className?: string;
+}) {
+  const cleaned = stripAtlasHiddenBlocks(content);
+
+  return (
+    <div className={cn("markdown-body space-y-3 text-sm text-foreground", className)}>
+      <ReactMarkdown
+        components={{
+          p: ({ children }) => <p className="leading-relaxed">{children}</p>,
+          ul: ({ children }) => <ul className="list-disc space-y-1 pl-5">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal space-y-1 pl-5">{children}</ol>,
+          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              className="text-primary underline underline-offset-2"
+              target={href?.startsWith("/") ? undefined : "_blank"}
+              rel={href?.startsWith("/") ? undefined : "noreferrer"}
+            >
+              {children}
+            </a>
+          ),
+          code: ({ children }) => (
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">{children}</code>
+          ),
+        }}
+      >
+        {cleaned}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function CautionsList({ cautions }: { cautions: string[] }) {
   if (!cautions || cautions.length === 0) return null;
@@ -386,9 +434,9 @@ function StructuredResponse({
             .map((paragraph) => paragraph.trim())
             .filter(Boolean)
             .map((paragraph, index) => (
-              <p key={index} className="text-[14.5px] leading-[1.75] text-foreground/88">
+              <div key={index} className="text-[14.5px] leading-[1.75] text-foreground/88">
                 <AnimatedAssistantText content={paragraph} animate={false} />
-              </p>
+              </div>
             ))}
         </div>
       )}
@@ -742,7 +790,7 @@ function AnimatedAssistantText({
     };
   }, [animate, content]);
 
-  return <>{displayedText}</>;
+  return <MarkdownAssistantMessage content={displayedText} />;
 }
 
 function GuidedReplyChips({
@@ -1571,7 +1619,7 @@ export function ChatBox({
                                 : "p-3.5"
                             }`}
                           >
-                            <p className="text-sm leading-relaxed">
+                            <div className="text-sm leading-relaxed">
                               <AnimatedAssistantText
                                 content={msg.content}
                                 animate={animateAssistant}
@@ -1579,7 +1627,7 @@ export function ChatBox({
                                   setIsAnimating(false);
                                 }}
                               />
-                            </p>
+                            </div>
                           </CardContent>
                         </Card>
                         {shouldShowGuidedAffordances ? (
