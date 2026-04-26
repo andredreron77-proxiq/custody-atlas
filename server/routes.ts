@@ -285,6 +285,9 @@ function normalizeHearingPrepState(value: unknown): HearingPrepWaypointState {
       : null,
     child_safety_flag: Boolean(candidate.child_safety_flag),
     snapshot_complete: Boolean(candidate.snapshot_complete),
+    post_snapshot_turn: typeof candidate.post_snapshot_turn === "number" && Number.isFinite(candidate.post_snapshot_turn)
+      ? candidate.post_snapshot_turn
+      : 0,
     waypoints_complete: Array.isArray(candidate.waypoints_complete)
       ? candidate.waypoints_complete.filter((item): item is number => typeof item === "number")
       : [],
@@ -6259,11 +6262,13 @@ Do not add facts not present in the provided evidence.`,
       const priorMessages = await getRecentConversationMessages(conversationId, 24);
 
       if (currentState.snapshot_complete === true) {
+        const nextPostSnapshotTurn = (currentState.post_snapshot_turn ?? 0) + 1;
         const systemPrompt = postSnapshotSystemPrompt({
           case_name: conversation.title ?? caseRecord.title ?? "Your case",
           jurisdiction_county: conversation.jurisdictionCounty ?? "your county",
           jurisdiction_state: conversation.jurisdictionState ?? "your state",
           snapshotState: currentState,
+          post_snapshot_turn: nextPostSnapshotTurn,
         });
 
         const openAIMessages = [
@@ -6304,6 +6309,11 @@ Do not add facts not present in the provided evidence.`,
         if (!savedAssistantMessage || !savedUserMessage) {
           return res.status(500).json({ error: "Failed to persist conversation messages." });
         }
+
+        await updateConversationGuidedState(conversationId, user.id, {
+          ...currentState,
+          post_snapshot_turn: nextPostSnapshotTurn,
+        } as unknown as Record<string, unknown>);
 
         refreshGuidedCaseMemory({
           userId: user.id,
