@@ -5369,7 +5369,6 @@ Do not add facts not present in the provided evidence.`,
       }
 
       const snapshotContent = JSON.stringify({
-        conversationId: parsed.data.conversationId,
         snapshotState: parsed.data.snapshotState ?? null,
         actions: parsed.data.actions ?? [],
         savedAt: new Date().toISOString(),
@@ -5381,39 +5380,22 @@ Do not add facts not present in the provided evidence.`,
         return res.status(500).json({ error: "Snapshot storage is unavailable." });
       }
 
-      const { data: updatedRows, error: updateError } = await supabaseAdmin
+      const { data: insertedRow, error: insertError } = await supabaseAdmin
         .from("case_memory")
-        .update({ content: snapshotContent })
-        .eq("case_id", caseId)
-        .eq("user_id", user.id)
-        .eq("memory_type", "hearing_prep_snapshot")
+        .insert({
+          case_id: caseId,
+          memory_summary: snapshotContent,
+          key_open_questions: null,
+          key_risks: null,
+        })
         .select()
-        .limit(1);
+        .single();
 
-      if (updateError) {
-        console.error("[Atlas] snapshot save update error:", updateError);
+      if (insertError) {
+        console.error("[Atlas] snapshot save insert error:", insertError);
       }
 
-      let saved = Array.isArray(updatedRows) && updatedRows.length > 0 ? updatedRows[0] : null;
-
-      if (!saved) {
-        const { data: insertedRow, error: insertError } = await supabaseAdmin
-          .from("case_memory")
-          .insert({
-            case_id: caseId,
-            user_id: user.id,
-            memory_type: "hearing_prep_snapshot",
-            content: snapshotContent,
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error("[Atlas] snapshot save insert error:", insertError);
-        } else {
-          saved = insertedRow;
-        }
-      }
+      const saved = insertedRow ?? null;
 
       if (!saved) {
         return res.status(500).json({ error: "Failed to save snapshot." });
