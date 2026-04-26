@@ -46,6 +46,110 @@ const ALL_STATES = [
 
 const STATES_WITH_DATA = new Set(ALL_STATES);
 
+function useReveal<T extends HTMLElement = HTMLDivElement>() {
+  const ref = useRef<T | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!IS_DEV) {
+      setVisible(true);
+      return;
+    }
+
+    const el = ref.current;
+    if (!el) return;
+
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -48px 0px" },
+    );
+
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return { ref, visible };
+}
+
+function DevReveal({
+  children,
+  delay = 0,
+  className = "",
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) {
+  const { ref, visible } = useReveal();
+
+  if (!IS_DEV) {
+    return <div className={className}>{children}</div>;
+  }
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(14px)",
+        transition: `opacity 650ms cubic-bezier(0.16, 1, 0.3, 1) ${delay}ms, transform 650ms cubic-bezier(0.16, 1, 0.3, 1) ${delay}ms`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function CountUp({ to, duration = 1200 }: { to: number; duration?: number }) {
+  const { ref, visible } = useReveal<HTMLSpanElement>();
+  const [value, setValue] = useState(IS_DEV ? 0 : to);
+
+  useEffect(() => {
+    if (!IS_DEV || !visible) return;
+    const start = performance.now();
+    let frame = 0;
+
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(eased * to));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [visible, to, duration]);
+
+  return <span ref={ref}>{value}</span>;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      className="text-[11px] font-semibold uppercase tracking-[0.14em] mb-3"
+      style={{ color: GOLD }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function Divider() {
+  return (
+    <div
+      className="w-8 h-[2px] rounded-full mb-5"
+      style={{ background: GOLD }}
+      aria-hidden="true"
+    />
+  );
+}
+
 function truncate(text: string, maxLen: number) {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen).replace(/\s+\S*$/, "") + "…";
@@ -1330,50 +1434,82 @@ export default function CustodyMapPage() {
   const showComparisonPanel = mode === "compare" && stateA && stateB;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+    <div
+      className={`max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6 ${IS_DEV ? "relative" : ""}`}
+      style={IS_DEV ? { background: `linear-gradient(180deg, ${WARM_BG} 0%, transparent 220px)` } : undefined}
+    >
+      {IS_DEV ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-56 rounded-[2rem]"
+          style={{
+            backgroundImage: "radial-gradient(circle at 50% 0%, rgba(181, 146, 47, 0.08), transparent 62%)",
+          }}
+        />
+      ) : null}
 
       {/* Page header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#b5922f]">
-            Custody Map
-          </p>
-          <h1 className="font-serif text-2xl font-semibold leading-tight text-foreground md:text-3xl" data-testid="page-title">
-            Custody Law Map
-          </h1>
-          <p className="mt-2 max-w-prose text-[15px] leading-relaxed text-muted-foreground">
-            {mode === "explore"
-              ? "Explore how custody laws differ across states. Click any state to see a summary."
-              : "Select two states on the map — or use the dropdowns — to compare custody laws side by side."}
-          </p>
+      <DevReveal>
+        <div className={IS_DEV ? "rounded-3xl border border-slate-200/80 bg-white/90 px-5 py-6 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-950/85" : ""}>
+          {IS_DEV ? (
+            <>
+              <Divider />
+              <SectionLabel>Custody Map</SectionLabel>
+            </>
+          ) : null}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              {!IS_DEV ? (
+                <span className="mb-2.5 inline-flex items-center rounded-full border border-[#dcc98a] bg-[#fdf9ee] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-widest text-[#b5922f] dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
+                  Custody Map
+                </span>
+              ) : null}
+              <h1 className="font-serif text-2xl font-semibold leading-tight text-foreground md:text-3xl" data-testid="page-title">
+                Custody Law Map
+              </h1>
+              <p className="mt-2 max-w-prose text-[15px] leading-relaxed text-muted-foreground">
+                {mode === "explore"
+                  ? "Explore how custody laws differ across states. Click any state to see a summary."
+                  : "Select two states on the map — or use the dropdowns — to compare custody laws side by side."}
+              </p>
+            </div>
+            <div
+              className={`flex gap-1 rounded-lg p-1 w-fit ${IS_DEV ? "border border-slate-200 bg-[#f8fafc] dark:border-slate-700 dark:bg-slate-900/70" : "bg-muted"}`}
+              role="tablist"
+              aria-label="Map mode"
+            >
+              <button
+                role="tab"
+                aria-selected={mode === "explore"}
+                onClick={() => switchMode("explore")}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  mode === "explore"
+                    ? "bg-white dark:bg-card shadow-sm text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="tab-explore"
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                Explore
+              </button>
+              <button
+                role="tab"
+                aria-selected={mode === "compare"}
+                onClick={() => switchMode("compare")}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  mode === "compare"
+                    ? "bg-white dark:bg-card shadow-sm text-primary font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid="tab-compare"
+              >
+                <GitCompare className="w-3.5 h-3.5" />
+                Compare States
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit" role="tablist" aria-label="Map mode">
-          <button
-            role="tab"
-            aria-selected={mode === "explore"}
-            onClick={() => switchMode("explore")}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mode === "explore" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-explore"
-          >
-            <MapIcon className="w-3.5 h-3.5" />
-            Explore
-          </button>
-          <button
-            role="tab"
-            aria-selected={mode === "compare"}
-            onClick={() => switchMode("compare")}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mode === "compare" ? "bg-white dark:bg-card shadow-sm text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
-            }`}
-            data-testid="tab-compare"
-          >
-            <GitCompare className="w-3.5 h-3.5" />
-            Compare States
-          </button>
-        </div>
-      </div>
+      </DevReveal>
 
       {/* ── Context header (shown when a state or pair is active) ────── */}
       {mode === "compare" && stateA && stateB && (
@@ -1392,11 +1528,12 @@ export default function CustodyMapPage() {
 
       {/* ── EXPLORE MODE: Legend + Search ─────────────────────────────── */}
       {mode === "explore" && (
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <DevReveal delay={60}>
+        <div className={`flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between ${IS_DEV ? "rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-4 shadow-sm dark:border-slate-700/70 dark:bg-slate-950/85" : ""}`}>
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm bg-[#c7d5f0] border border-[#9aafd8] dark:bg-[#5b8db8] dark:border-[#78a7ce] inline-block" />
-              <span className="text-xs text-muted-foreground">Data available ({STATES_WITH_DATA.size} states)</span>
+              <span className="text-xs text-muted-foreground">Data available ({IS_DEV ? <CountUp to={STATES_WITH_DATA.size} /> : STATES_WITH_DATA.size} states)</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm bg-[#e2e8f0] border border-[#cbd5e1] dark:bg-[#2d3748] dark:border-[#4a5568] inline-block" />
@@ -1456,10 +1593,12 @@ export default function CustodyMapPage() {
             )}
           </div>
         </div>
+        </DevReveal>
       )}
 
       {/* ── COMPARE MODE: Two dropdowns + legend ──────────────────────── */}
       {mode === "compare" && (
+        <DevReveal delay={60}>
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-xl border bg-card shadow-sm">
             <span className="text-sm font-medium text-muted-foreground flex-shrink-0">Compare:</span>
@@ -1515,9 +1654,11 @@ export default function CustodyMapPage() {
             )}
           </div>
         </div>
+        </DevReveal>
       )}
 
       {/* ── Map + Panel grid ───────────────────────────────────────────── */}
+      <DevReveal delay={120}>
       <div className={`grid gap-5 items-start ${
         mode === "compare" && showComparisonPanel
           ? "grid-cols-1 lg:grid-cols-[1fr_460px]"
@@ -1525,76 +1666,129 @@ export default function CustodyMapPage() {
       }`}>
 
         {/* Map card */}
-        <Card className="overflow-hidden shadow-sm" data-testid="card-map">
-          <CardContent className="p-0">
-            {/* Hover preview bar */}
-            {hoveredState ? (
-              <div className="px-4 pt-3 pb-1 border-b bg-muted/30 flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-sm font-medium" data-testid="text-hovered-state">{hoveredState}</span>
-                {mode === "compare" && stateA && stateB ? (
-                  <span className="text-xs text-muted-foreground ml-1">· Click to rotate selection</span>
-                ) : mode === "compare" ? (
-                  STATES_WITH_DATA.has(hoveredState)
-                    ? <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200 ml-1">Click to select</Badge>
-                    : <span className="text-xs text-muted-foreground">· Coming soon</span>
-                ) : (
-                  STATES_WITH_DATA.has(hoveredState)
-                    ? <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200 ml-1">Click to view</Badge>
-                    : <span className="text-xs text-muted-foreground">· Coming soon</span>
-                )}
-              </div>
-            ) : (
-              <div className="px-4 pt-3 pb-1 border-b bg-muted/30">
-                <span className="text-xs text-muted-foreground">
-                  {mode === "explore"
-                    ? "Hover over a state to preview · Click to open details"
-                    : "Click a state to select it for comparison · First click = State A, second = State B"}
-                </span>
-              </div>
-            )}
+        <Card
+          className={`overflow-hidden shadow-sm ${IS_DEV ? "border-slate-200/80 bg-white/95 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.35)] dark:border-slate-700/70 dark:bg-slate-950/90" : ""}`}
+          data-testid="card-map"
+        >
+          <CardContent className={`p-0 ${IS_DEV ? "relative" : ""}`}>
+            {IS_DEV ? (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 h-40"
+                style={{
+                  backgroundImage: "radial-gradient(circle at 50% 0%, rgba(181, 146, 47, 0.08), transparent 70%)",
+                }}
+              />
+            ) : null}
 
-            <ComposableMap
-              projection="geoAlbersUsa"
-              style={{ width: "100%", height: "auto" }}
-              data-testid="svg-map"
-            >
-              <Geographies geography={GEO_URL}>
-                {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
-                  geographies.map((geo: { rsmKey: string; properties: { name: string } }) => {
-                    const stateName: string = geo.properties.name;
-                    const fill = getStateFill({
-                      mode,
-                      stateName,
-                      selectedState,
-                      stateA,
-                      stateB,
-                      hoveredState,
-                      isDark,
-                    });
-                    return (
-                      <Geography
-                        key={geo.rsmKey}
-                        geography={geo}
-                        fill={fill}
-                        stroke="#ffffff"
-                        strokeWidth={0.75}
-                        style={{
-                          default: { outline: "none", cursor: "pointer", transition: "fill 0.15s ease" },
-                          hover: { outline: "none", cursor: "pointer", opacity: 0.9 },
-                          pressed: { outline: "none", opacity: 0.8 },
-                        }}
-                        onClick={() => handleMapClick(stateName)}
-                        onMouseEnter={() => setHoveredState(stateName)}
-                        onMouseLeave={() => setHoveredState(null)}
-                        data-testid={`state-${stateName.toLowerCase().replace(/\s+/g, "-")}`}
-                        aria-label={stateName}
-                      />
-                    );
-                  })
-                }
-              </Geographies>
-            </ComposableMap>
+            <div className={IS_DEV ? "relative z-10" : ""}>
+              {IS_DEV ? (
+                <div className="px-4 pt-4 pb-2 border-b border-slate-200/80 bg-[#fbfaf7]/90 dark:border-slate-700/70 dark:bg-slate-950/85">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+                        Interactive Map
+                      </p>
+                      <p className="text-sm text-slate-600 dark:text-slate-300">
+                        {mode === "explore"
+                          ? "Move across the map to preview each state, then click for a plain-English summary."
+                          : "Select two states to compare how custody rules change across jurisdictions."}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900">
+                        <span className="w-2 h-2 rounded-full" style={{ background: NAVY }} />
+                        Select
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900">
+                        <span className="w-2 h-2 rounded-full" style={{ background: GOLD }} />
+                        Preview
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Hover preview bar */}
+              {hoveredState ? (
+                <div className={`px-4 pt-3 pb-2 border-b flex items-center gap-2 ${IS_DEV ? "bg-white/90 border-slate-200/80 dark:border-slate-700/70 dark:bg-slate-950/85" : "bg-muted/30"}`}>
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-full ${IS_DEV ? "bg-amber-50 border border-amber-200 dark:border-amber-800/50 dark:bg-amber-950/30" : ""}`}>
+                    <MapPin className={`w-3.5 h-3.5 ${IS_DEV ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`} />
+                  </div>
+                  <span className={`text-sm font-medium ${IS_DEV ? "text-slate-900 dark:text-slate-100" : ""}`} data-testid="text-hovered-state">{hoveredState}</span>
+                  {mode === "compare" && stateA && stateB ? (
+                    <span className="text-xs text-muted-foreground ml-1">· Click to rotate selection</span>
+                  ) : mode === "compare" ? (
+                    STATES_WITH_DATA.has(hoveredState)
+                      ? <Badge className={`text-xs ml-1 ${IS_DEV ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-blue-100 text-blue-700 border-blue-200"}`}>Click to select</Badge>
+                      : <span className="text-xs text-muted-foreground">· Coming soon</span>
+                  ) : (
+                    STATES_WITH_DATA.has(hoveredState)
+                      ? <Badge className={`text-xs ml-1 ${IS_DEV ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-blue-100 text-blue-700 border-blue-200"}`}>Click to view</Badge>
+                      : <span className="text-xs text-muted-foreground">· Coming soon</span>
+                  )}
+                </div>
+              ) : (
+                <div className={`px-4 pt-3 pb-2 border-b ${IS_DEV ? "bg-white/90 border-slate-200/80 dark:border-slate-700/70 dark:bg-slate-950/85" : "bg-muted/30"}`}>
+                  <span className={`${IS_DEV ? "text-sm text-slate-600 dark:text-slate-300" : "text-xs text-muted-foreground"}`}>
+                    {mode === "explore"
+                      ? "Hover over a state to preview · Click to open details"
+                      : "Click a state to select it for comparison · First click = State A, second = State B"}
+                  </span>
+                </div>
+              )}
+
+              <div className={IS_DEV ? "bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 sm:p-4 dark:bg-[linear-gradient(180deg,#020617_0%,#0f172a_100%)]" : ""}>
+                <div className={IS_DEV ? "rounded-2xl border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.12)]" : ""}>
+                  <ComposableMap
+                    projection="geoAlbersUsa"
+                    style={{ width: "100%", height: "auto" }}
+                    data-testid="svg-map"
+                  >
+                    <Geographies geography={GEO_URL}>
+                      {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
+                        geographies.map((geo: { rsmKey: string; properties: { name: string } }) => {
+                          const stateName: string = geo.properties.name;
+                          const fill = getStateFill({
+                            mode,
+                            stateName,
+                            selectedState,
+                            stateA,
+                            stateB,
+                            hoveredState,
+                            isDark,
+                          });
+                          return (
+                            <Geography
+                              key={geo.rsmKey}
+                              geography={geo}
+                              fill={fill}
+                              stroke="#ffffff"
+                              strokeWidth={0.75}
+                              style={{
+                                default: {
+                                  outline: "none",
+                                  cursor: "pointer",
+                                  transition: IS_DEV ? "fill 0.2s ease, transform 0.2s ease, filter 0.2s ease" : "fill 0.15s ease",
+                                  filter: IS_DEV && hoveredState === stateName ? "drop-shadow(0 0 6px rgba(181, 146, 47, 0.22))" : "none",
+                                },
+                                hover: { outline: "none", cursor: "pointer", opacity: 0.9 },
+                                pressed: { outline: "none", opacity: 0.8 },
+                              }}
+                              onClick={() => handleMapClick(stateName)}
+                              onMouseEnter={() => setHoveredState(stateName)}
+                              onMouseLeave={() => setHoveredState(null)}
+                              data-testid={`state-${stateName.toLowerCase().replace(/\s+/g, "-")}`}
+                              aria-label={stateName}
+                            />
+                          );
+                        })
+                      }
+                    </Geographies>
+                  </ComposableMap>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -1671,20 +1865,23 @@ export default function CustodyMapPage() {
           )}
         </div>
       </div>
-
+      </DevReveal>
 
       {mode === "explore" ? (
-        <div className="space-y-8">
-          <GuestStateQAPanel selectedState={selectedState} />
-          <ScenarioPreviewSection />
-          <p className="text-center text-xs text-muted-foreground">
-            Scenario responses are illustrative examples. Atlas responses are general information only — not legal advice for your specific situation.
-          </p>
-        </div>
+        <DevReveal delay={150}>
+          <div className="space-y-8">
+            <GuestStateQAPanel selectedState={selectedState} />
+            <ScenarioPreviewSection />
+            <p className="text-center text-xs text-muted-foreground">
+              Scenario responses are illustrative examples. Atlas responses are general information only — not legal advice for your specific situation.
+            </p>
+          </div>
+        </DevReveal>
       ) : null}
 
       {/* Trust message */}
-      <div className="rounded-xl border bg-card p-4 flex gap-3 items-start shadow-sm" data-testid="card-trust-message">
+      <DevReveal delay={180}>
+      <div className={`rounded-xl border p-4 flex gap-3 items-start shadow-sm ${IS_DEV ? "bg-white/95 border-slate-200/80 dark:border-slate-700/70 dark:bg-slate-950/90" : "bg-card"}`} data-testid="card-trust-message">
         <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
           <Info className="w-4 h-4 text-primary" />
         </div>
@@ -1694,10 +1891,12 @@ export default function CustodyMapPage() {
           licensed family law attorney.
         </p>
       </div>
+      </DevReveal>
 
       {/* Bottom CTAs */}
+      <DevReveal delay={240}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Card className="shadow-sm hover-elevate" data-testid="card-cta-ai">
+        <Card className={`shadow-sm hover-elevate ${IS_DEV ? "border-slate-200/80 bg-white/95 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700/70 dark:bg-slate-950/90" : ""}`} data-testid="card-cta-ai">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
               <MessageSquare className="w-5 h-5 text-primary" />
@@ -1713,7 +1912,7 @@ export default function CustodyMapPage() {
             </Link>
           </CardContent>
         </Card>
-        <Card className="shadow-sm hover-elevate" data-testid="card-cta-location">
+        <Card className={`shadow-sm hover-elevate ${IS_DEV ? "border-slate-200/80 bg-white/95 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700/70 dark:bg-slate-950/90" : ""}`} data-testid="card-cta-location">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-md bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center flex-shrink-0">
               <MapPin className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
@@ -1730,6 +1929,7 @@ export default function CustodyMapPage() {
           </CardContent>
         </Card>
       </div>
+      </DevReveal>
 
     </div>
   );
