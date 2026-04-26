@@ -6291,9 +6291,15 @@ Do not add facts not present in the provided evidence.`,
       }).catch(() => {});
 
       if (shouldTriggerSnapshot) {
+        console.log("[Atlas] Snapshot triggered, state:", JSON.stringify(nextState));
         responseBody.triggerSnapshot = true;
         responseBody.snapshotState = nextState;
       }
+
+      responseBody.message = {
+        ...savedAssistantMessage,
+        content: extracted.cleanResponse,
+      };
 
       return res.status(201).json(responseBody);
     } catch (err) {

@@ -90,7 +90,8 @@ type GuidedConversationMessageResponse = {
     conversationId: string;
     caseId: string | null;
     role: "assistant";
-    messageText: string;
+    content: string;
+    messageText?: string;
     structuredResponseJson: Record<string, unknown> | null;
     messageMetadata: Record<string, unknown> | null;
     createdAt: string;
@@ -1133,6 +1134,9 @@ export function ChatBox({
       }
 
       const rawData: AskAssistantResponse | CaseSelectionRequiredResponse | GuidedConversationMessageResponse = await res.json();
+      if (isGuidedMessageRoute) {
+        console.log("[Atlas client] guided response:", JSON.stringify(rawData));
+      }
 
       if (!isGuidedMessageRoute && (rawData as CaseSelectionRequiredResponse).type === "case_selection_required") {
         const selection = rawData as CaseSelectionRequiredResponse;
@@ -1149,7 +1153,7 @@ export function ChatBox({
         const data = rawData as GuidedConversationMessageResponse;
         setMessages((prev) => [...prev, {
           role: "assistant",
-          content: data.message.messageText,
+          content: data.message.content ?? data.message.messageText ?? "",
           metadata: {
             ...(data.message.messageMetadata ?? {}),
             guided_flow: true,
