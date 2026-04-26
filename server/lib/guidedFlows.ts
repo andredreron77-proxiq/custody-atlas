@@ -307,8 +307,6 @@ export function postSnapshotSystemPrompt(params: {
   case_name: string;
   jurisdiction_county: string;
   jurisdiction_state: string;
-  days_until_hearing: string | number | null;
-  waypoint_state_json: string;
   snapshotState: HearingPrepWaypointState;
 }): string {
   return `You are Atlas — an AI guide for parents navigating custody proceedings.
@@ -320,10 +318,6 @@ they can do about it.
 CURRENT SESSION: Hearing Prep — Post Snapshot
 Case: ${params.case_name}
 Jurisdiction: ${params.jurisdiction_county}, ${params.jurisdiction_state}
-Days until hearing: ${params.days_until_hearing ?? "unknown"}
-
-RESOLVED SNAPSHOT STATE:
-${params.waypoint_state_json}
 
 ---
 
@@ -363,10 +357,11 @@ helping the parent keep moving.
 
 RULE 6: UPGRADE TRANSITION
 After answering, always end with this exact natural transition:
-"Want to go deeper on this? With Pro you can keep building your full prep — 200 questions, unlimited documents."
+"There's more to build here. With Pro you can keep going — 200 questions, unlimited documents."
 
 RULE 7: DO NOT CLOSE THE CONVERSATION
-Never say "feel free to reach out."
+Never say "feel free."
+Never say "I'm here to help."
 Never imply the conversation is over.
 Never sign off.
 

@@ -6256,14 +6256,86 @@ Do not add facts not present in the provided evidence.`,
         days_until_hearing: computeDaysUntilHearing(currentState.hearing_date),
         waypoint_state_json: JSON.stringify(currentState),
       };
-      const systemPrompt = currentState.snapshot_complete
-        ? postSnapshotSystemPrompt({
-            ...promptParams,
-            snapshotState: currentState,
-          })
-        : hearingPrepSystemPrompt(promptParams);
-
       const priorMessages = await getRecentConversationMessages(conversationId, 24);
+
+      if (currentState.snapshot_complete === true) {
+        const systemPrompt = postSnapshotSystemPrompt({
+          case_name: conversation.title ?? caseRecord.title ?? "Your case",
+          jurisdiction_county: conversation.jurisdictionCounty ?? "your county",
+          jurisdiction_state: conversation.jurisdictionState ?? "your state",
+          snapshotState: currentState,
+        });
+
+        const openAIMessages = [
+          { role: "system" as const, content: systemPrompt },
+          ...priorMessages.map((message) => ({
+            role: message.role as "user" | "assistant",
+            content: message.messageText,
+          })),
+          { role: "user" as const, content: parsed.data.content },
+        ];
+
+        const completion = await getOpenAIClient().chat.completions.create({
+          model: "gpt-4o",
+          messages: openAIMessages,
+          max_tokens: 900,
+          temperature: 0.4,
+        });
+
+        const rawResponse = completion.choices[0]?.message?.content?.trim();
+        if (!rawResponse) {
+          return res.status(500).json({ error: "No response received from AI service." });
+        }
+
+        const cleanedResponse = rawResponse;
+        const [savedUserMessage, savedAssistantMessage] = await Promise.all([
+          appendConversationMessage(conversationId, "user", parsed.data.content, {
+            caseId: caseRecord.id,
+          }),
+          appendConversationMessage(conversationId, "assistant", cleanedResponse, {
+            caseId: caseRecord.id,
+            messageMetadata: {
+              guided_flow: true,
+              flow_type: "hearing_prep",
+            },
+          }),
+        ]);
+
+        if (!savedAssistantMessage || !savedUserMessage) {
+          return res.status(500).json({ error: "Failed to persist conversation messages." });
+        }
+
+        refreshGuidedCaseMemory({
+          userId: user.id,
+          caseId: caseRecord.id,
+          conversationType: conversation.threadType,
+          userQuestion: parsed.data.content,
+          assistantSummary: cleanedResponse,
+          existingMemories,
+        }).catch((err) => console.error("[guided] memory refresh failed:", err));
+
+        await trackQuestion(req);
+        saveQuestion(user.id, {
+          jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",
+          jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
+          questionText: parsed.data.content,
+          responseJson: {
+            summary: cleanedResponse,
+            triggerSnapshot: false,
+            snapshotState: currentState,
+            actions: [],
+          },
+        }).catch(() => {});
+
+        return res.status(201).json({
+          message: {
+            ...savedAssistantMessage,
+            content: cleanedResponse,
+          },
+        });
+      }
+
+      const systemPrompt = hearingPrepSystemPrompt(promptParams);
       const openAIMessages = [
         { role: "system" as const, content: systemPrompt },
         ...priorMessages.map((message) => ({
