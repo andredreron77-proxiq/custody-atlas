@@ -451,11 +451,11 @@ export async function generateSnapshotActions(
   ];
 
   try {
+    console.log("[Atlas] generating actions for state:", JSON.stringify(state));
     const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       max_tokens: 400,
       temperature: 0.3,
-      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
@@ -479,17 +479,18 @@ Case name: ${caseName}`,
       ],
     });
 
-    const rawContent = completion.choices[0]?.message?.content?.trim();
-    if (!rawContent) return fallbackActions;
+    const actionsRaw = completion.choices[0]?.message?.content?.trim();
+    console.log("[Atlas] raw actions response:", actionsRaw);
+    if (!actionsRaw) return fallbackActions;
 
-    const parsed = JSON.parse(rawContent);
+    const parsed = JSON.parse(actionsRaw);
     if (Array.isArray(parsed) && parsed.length === 3 && parsed.every((item) => typeof item === "string")) {
       return parsed;
     }
 
     return fallbackActions;
   } catch (err) {
-    console.error("[Atlas] Failed to generate snapshot actions:", err);
+    console.error("[Atlas] generateSnapshotActions error:", err);
     return fallbackActions;
   }
 }

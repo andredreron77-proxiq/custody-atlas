@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { Calendar, MapPin, Scale, ShieldCheck, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiRequestRaw } from "@/lib/queryClient";
 
 export interface GuidedSnapshotState {
   hearing_date: string | null;
@@ -55,19 +57,44 @@ function formatHopeLine(status: GuidedSnapshotState["representation_status"]): s
 }
 
 export function SnapshotCard({
+  caseId,
+  conversationId,
   caseName,
   jurisdictionLabel,
   snapshot,
   actions,
 }: {
+  caseId?: string;
+  conversationId?: string;
   caseName: string;
   jurisdictionLabel: string;
   snapshot: GuidedSnapshotState;
   actions?: string[];
 }) {
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const recentChanges = Array.isArray(snapshot.recent_changes) && snapshot.recent_changes.length > 0
     ? snapshot.recent_changes.join(", ")
     : "No recent changes noted";
+
+  const canSave = Boolean(caseId && conversationId) && saveState !== "saving";
+
+  const handleSave = async () => {
+    if (!caseId || !conversationId || saveState === "saving") return;
+    setSaveState("saving");
+    try {
+      const res = await apiRequestRaw("POST", `/api/cases/${caseId}/snapshot`, {
+        conversationId,
+        snapshotState: snapshot,
+        actions: Array.isArray(actions) ? actions : [],
+      });
+      if (!res.ok) {
+        throw new Error(`Snapshot save failed (${res.status})`);
+      }
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  };
 
   return (
     <div className="rounded-2xl border border-[#dcc98a] bg-[#fdf9ee] p-4 shadow-sm dark:border-[#5e5130] dark:bg-[#1f1a10]">
@@ -154,8 +181,14 @@ export function SnapshotCard({
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        <Button type="button" variant="outline" className="min-h-11" disabled>
-          Save Snapshot
+        <Button type="button" variant="outline" className="min-h-11" disabled={!canSave} onClick={handleSave}>
+          {saveState === "saving"
+            ? "Saving..."
+            : saveState === "saved"
+              ? "Saved ✓"
+              : saveState === "error"
+                ? "Save failed — try again"
+                : "Save Snapshot"}
         </Button>
         <Link href="/upgrade">
           <Button type="button" className="min-h-11 w-full">

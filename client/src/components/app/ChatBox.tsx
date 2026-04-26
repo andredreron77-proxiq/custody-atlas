@@ -1654,6 +1654,8 @@ export function ChatBox({
                         ) : null}
                         {shouldRenderSnapshot ? (
                           <SnapshotCard
+                            caseId={caseId}
+                            conversationId={conversationIdRef.current}
                             caseName={snapshotCaseName}
                             jurisdictionLabel={snapshotJurisdictionLabel}
                             snapshot={snapshotState!}

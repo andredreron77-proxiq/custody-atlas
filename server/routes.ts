@@ -5348,6 +5348,48 @@ Do not add facts not present in the provided evidence.`,
     }
   });
 
+  app.post("/api/cases/:caseId/snapshot", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const caseId = asString(req.params.caseId);
+    const schema = z.object({
+      conversationId: z.string().min(1),
+      snapshotState: z.unknown().optional(),
+      actions: z.array(z.string()).optional().default([]),
+    });
+
+    try {
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid snapshot payload." });
+      }
+
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) {
+        return res.status(404).json({ error: "Case not found." });
+      }
+
+      const saved = await upsertCaseMemory(
+        user.id,
+        caseId,
+        "hearing_prep_snapshot",
+        JSON.stringify({
+          conversationId: parsed.data.conversationId,
+          snapshotState: parsed.data.snapshotState ?? null,
+          actions: parsed.data.actions ?? [],
+        }),
+      );
+
+      if (!saved) {
+        return res.status(500).json({ error: "Failed to save snapshot." });
+      }
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("[cases] POST snapshot error:", err);
+      return res.status(500).json({ error: "Failed to save snapshot." });
+    }
+  });
+
   app.get("/api/cases/:caseId/strength", requireAuth, async (req, res) => {
     const user = (req as any).user as { id: string };
     const caseId = asString(req.params.caseId);
