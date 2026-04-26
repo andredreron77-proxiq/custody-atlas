@@ -134,12 +134,12 @@ function Panel({
 }) {
   return (
     <section className="rounded-2xl border border-border/70 bg-card shadow-sm overflow-hidden" data-testid="welcome-flow-panel">
-      <div className="border-b border-border/50 bg-muted/20 px-5 py-5 sm:px-7">
+      <div className="border-b border-border/50 bg-muted/20 px-5 py-3 sm:px-7">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">Custody Atlas welcome</p>
         <h1 className="font-serif text-2xl font-semibold leading-tight text-foreground sm:text-3xl">{heading}</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">{subtext}</p>
+        {subtext ? <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">{subtext}</p> : null}
       </div>
-      <div className="px-5 py-5 sm:px-7 sm:py-6">{children}</div>
+      <div className="px-5 py-3 sm:px-7 sm:py-4">{children}</div>
     </section>
   );
 }
@@ -320,17 +320,17 @@ export function WelcomeFlow() {
                 data-testid="input-welcome-display-name"
               />
             </div>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               This helps Atlas give you answers that actually apply to your case.
             </p>
-            <div className="mt-5 grid gap-3">
+            <div className="mt-3 grid gap-2">
               {SITUATIONS.map((item) => (
                 <button
                   key={item.value}
                   type="button"
                   onClick={() => setSituationType(item.value)}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl border px-4 py-4 text-left transition-all",
+                    "flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all",
                     situationType === item.value
                       ? "border-primary bg-primary/5 shadow-sm"
                       : "border-border bg-background hover:border-primary/40 hover:bg-muted/20",

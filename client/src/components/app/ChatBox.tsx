@@ -28,6 +28,15 @@ import {
   incrementGuestQuestionsUsed,
 } from "@/services/usageService";
 
+const THINKING_MESSAGES = [
+  "Atlas is thinking...",
+  "Looking into this for you...",
+  "Give me just a moment...",
+  "Pulling this together...",
+  "Let me think through this...",
+  "Working on it...",
+];
+
 interface ChatBoxProps {
   initialConversationId?: string;
   jurisdiction: Jurisdiction;
@@ -826,6 +835,7 @@ export function ChatBox({
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState(THINKING_MESSAGES[0]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [proOverageNotice, setProOverageNotice] = useState<{
@@ -880,6 +890,12 @@ export function ChatBox({
       setLimitReached(false);
     }
   }, [usage]);
+
+  useEffect(() => {
+    if (!isLoading) return;
+    const nextMessage = THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)] ?? THINKING_MESSAGES[0];
+    setLoadingMessage(nextMessage);
+  }, [isLoading]);
 
   const { state: micState, startRecording, stopRecording, cancelRecording } =
     useSpeechRecording({
@@ -1527,7 +1543,7 @@ export function ChatBox({
                     <div className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                       <span className="text-sm text-muted-foreground">
-                        Generating your answer…
+                        {loadingMessage}
                       </span>
                     </div>
                   </CardContent>
