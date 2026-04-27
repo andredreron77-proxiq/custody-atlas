@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
 
 export interface GuidedSnapshotState {
+  situation_summary?: string | null;
+  primary_concern?: string | null;
+  concern_category?: "safety" | "stability" | "access" | "financial" | "process" | "other" | string | null;
   current_arrangement?: string | null;
   reason_for_more_time?: string | null;
   change_category?: "schedule_change" | "relocation" | "child_needs" | "parent_availability" | "safety_concern" | "other" | null;
@@ -34,7 +37,6 @@ export interface GuidedSnapshotState {
     | "unknown"
     | null;
   top_concern: string | null;
-  concern_category?: string | null;
   current_schedule: string | null;
   order_status?: string | null;
   recent_changes: string[] | null;
@@ -45,6 +47,20 @@ export interface GuidedSnapshotState {
     | null;
   child_safety_flag?: boolean;
   waypoints_complete?: number[];
+}
+
+function formatConcernCategory(value: GuidedSnapshotState["concern_category"]): string {
+  const labels: Record<string, string> = {
+    safety: "Child Safety",
+    stability: "Stability",
+    access: "Parenting Access",
+    financial: "Financial",
+    process: "Understanding the Process",
+    other: "General",
+  };
+
+  if (!value) return "Not captured yet";
+  return labels[value] ?? "Not captured yet";
 }
 
 function formatDocumentType(value: GuidedSnapshotState["document_type"]): string {
@@ -129,7 +145,11 @@ function formatHearingType(value: GuidedSnapshotState["hearing_type"]): string {
 function formatHopeLine(
   status: GuidedSnapshotState["representation_status"],
   isRespondToFilingSnapshot: boolean,
+  isFiguringItOutSnapshot: boolean,
 ): string {
+  if (isFiguringItOutSnapshot) {
+    return "You're getting oriented before this situation gets further away from you. That matters.";
+  }
   if (isRespondToFilingSnapshot) {
     return "You're getting ahead of this before the court does. That already puts you in a stronger position.";
   }
@@ -166,6 +186,15 @@ export function SnapshotCard({
   );
   const isRespondToFilingSnapshot = Boolean(
     snapshot.document_type || snapshot.opposing_request || snapshot.response_deadline || snapshot.coparent_relationship,
+  );
+  const isFiguringItOutSnapshot = Boolean(
+    snapshot.situation_summary
+    || snapshot.primary_concern
+    || (
+      snapshot.concern_category
+      && !isMoreTimeSnapshot
+      && !isRespondToFilingSnapshot
+    ),
   );
   const recentChanges = Array.isArray(snapshot.recent_changes) && snapshot.recent_changes.length > 0
     ? snapshot.recent_changes.join(", ")
@@ -282,6 +311,41 @@ export function SnapshotCard({
             <p className="mt-1 text-sm text-foreground">{formatCoparentRelationship(snapshot.coparent_relationship)}</p>
           </div>
         </div>
+      ) : isFiguringItOutSnapshot ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3 sm:col-span-2">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              Situation
+            </div>
+            <p className="mt-1 text-sm text-foreground">
+              {snapshot.situation_summary ? truncateText(snapshot.situation_summary) : "Not captured yet"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Scale className="h-3.5 w-3.5" />
+              Order status
+            </div>
+            <p className="mt-1 text-sm text-foreground">{formatOrderStatus(snapshot.order_status)}</p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Top concern
+            </div>
+            <p className="mt-1 text-sm text-foreground">
+              {snapshot.primary_concern ? truncateText(snapshot.primary_concern) : "Not captured yet"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3 sm:col-span-2">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Target className="h-3.5 w-3.5" />
+              Concern type
+            </div>
+            <p className="mt-1 text-sm text-foreground">{formatConcernCategory(snapshot.concern_category)}</p>
+          </div>
+        </div>
       ) : (
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -331,7 +395,7 @@ export function SnapshotCard({
           What's Working In Your Favor
         </p>
         <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">
-          {formatHopeLine(snapshot.representation_status, isRespondToFilingSnapshot)}
+          {formatHopeLine(snapshot.representation_status, isRespondToFilingSnapshot, isFiguringItOutSnapshot)}
         </p>
       </div>
 

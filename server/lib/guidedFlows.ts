@@ -11,7 +11,7 @@ export type GuidedSituationType =
 
 export interface GuidedFlowDefinition {
   situationType: GuidedSituationType;
-  conversationType: `guided_${GuidedSituationType}`;
+  conversationType: `guided_${GuidedSituationType}` | "guided_figuring_it_out";
   openingMessage: string;
   systemContext: string;
 }
@@ -80,6 +80,17 @@ export interface MoreTimeWaypointState {
   waypoints_complete: number[];
 }
 
+export interface FiguringItOutWaypointState {
+  situation_summary: string | null;
+  order_status: "court_order" | "written_agreement" | "informal" | "none" | null;
+  primary_concern: string | null;
+  concern_category: "safety" | "stability" | "access" | "financial" | "process" | "other" | null;
+  child_safety_flag: boolean;
+  snapshot_complete: boolean;
+  post_snapshot_turn: number;
+  waypoints_complete: number[];
+}
+
 export const HEARING_PREP_INITIAL_STATE: HearingPrepWaypointState = {
   hearing_date: null,
   hearing_type: null,
@@ -120,6 +131,17 @@ export const MORE_TIME_INITIAL_STATE: MoreTimeWaypointState = {
   waypoints_complete: [],
 };
 
+export const FIGURING_IT_OUT_INITIAL_STATE: FiguringItOutWaypointState = {
+  situation_summary: null,
+  order_status: null,
+  primary_concern: null,
+  concern_category: null,
+  child_safety_flag: false,
+  snapshot_complete: false,
+  post_snapshot_turn: 0,
+  waypoints_complete: [],
+};
+
 function getGuidedFlowsOpenAIClient(): OpenAI {
   return new OpenAI({
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
@@ -154,7 +176,7 @@ const GUIDED_FLOWS: Record<GuidedSituationType, GuidedFlowDefinition> = {
   },
   figuring_things_out: {
     situationType: "figuring_things_out",
-    conversationType: "guided_figuring_things_out",
+    conversationType: "guided_figuring_it_out",
     openingMessage:
       "It takes courage to start figuring this out, especially when everything feels uncertain. There are no wrong questions here, and we can go at your pace. What's the most pressing thing on your mind right now?",
     systemContext:
@@ -183,6 +205,9 @@ export function getGuidedFlowBySituationType(value?: string | null): GuidedFlowD
 
 export function getGuidedFlowByConversationType(value?: string | null): GuidedFlowDefinition | null {
   if (!value || !value.startsWith("guided_")) return null;
+  if (value === "guided_figuring_it_out" || value === "guided_figuring_things_out") {
+    return getGuidedFlowBySituationType("figuring_things_out");
+  }
   return getGuidedFlowBySituationType(value.replace(/^guided_/, ""));
 }
 
@@ -655,6 +680,145 @@ RESOLVED SNAPSHOT STATE REFERENCE:
 ${JSON.stringify(params.snapshotState, null, 2)}`;
 }
 
+export function figuringItOutSystemPrompt(state: FiguringItOutWaypointState): string {
+  return `You are Atlas — an AI guide for parents navigating custody proceedings.
+
+You are warm, clear, and direct. You are not a lawyer. You do not give legal advice.
+You give situational guidance: helping parents understand what is happening and what
+they can do about it.
+
+CURRENT SESSION: Figuring It Out
+
+RULES — follow exactly every turn
+
+Rule 1: Every turn follows REFLECT → TRANSLATE → ASK. Acknowledge what the user shared (1 sentence). Give one plain-English insight. Ask exactly one question to advance the next unresolved waypoint.
+
+Rule 2: Skip any waypoint already resolved.
+
+Rule 3: One question per turn only. Never stack questions.
+
+Rule 4: No legal advice. You can explain what things mean, not what the user should do legally.
+
+Rule 5: High-empathy tone. These users don't know where to start. They may be confused, scared, or overwhelmed. Meet them there. Speak like a calm, knowledgeable friend.
+
+Rule 6: Sensitive moment protocol. If user mentions domestic violence, child abuse, or self-harm: acknowledge, pause waypoints, provide DFCS (1-855-422-4453) or 988. Resume waypoints next turn.
+
+Rule 7: Order status translations:
+  - court_order → "there's already a judge-approved order governing your situation"
+  - written_agreement → "you have a written plan but it may not have court approval"
+  - informal → "things are based on what you and the other parent have worked out informally"
+  - none → "there's no formal arrangement in place yet"
+
+Rule 8: Never narrate state field names. Speak naturally.
+
+Rule 9: Never repeat empathy openers. Vary each turn. Never use "I hear you" more than once. Alternatives: "That makes sense," "It sounds like a lot is happening at once," "That's a hard place to be in," etc.
+
+Rule 10: This flow is for users who don't know where to start. Never assume they know legal terminology. Always explain terms before using them.
+
+Waypoint sequence:
+1. situation_summary — Tell me what's going on in your own words.
+2. order_status — Is there already a custody order or agreement in place?
+3. primary_concern + concern_category — What matters most to you right now?
+4. Snapshot triggers when waypoints [1, 2, 3] are all complete
+
+concern_category inference guide:
+- safety → user mentions abuse, neglect, danger, drugs, environment
+- stability → user mentions school, housing, routine, consistency
+- access → user mentions being kept from child or blocked from visits
+- financial → user mentions child support, costs, money
+- process → user doesn't know what to do or how courts work
+- other → anything else
+
+Current state injected:
+- situation_summary: ${state.situation_summary}
+- order_status: ${state.order_status}
+- primary_concern: ${state.primary_concern}
+- concern_category: ${state.concern_category}
+- waypoints_complete: ${JSON.stringify(state.waypoints_complete)}
+- snapshot_complete: ${state.snapshot_complete}`;
+}
+
+export function figuringItOutPostSnapshotSystemPrompt(params: {
+  case_name: string;
+  snapshotState: FiguringItOutWaypointState;
+  post_snapshot_turn: number;
+}): string {
+  return `You are Atlas — an AI guide for parents navigating custody proceedings.
+
+You are warm, clear, and direct. You are not a lawyer. You do not give legal advice.
+You give situational guidance: helping parents understand what is happening and what
+they can do about it.
+
+CURRENT SESSION: Figuring It Out — Post Snapshot
+Case: ${params.case_name}
+
+The parent has already completed the guided figuring-it-out intake and Atlas has already
+captured the core situation. Stay anchored in that resolved snapshot state for every
+reply. Do not restart the intake. Do not ask broad re-orientation questions unless a
+missing fact is absolutely necessary to answer the one question they just asked.
+
+RULES — follow exactly every turn
+
+RULE 1: FIRST RESPONSE RULE
+If this is the first message after the Snapshot (the user's message count in post-snapshot context is 1), do not wait for the user to ask something. Instead, ask ONE deepening question specific to their situation using these guidelines:
+
+- If concern_category is safety: ask what pattern or incident makes them feel the most urgency right now
+- If concern_category is stability: ask what part of the child's routine feels most unsettled
+- If concern_category is access: ask what contact or parenting time is being blocked or disrupted
+- If concern_category is financial: ask what money pressure is shaping the custody problem the most
+- If concern_category is process: ask what part of the process feels most confusing right now
+- If concern_category is other: ask what outcome they most need clarity on first
+
+The question must reference something specific from snapshotState.
+Never ask a generic question.
+
+After their answer: give one concrete insight tied to their answer, then end with the Pro nudge.
+
+RULE 2: ANSWER ONE SPECIFIC QUESTION
+Answer the user's current question directly. Give one concrete, actionable insight
+that fits the facts already captured in the snapshot state.
+
+RULE 3: STAY IN CONTEXT
+Use the resolved snapshot state as the active case context. Keep the answer tied to:
+- the situation summary
+- the order status
+- the parent's primary concern
+- the concern category already captured
+
+RULE 4: KEEP FREE-TIER DEPTH INTENTIONAL
+Do not give a numbered list of 3 or more items.
+Do not provide a full legal roadmap for free.
+Keep the answer focused, concrete, and useful without exhausting the full strategy.
+
+RULE 5: NO LEGAL ADVICE
+Say what terms mean. Say what tends to matter. Use language like
+"here's what I'd focus on next" or "here's what tends to matter most."
+Never promise outcomes. Never frame legal strategy as certainty.
+
+RULE 6: TONE
+Warm, calm, partner-like. Sound like a clear-eyed guide who knows the thread and is
+helping the parent keep moving.
+
+RULE 7: UPGRADE TRANSITION
+After answering, always end with this exact natural transition:
+"There's more to build here. With Pro you can keep going — 200 questions, unlimited documents."
+
+RULE 8: DO NOT CLOSE THE CONVERSATION
+Never say "feel free."
+Never say "I'm here to help."
+Never imply the conversation is over.
+Never sign off.
+
+RULE 9: OUTPUT
+Return plain natural language only. No hidden state blocks. No markdown code fences.
+
+POST SNAPSHOT TURN COUNT:
+${params.post_snapshot_turn}
+
+RESOLVED SNAPSHOT STATE REFERENCE:
+${JSON.stringify(params.snapshotState, null, 2)}`;
+}
+
 export function postSnapshotSystemPrompt(params: {
   case_name: string;
   jurisdiction_county: string;
@@ -972,6 +1136,87 @@ Rules:
   }
 }
 
+export async function extractFiguringItOutStateFromConversation(
+  messages: { role: string; content: string }[],
+  currentState: FiguringItOutWaypointState,
+): Promise<FiguringItOutWaypointState> {
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 350,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You extract structured data from custody figuring-it-out conversations.
+Return ONLY valid JSON matching this schema exactly — no markdown, no explanation:
+{
+  situation_summary: string | null,
+  order_status: 'court_order' | 'written_agreement' | 'informal' | 'none' | null,
+  primary_concern: string | null,
+  concern_category: 'safety' | 'stability' | 'access' | 'financial' | 'process' | 'other' | null,
+  child_safety_flag: boolean,
+  snapshot_complete: boolean,
+  post_snapshot_turn: number,
+  waypoints_complete: number[]
+}
+Rules:
+- Preserve all existing non-null values.
+- NEVER infer a value the user hasn't explicitly addressed.
+- situation_summary: short plain-English summary of what the user described (1-2 sentences max).
+- order_status: only set if user explicitly mentions or confirms order status. order_status must reflect the MOST AUTHORITATIVE statement the user has made about their arrangement across the entire conversation. If the user later mentions a court order, prior court involvement, or a judge setting a schedule, that overrides any earlier inference. Specifically: if the user mentions going to court AND a judge or order setting the schedule, set order_status to 'court_order'. If the user mentions a signed written plan not confirmed by a judge, set order_status to 'written_agreement'. If the user describes an informal agreement with no court involvement, set order_status to 'informal'. If no information is provided, return null.
+- primary_concern: direct quote or close paraphrase of what the user said matters most.
+- concern_category: infer from primary_concern using this guide only:
+  - safety → user mentions abuse, neglect, danger, drugs, environment
+  - stability → user mentions school, housing, routine, consistency
+  - access → user mentions being kept from child or blocked from visits
+  - financial → user mentions child support, costs, money
+  - process → user doesn't know what to do or how courts work
+  - other → anything else
+- child_safety_flag: true if user mentions abuse, neglect, or domestic violence
+- waypoints_complete:
+  - Waypoint 1: situation_summary non-null
+  - Waypoint 2: order_status non-null
+  - Waypoint 3: primary_concern non-null AND concern_category non-null
+- Keep snapshot_complete and post_snapshot_turn unchanged from current state.
+- Return ONLY the JSON object.`,
+        },
+        {
+          role: "user",
+          content: `Current state:\n${JSON.stringify(currentState)}\n\nExtract figuring-it-out state from this conversation:\n${JSON.stringify(messages)}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return currentState;
+
+    const parsed = JSON.parse(rawContent) as Partial<FiguringItOutWaypointState>;
+    const merged: FiguringItOutWaypointState = {
+      situation_summary: parsed.situation_summary ?? currentState.situation_summary ?? null,
+      order_status: parsed.order_status ?? currentState.order_status ?? null,
+      primary_concern: parsed.primary_concern ?? currentState.primary_concern ?? null,
+      concern_category: parsed.concern_category ?? currentState.concern_category ?? null,
+      child_safety_flag: Boolean(parsed.child_safety_flag ?? currentState.child_safety_flag),
+      snapshot_complete: currentState.snapshot_complete,
+      post_snapshot_turn: currentState.post_snapshot_turn,
+      waypoints_complete: [],
+    };
+
+    merged.waypoints_complete = [
+      merged.situation_summary !== null ? 1 : null,
+      merged.order_status !== null ? 2 : null,
+      merged.primary_concern !== null && merged.concern_category !== null ? 3 : null,
+    ].filter((item): item is number => item !== null);
+
+    return merged;
+  } catch (err) {
+    console.error("[Atlas] Failed to parse extracted figuring-it-out state:", err);
+    return currentState;
+  }
+}
+
 export async function generateSnapshotActions(
   state: HearingPrepWaypointState,
   caseName: string,
@@ -1117,6 +1362,52 @@ Prior court involvement: ${state.prior_court_involvement === null ? "unknown" : 
     return fallbackActions;
   } catch (err) {
     console.error("[Atlas] generateMoreTimeActions error:", err);
+    return fallbackActions;
+  }
+}
+
+export async function generateFiguringItOutActions(
+  state: FiguringItOutWaypointState,
+): Promise<string[]> {
+  const fallbackActions = [
+    "Write down the key facts of your situation — dates, what was agreed, and what changed — while it's still fresh.",
+    "Gather any texts, emails, calendars, or notes that help show what your custody situation has looked like so far.",
+    "Write one short sentence about what matters most to you right now so you can stay focused as you figure out next steps.",
+  ];
+
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 400,
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content: `Return exactly 3 concrete, personalized action strings for a parent who is just starting to figure out a custody situation.
+Base them on order_status, concern_category, and situation_summary.
+These are first steps only. Return ONLY a JSON array of 3 strings.`,
+        },
+        {
+          role: "user",
+          content: `Generate 3 action items for this parent:
+Situation summary: ${state.situation_summary ?? "unknown"}
+Order status: ${state.order_status ?? "unknown"}
+Primary concern: ${state.primary_concern ?? "unknown"}
+Concern category: ${state.concern_category ?? "unknown"}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return fallbackActions;
+
+    const parsed = JSON.parse(rawContent);
+    if (Array.isArray(parsed) && parsed.length === 3 && parsed.every((item) => typeof item === "string")) {
+      return parsed;
+    }
+    return fallbackActions;
+  } catch (err) {
+    console.error("[Atlas] generateFiguringItOutActions error:", err);
     return fallbackActions;
   }
 }

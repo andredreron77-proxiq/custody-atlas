@@ -188,6 +188,12 @@ export function WelcomeFlow() {
     window.sessionStorage.setItem(WELCOME_FLOW_ACTIVE_KEY, "1");
   }, []);
 
+  useEffect(() => {
+    if (step === 3 && !caseName && suggestedCaseName) {
+      setCaseName(suggestedCaseName);
+    }
+  }, [step, caseName, suggestedCaseName]);
+
   const persistWelcomeCompletion = async () => {
     if (jurisdiction) {
       try {
@@ -485,9 +491,6 @@ export function WelcomeFlow() {
                   setCaseName(event.target.value);
                   setCaseError(null);
                   setCaseCreationFailed(false);
-                }}
-                onFocus={() => {
-                  if (!caseName && suggestedCaseName) setCaseName(suggestedCaseName);
                 }}
                 onBlur={() => setCaseNameTouched(true)}
                 placeholder={suggestedCaseName || "e.g. Smith v. Johnson"}
