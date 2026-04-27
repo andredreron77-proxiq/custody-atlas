@@ -56,6 +56,22 @@ function formatDocumentType(value: GuidedSnapshotState["document_type"]): string
   return labels[value] ?? "Not specified";
 }
 
+function capitalizeFirst(value: string): string {
+  return value.length > 0 ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
+}
+
+function formatCoparentRelationship(value: GuidedSnapshotState["coparent_relationship"]): string {
+  const labels: Record<NonNullable<GuidedSnapshotState["coparent_relationship"]>, string> = {
+    high_conflict: "High Conflict",
+    cooperative: "Cooperative",
+    no_contact: "No Contact",
+    unknown: "Unknown",
+  };
+
+  if (!value) return "Not captured yet";
+  return labels[value] ?? "Not captured yet";
+}
+
 function formatHearingType(value: GuidedSnapshotState["hearing_type"]): string {
   const labels: Record<NonNullable<GuidedSnapshotState["hearing_type"]>, string> = {
     temporary_custody: "Temporary custody",
@@ -168,14 +184,16 @@ export function SnapshotCard({
               <ShieldCheck className="h-3.5 w-3.5" />
               Their request
             </div>
-            <p className="mt-1 text-sm text-foreground">{snapshot.opposing_request ?? "Not captured yet"}</p>
+            <p className="mt-1 text-sm text-foreground">
+              {snapshot.opposing_request ? capitalizeFirst(snapshot.opposing_request) : "Not captured yet"}
+            </p>
           </div>
           <div className="rounded-xl border border-border/70 bg-card/70 p-3">
             <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <MapPin className="h-3.5 w-3.5" />
               Relationship
             </div>
-            <p className="mt-1 text-sm text-foreground">{snapshot.coparent_relationship ?? "Not captured yet"}</p>
+            <p className="mt-1 text-sm text-foreground">{formatCoparentRelationship(snapshot.coparent_relationship)}</p>
           </div>
         </div>
       ) : (
