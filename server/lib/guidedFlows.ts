@@ -913,6 +913,7 @@ Return ONLY valid JSON matching this schema exactly — no markdown, no explanat
 }
 Rules:
 - Preserve all existing non-null values.
+- NEVER set a field based on inference alone — only set it if the user explicitly addressed that topic in their message.
 - Infer change_category from natural language:
   - schedule_change → user's availability or work schedule changed
   - relocation → user moved or wants to move
@@ -920,10 +921,12 @@ Rules:
   - parent_availability → user now has more time or flexibility
   - safety_concern → user has concerns about child's safety with other parent
   - other → anything else
-- Infer coparent_stance: supportive if other parent seems agreeable, resistant if opposed, unknown if unclear
+- coparent_stance must stay null until the user directly says something about how the other parent feels. "Unknown" is not a valid inference — it is only valid if the user says something like "I have no idea how she feels."
+- prior_court_involvement must stay null until the user explicitly mentions court history or confirms it's their first time. Do not infer false from silence.
+- order_status must stay null until the user explicitly describes whether there is a court order, written agreement, or informal arrangement. Do not infer from schedule description alone.
 - Set prior_court_involvement: true if user mentions any prior filings, orders, or court appearances; false if explicitly first time
 - Set child_safety_flag: true if user mentions abuse, neglect, or domestic violence
-- Recalculate waypoints_complete:
+- Recalculate waypoints_complete. Only include a waypoint number if ALL required fields for that waypoint are non-null AND were provided by the user in this conversation — not inferred:
   - Waypoint 1: current_arrangement non-null AND order_status non-null
   - Waypoint 2: reason_for_more_time non-null AND change_category non-null
   - Waypoint 3: coparent_stance non-null
