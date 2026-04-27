@@ -179,6 +179,7 @@ export function WelcomeFlow() {
   const [isPreparingGuidedConversation, setIsPreparingGuidedConversation] = useState(false);
   const [guidedConversationError, setGuidedConversationError] = useState<string | null>(null);
   const guidedConversationRedirectRef = useRef(false);
+  const caseNameInputRef = useRef<HTMLInputElement | null>(null);
 
   const preferredName = resolvePreferredDisplayName({
     profileDisplayName: profile?.displayName,
@@ -253,23 +254,36 @@ export function WelcomeFlow() {
     setIsFinishing(true);
 
     const caseId = createdCaseId;
-    const conversationType = getGuidedConversationTypeForSituation(situationType);
+    const conversationTypeMap: Record<string, string> = {
+      hearing_prep: "guided_hearing_prep",
+      hearing_coming_up: "guided_hearing_prep",
+      respond_filing: "guided_respond_filing",
+      respond_to_filing: "guided_respond_filing",
+      more_time: "guided_more_time",
+      figuring_it_out: "guided_figuring_it_out",
+      figuring_things_out: "guided_figuring_it_out",
+    };
+    const conversationType = conversationTypeMap[situationType ?? ""] ?? "guided_figuring_it_out";
 
     try {
-      if (!caseId || !conversationType) {
+      if (!caseId) {
         throw new Error("Missing guided conversation context");
       }
 
-      const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
-        case_id: caseId,
-        conversation_type: conversationType,
+      const res = await fetch("/api/conversations/initialize-guided", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_type: conversationType,
+          case_id: caseId,
+        }),
       });
       if (!res.ok) {
         throw new Error("Failed to initialize guided conversation");
       }
 
-      const data = await res.json().catch(() => ({} as { conversation?: { id?: string } }));
-      const conversationId = data?.conversation?.id;
+      const data = await res.json().catch(() => ({} as { conversationId?: string; id?: string; conversation?: { id?: string } }));
+      const conversationId = data?.conversationId ?? data?.id ?? data?.conversation?.id;
       if (!conversationId) {
         throw new Error("Missing conversation id");
       }
@@ -301,9 +315,13 @@ export function WelcomeFlow() {
     void finish("/ask");
   };
 
-  const createCase = async () => {
-    const trimmed = caseName.trim();
+  const createCase = async (nameOverride?: string) => {
+    const trimmed = (nameOverride ?? caseName).trim();
     if (!trimmed) return;
+
+    if (nameOverride !== undefined && nameOverride !== caseName) {
+      setCaseName(nameOverride);
+    }
 
     setIsCreatingCase(true);
     setCaseError(null);
@@ -543,6 +561,7 @@ export function WelcomeFlow() {
               <Label htmlFor="welcome-case-name">Case name</Label>
               <Input
                 id="welcome-case-name"
+                ref={caseNameInputRef}
                 value={caseName}
                 onChange={(event) => {
                   setCaseName(event.target.value);
@@ -580,11 +599,20 @@ export function WelcomeFlow() {
                   className="h-11"
                   disabled={!trimmedCaseName || isCreatingCase}
                   onClick={() => {
+                    const liveCaseName = caseNameInputRef.current?.value ?? caseName;
+                    const trimmedLiveCaseName = liveCaseName.trim();
+                    setCaseNameTouched(true);
+
+                    if (!trimmedLiveCaseName) {
+                      setCaseName(liveCaseName);
+                      return;
+                    }
+
                     if (caseCreationFailed) {
                       setStep(4);
                       return;
                     }
-                    void createCase();
+                    void createCase(liveCaseName);
                   }}
                   data-testid="button-welcome-step-3-next"
                 >
