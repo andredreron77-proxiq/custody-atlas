@@ -53,6 +53,8 @@ import type { RawSignal, UserTier } from "@/lib/signals";
 import { classifyDateStatus } from "@shared/dateStatus";
 import { resolveUSStateCode } from "@shared/usStates";
 
+const PENDING_GUIDED_CONVERSATION_KEY = "pendingGuidedConversation";
+
 /* ── API types ────────────────────────────────────────────────────────────── */
 
 interface WorkspaceThread {
@@ -1419,6 +1421,20 @@ export default function WorkspacePage() {
   const caseIdParam = new URLSearchParams(
     location.split("?")[1] || window.location.search.slice(1),
   ).get("case") ?? undefined;
+
+  useEffect(() => {
+    const pending = window.sessionStorage.getItem(PENDING_GUIDED_CONVERSATION_KEY);
+    if (!pending) return;
+
+    try {
+      const parsed = JSON.parse(pending) as { conversationId?: string; caseId?: string };
+      if (parsed.conversationId && parsed.caseId) {
+        navigate(`/ask?case=${encodeURIComponent(parsed.caseId)}&conversation=${encodeURIComponent(parsed.conversationId)}`, { replace: true });
+      }
+    } catch (error) {
+      console.error("[WorkspacePage] Failed to read pending guided conversation:", error);
+    }
+  }, [navigate]);
 
   const { data: usage } = useQuery<UsageState>({
     queryKey: ["/api/usage"],

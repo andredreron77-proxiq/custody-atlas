@@ -93,6 +93,7 @@ function getGuidedConversationTypeForSituation(situationType: SituationType | nu
 }
 
 const WELCOME_FLOW_ACTIVE_KEY = "custody-atlas:welcome-flow-active";
+const PENDING_GUIDED_CONVERSATION_KEY = "pendingGuidedConversation";
 
 function lastNameFromDisplayName(name: string | null): string {
   if (!name) return "";
@@ -295,6 +296,10 @@ export function WelcomeFlow({ onNavigatingAway }: WelcomeFlowProps) {
 
       guidedConversationRedirectRef.current = true;
       console.log("[WelcomeFlow] guided init succeeded", { conversationId, caseId, conversationType });
+      window.sessionStorage.setItem(
+        PENDING_GUIDED_CONVERSATION_KEY,
+        JSON.stringify({ conversationId, caseId, conversationType }),
+      );
       console.log("[WelcomeFlow] navigate", {
         href: `/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`,
         source: "finish",
@@ -386,6 +391,10 @@ export function WelcomeFlow({ onNavigatingAway }: WelcomeFlowProps) {
       }
 
       console.log("[WelcomeFlow] guided init succeeded", { conversationId, caseId });
+      window.sessionStorage.setItem(
+        PENDING_GUIDED_CONVERSATION_KEY,
+        JSON.stringify({ conversationId, caseId, conversationType }),
+      );
       console.log("[WelcomeFlow] navigate", {
         href: `/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`,
         source: "startRespondToFilingConversation",

@@ -22,6 +22,8 @@ import { useUserProfile } from "@/hooks/use-user-profile";
 import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
 import { buildWhatMattersNow, type RawSignal, type UserTier } from "@/lib/signals";
 
+const PENDING_GUIDED_CONVERSATION_KEY = "pendingGuidedConversation";
+
 interface ThreadWithMessages {
   thread: {
     id: string;
@@ -374,6 +376,27 @@ export default function AskAIPage() {
     isUrgentCase ? "urgent_case" : "active_case";
 
   const [caseJurisdictionApplied, setCaseJurisdictionApplied] = useState(false);
+
+  useEffect(() => {
+    const pending = window.sessionStorage.getItem(PENDING_GUIDED_CONVERSATION_KEY);
+    if (!pending) return;
+
+    try {
+      const parsed = JSON.parse(pending) as { conversationId?: string; caseId?: string };
+      if (parsed.caseId) {
+        setActiveCaseId(parsed.caseId);
+      }
+      if (parsed.conversationId) {
+        setResolvedConversationId(parsed.conversationId);
+        setResolvedConversationType(undefined);
+        setInitializedConversationPayload(null);
+      }
+    } catch (error) {
+      console.error("[AskAIPage] Failed to read pending guided conversation:", error);
+    } finally {
+      window.sessionStorage.removeItem(PENDING_GUIDED_CONVERSATION_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     if (caseIdParam) return;
