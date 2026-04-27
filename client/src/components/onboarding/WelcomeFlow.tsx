@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft,
@@ -163,6 +163,7 @@ export function WelcomeFlow() {
   const [isFinishing, setIsFinishing] = useState(false);
   const [isPreparingGuidedConversation, setIsPreparingGuidedConversation] = useState(false);
   const [guidedConversationError, setGuidedConversationError] = useState<string | null>(null);
+  const guidedConversationRedirectRef = useRef(false);
 
   const preferredName = resolvePreferredDisplayName({
     profileDisplayName: profile?.displayName,
@@ -228,16 +229,21 @@ export function WelcomeFlow() {
   };
 
   const finish = async (href = "/workspace") => {
+    console.log("[WelcomeFlow] completion handler entry", { href });
+    if (guidedConversationRedirectRef.current) {
+      console.log("[WelcomeFlow] completion handler bypassed for guided conversation redirect");
+      return;
+    }
     setIsFinishing(true);
     await persistWelcomeCompletion();
     setTimeout(() => {
       window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
+      console.log("[WelcomeFlow] navigate", { href, source: "finish" });
       navigate(href, { replace: true });
     }, 0);
   };
 
   const skipFlow = () => {
-    window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
     void finish("/workspace");
   };
 
@@ -287,8 +293,10 @@ export function WelcomeFlow() {
   };
 
   const startRespondToFilingConversation = async () => {
+    console.log("[WelcomeFlow] Talk to Atlas click handler entry");
     setGuidedConversationError(null);
     setIsPreparingGuidedConversation(true);
+    guidedConversationRedirectRef.current = true;
     try {
       const caseId = await resolveGuidedCaseId();
       if (!caseId) {
@@ -309,11 +317,19 @@ export function WelcomeFlow() {
         throw new Error("Something went wrong. Try again.");
       }
 
-      window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
+      console.log("[WelcomeFlow] guided init succeeded", { conversationId, caseId });
+      console.log("[WelcomeFlow] navigate", {
+        href: `/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`,
+        source: "startRespondToFilingConversation",
+      });
       navigate(`/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`, { replace: true });
-      void persistWelcomeCompletion();
+      setTimeout(() => {
+        window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
+        void persistWelcomeCompletion();
+      }, 0);
     } catch (error) {
       console.error("[WelcomeFlow] Failed to initialize guided conversation:", error);
+      guidedConversationRedirectRef.current = false;
       setGuidedConversationError("Something went wrong. Try again.");
     } finally {
       setIsPreparingGuidedConversation(false);
