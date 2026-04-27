@@ -292,31 +292,29 @@ export function WelcomeFlow() {
     try {
       const caseId = await resolveGuidedCaseId();
       if (!caseId) {
-        throw new Error("We couldn't find a case to attach this conversation to yet.");
+        throw new Error("Something went wrong. Try again.");
       }
-
-      await persistWelcomeCompletion();
 
       const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
         caseId,
         conversation_type: "guided_respond_filing",
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "We couldn't get Atlas ready right now.");
+        throw new Error("Something went wrong. Try again.");
       }
 
       const data = await res.json().catch(() => ({} as { conversation?: { id?: string } }));
       const conversationId = data?.conversation?.id;
       if (!conversationId) {
-        throw new Error("Atlas started, but the conversation link was missing.");
+        throw new Error("Something went wrong. Try again.");
       }
 
       window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
       navigate(`/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`, { replace: true });
+      void persistWelcomeCompletion();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "We couldn't get Atlas ready right now.";
-      setGuidedConversationError(message);
+      console.error("[WelcomeFlow] Failed to initialize guided conversation:", error);
+      setGuidedConversationError("Something went wrong. Try again.");
     } finally {
       setIsPreparingGuidedConversation(false);
     }
