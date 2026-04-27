@@ -159,7 +159,11 @@ function Panel({
   );
 }
 
-export function WelcomeFlow() {
+interface WelcomeFlowProps {
+  onNavigatingAway?: () => void;
+}
+
+export function WelcomeFlow({ onNavigatingAway }: WelcomeFlowProps) {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { user } = useCurrentUser();
@@ -295,6 +299,7 @@ export function WelcomeFlow() {
         href: `/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`,
         source: "finish",
       });
+      onNavigatingAway?.();
       navigate(`/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`, { replace: true });
       setTimeout(() => {
         window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
@@ -385,6 +390,7 @@ export function WelcomeFlow() {
         href: `/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`,
         source: "startRespondToFilingConversation",
       });
+      onNavigatingAway?.();
       navigate(`/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`, { replace: true });
       setTimeout(() => {
         window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);

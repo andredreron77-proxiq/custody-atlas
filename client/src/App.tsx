@@ -1,5 +1,5 @@
 import { Switch, Route, useLocation } from "wouter";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -159,6 +159,7 @@ function ProtectedRoute({
 function ProtectedWelcomeRoute() {
   const { user, isLoading } = useCurrentUser();
   const [, navigate] = useLocation();
+  const skipWorkspaceRedirect = useRef(false);
   const welcomeFlowActive =
     typeof window !== "undefined" &&
     window.sessionStorage.getItem("custody-atlas:welcome-flow-active") === "1";
@@ -192,10 +193,8 @@ function ProtectedWelcomeRoute() {
     (casesData.cases.length === 0 || welcomeFlowActive);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hasConversationParam = params.has("conversation");
-
-    if (!isLoading && user && !isProfileLoading && !isCasesFetching && !shouldShowWelcome && !welcomeFlowActive && !hasConversationParam && !window.location.pathname.startsWith("/ask")) {
+    if (skipWorkspaceRedirect.current) return;
+    if (!isLoading && user && !isProfileLoading && !isCasesFetching && !shouldShowWelcome && !welcomeFlowActive) {
       navigate("/workspace", { replace: true });
     }
   }, [isCasesFetching, isLoading, isProfileLoading, navigate, shouldShowWelcome, user, welcomeFlowActive]);
@@ -212,7 +211,9 @@ function ProtectedWelcomeRoute() {
     return <FullPageLoading />;
   }
 
-  return <WelcomeFlow />;
+  return <WelcomeFlow onNavigatingAway={() => {
+    skipWorkspaceRedirect.current = true;
+  }} />;
 }
 
 function Router() {
