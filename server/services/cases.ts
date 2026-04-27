@@ -492,6 +492,7 @@ export async function createConversation(
     jurisdictionState?: string;
     jurisdictionCounty?: string;
     documentId?: string;
+    guidedState?: Record<string, unknown> | null;
   },
 ): Promise<Conversation | null> {
   if (!supabaseAdmin) return null;
@@ -505,6 +506,7 @@ export async function createConversation(
         case_id: caseId,
         title: opts.title?.slice(0, 200) ?? null,
         conversation_type: opts.threadType ?? "general",
+        guided_state: opts.guidedState ?? null,
       })
       .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
       .single();

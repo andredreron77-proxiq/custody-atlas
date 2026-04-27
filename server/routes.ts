@@ -16,7 +16,9 @@ import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
 import {
+  extractRespondToFilingStateFromConversation,
   extractWaypointStateFromConversation,
+  generateRespondToFilingActions,
   generateSnapshotActions,
   getGuidedFlowByConversationType,
   getGuidedFlowBySituationType,
@@ -24,6 +26,10 @@ import {
   hearingPrepSystemPrompt,
   isGuidedConversationType,
   postSnapshotSystemPrompt,
+  RESPOND_TO_FILING_INITIAL_STATE,
+  respondToFilingPostSnapshotSystemPrompt,
+  respondToFilingSystemPrompt,
+  type RespondToFilingWaypointState,
   type HearingPrepWaypointState,
 } from "./lib/guidedFlows";
 import {
@@ -283,6 +289,30 @@ function normalizeHearingPrepState(value: unknown): HearingPrepWaypointState {
     representation_status: typeof candidate.representation_status === "string"
       ? candidate.representation_status
       : null,
+    child_safety_flag: Boolean(candidate.child_safety_flag),
+    snapshot_complete: Boolean(candidate.snapshot_complete),
+    post_snapshot_turn: typeof candidate.post_snapshot_turn === "number" && Number.isFinite(candidate.post_snapshot_turn)
+      ? candidate.post_snapshot_turn
+      : 0,
+    waypoints_complete: Array.isArray(candidate.waypoints_complete)
+      ? candidate.waypoints_complete.filter((item): item is number => typeof item === "number")
+      : [],
+  };
+}
+
+function normalizeRespondToFilingState(value: unknown): RespondToFilingWaypointState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...RESPOND_TO_FILING_INITIAL_STATE };
+  }
+
+  const candidate = value as Partial<RespondToFilingWaypointState>;
+
+  return {
+    document_type: typeof candidate.document_type === "string" ? candidate.document_type : null,
+    opposing_request: typeof candidate.opposing_request === "string" ? candidate.opposing_request : null,
+    response_deadline: typeof candidate.response_deadline === "string" ? candidate.response_deadline : null,
+    knows_deadline: typeof candidate.knows_deadline === "boolean" ? candidate.knows_deadline : null,
+    coparent_relationship: typeof candidate.coparent_relationship === "string" ? candidate.coparent_relationship : null,
     child_safety_flag: Boolean(candidate.child_safety_flag),
     snapshot_complete: Boolean(candidate.snapshot_complete),
     post_snapshot_turn: typeof candidate.post_snapshot_turn === "number" && Number.isFinite(candidate.post_snapshot_turn)
@@ -5278,6 +5308,12 @@ Do not add facts not present in the provided evidence.`,
         threadType: flow.conversationType,
         jurisdictionState: caseRecord.jurisdictionState ?? undefined,
         jurisdictionCounty: caseRecord.jurisdictionCounty ?? undefined,
+        guidedState:
+          flow.conversationType === "guided_hearing_prep"
+            ? { ...HEARING_PREP_INITIAL_STATE }
+            : flow.conversationType === "guided_respond_filing"
+              ? { ...RESPOND_TO_FILING_INITIAL_STATE }
+              : null,
       });
       if (!conversation) {
         return res.status(503).json({ error: "Conversation storage unavailable." });
@@ -6240,7 +6276,7 @@ Do not add facts not present in the provided evidence.`,
         return res.status(404).json({ error: "Conversation not found." });
       }
 
-      if (conversation.threadType !== "guided_hearing_prep") {
+      if (conversation.threadType !== "guided_hearing_prep" && conversation.threadType !== "guided_respond_filing") {
         return res.status(400).json({ error: "Direct conversation messaging is only supported for the guided hearing prep flow right now." });
       }
 
@@ -6251,6 +6287,194 @@ Do not add facts not present in the provided evidence.`,
 
       const existingMemories = await listCaseMemory(caseRecord.id, user.id);
 
+      const priorMessages = await getRecentConversationMessages(conversationId, 24);
+      const openAIMessagesFor = (systemPrompt: string) => [
+        { role: "system" as const, content: systemPrompt },
+        ...priorMessages.map((message) => ({
+          role: message.role as "user" | "assistant",
+          content: message.messageText,
+        })),
+        { role: "user" as const, content: parsed.data.content },
+      ];
+
+      if (conversation.threadType === "guided_respond_filing") {
+        const currentState = normalizeRespondToFilingState(conversation.guidedState);
+        const isPostSnapshot = currentState.snapshot_complete === true;
+
+        if (isPostSnapshot) {
+          const nextPostSnapshotTurn = (currentState.post_snapshot_turn ?? 0) + 1;
+          const systemPrompt = respondToFilingPostSnapshotSystemPrompt({
+            case_name: conversation.title ?? caseRecord.title ?? "Your case",
+            snapshotState: currentState,
+            post_snapshot_turn: nextPostSnapshotTurn,
+          });
+
+          const completion = await getOpenAIClient().chat.completions.create({
+            model: "gpt-4o",
+            messages: openAIMessagesFor(systemPrompt),
+            max_tokens: 900,
+            temperature: 0.4,
+          });
+
+          const rawResponse = completion.choices[0]?.message?.content?.trim();
+          if (!rawResponse) {
+            return res.status(500).json({ error: "No response received from AI service." });
+          }
+
+          const cleanedResponse = rawResponse;
+          const [savedUserMessage, savedAssistantMessage] = await Promise.all([
+            appendConversationMessage(conversationId, "user", parsed.data.content, {
+              caseId: caseRecord.id,
+            }),
+            appendConversationMessage(conversationId, "assistant", cleanedResponse, {
+              caseId: caseRecord.id,
+              messageMetadata: {
+                guided_flow: true,
+                flow_type: "respond_filing",
+              },
+            }),
+          ]);
+
+          if (!savedAssistantMessage || !savedUserMessage) {
+            return res.status(500).json({ error: "Failed to persist conversation messages." });
+          }
+
+          await updateConversationGuidedState(conversationId, user.id, {
+            ...currentState,
+            post_snapshot_turn: nextPostSnapshotTurn,
+          } as unknown as Record<string, unknown>);
+
+          refreshGuidedCaseMemory({
+            userId: user.id,
+            caseId: caseRecord.id,
+            conversationType: conversation.threadType,
+            userQuestion: parsed.data.content,
+            assistantSummary: cleanedResponse,
+            existingMemories,
+          }).catch((err) => console.error("[guided] memory refresh failed:", err));
+
+          await trackQuestion(req);
+          saveQuestion(user.id, {
+            jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",
+            jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
+            questionText: parsed.data.content,
+            responseJson: {
+              summary: cleanedResponse,
+              triggerSnapshot: false,
+              snapshotState: currentState,
+              actions: [],
+            },
+          }).catch(() => {});
+
+          return res.status(201).json({
+            message: {
+              ...savedAssistantMessage,
+              content: cleanedResponse,
+            },
+          });
+        }
+
+        const systemPrompt = respondToFilingSystemPrompt(currentState);
+        const completion = await getOpenAIClient().chat.completions.create({
+          model: "gpt-4o",
+          messages: openAIMessagesFor(systemPrompt),
+          max_tokens: 900,
+          temperature: 0.4,
+        });
+
+        const rawResponse = completion.choices[0]?.message?.content?.trim();
+        if (!rawResponse) {
+          return res.status(500).json({ error: "No response received from AI service." });
+        }
+
+        const cleanedResponse = rawResponse;
+        const nextState = normalizeRespondToFilingState(await extractRespondToFilingStateFromConversation([
+          ...priorMessages.map((message) => ({
+            role: message.role,
+            content: message.messageText,
+          })),
+          { role: "user", content: parsed.data.content },
+          { role: "assistant", content: cleanedResponse },
+        ], currentState));
+        const shouldTriggerSnapshot = [1, 2, 3, 4].every((waypoint) => nextState.waypoints_complete.includes(waypoint));
+        if (shouldTriggerSnapshot) {
+          nextState.snapshot_complete = true;
+        }
+
+        const [savedUserMessage, savedAssistantMessage] = await Promise.all([
+          appendConversationMessage(conversationId, "user", parsed.data.content, {
+            caseId: caseRecord.id,
+          }),
+          appendConversationMessage(conversationId, "assistant", cleanedResponse, {
+            caseId: caseRecord.id,
+            messageMetadata: {
+              guided_flow: true,
+              flow_type: "respond_filing",
+              ...(shouldTriggerSnapshot ? {
+                trigger_snapshot: true,
+                snapshot_state: nextState,
+              } : {}),
+            },
+          }),
+        ]);
+
+        if (!savedAssistantMessage || !savedUserMessage) {
+          return res.status(500).json({ error: "Failed to persist conversation messages." });
+        }
+
+        await updateConversationGuidedState(conversationId, user.id, nextState as unknown as Record<string, unknown>);
+
+        if (nextState.child_safety_flag) {
+          recordChildSafetySignal({
+            conversationId,
+            caseId: caseRecord.id,
+            userId: user.id,
+          }).catch((err) => console.error("[guided] child safety signal write failed:", err));
+        }
+
+        const responseBody: Record<string, unknown> = {
+          message: savedAssistantMessage,
+        };
+
+        refreshGuidedCaseMemory({
+          userId: user.id,
+          caseId: caseRecord.id,
+          conversationType: conversation.threadType,
+          userQuestion: parsed.data.content,
+          assistantSummary: cleanedResponse,
+          existingMemories,
+        }).catch((err) => console.error("[guided] memory refresh failed:", err));
+
+        await trackQuestion(req);
+        const snapshotActions = shouldTriggerSnapshot
+          ? await generateRespondToFilingActions(nextState)
+          : [];
+        saveQuestion(user.id, {
+          jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",
+          jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
+          questionText: parsed.data.content,
+          responseJson: {
+            summary: cleanedResponse,
+            triggerSnapshot: shouldTriggerSnapshot,
+            snapshotState: nextState,
+            actions: snapshotActions,
+          },
+        }).catch(() => {});
+
+        if (shouldTriggerSnapshot) {
+          responseBody.triggerSnapshot = true;
+          responseBody.snapshotState = nextState;
+          responseBody.actions = snapshotActions;
+        }
+
+        responseBody.message = {
+          ...savedAssistantMessage,
+          content: cleanedResponse,
+        };
+
+        return res.status(201).json(responseBody);
+      }
+
       const currentState = normalizeHearingPrepState(conversation.guidedState);
       const promptParams = {
         case_name: caseRecord.title,
@@ -6259,7 +6483,6 @@ Do not add facts not present in the provided evidence.`,
         days_until_hearing: computeDaysUntilHearing(currentState.hearing_date),
         waypoint_state_json: JSON.stringify(currentState),
       };
-      const priorMessages = await getRecentConversationMessages(conversationId, 24);
       const isPostSnapshot = currentState.snapshot_complete === true;
 
       console.log("[Atlas] snapshot_complete flag:", currentState.snapshot_complete);
@@ -6275,18 +6498,9 @@ Do not add facts not present in the provided evidence.`,
           post_snapshot_turn: nextPostSnapshotTurn,
         });
 
-        const openAIMessages = [
-          { role: "system" as const, content: systemPrompt },
-          ...priorMessages.map((message) => ({
-            role: message.role as "user" | "assistant",
-            content: message.messageText,
-          })),
-          { role: "user" as const, content: parsed.data.content },
-        ];
-
         const completion = await getOpenAIClient().chat.completions.create({
           model: "gpt-4o",
-          messages: openAIMessages,
+          messages: openAIMessagesFor(systemPrompt),
           max_tokens: 900,
           temperature: 0.4,
         });
@@ -6351,12 +6565,7 @@ Do not add facts not present in the provided evidence.`,
 
       const systemPrompt = hearingPrepSystemPrompt(promptParams);
       const openAIMessages = [
-        { role: "system" as const, content: systemPrompt },
-        ...priorMessages.map((message) => ({
-          role: message.role as "user" | "assistant",
-          content: message.messageText,
-        })),
-        { role: "user" as const, content: parsed.data.content },
+        ...openAIMessagesFor(systemPrompt),
       ];
 
       const completion = await getOpenAIClient().chat.completions.create({

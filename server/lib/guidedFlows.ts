@@ -55,6 +55,18 @@ export interface HearingPrepWaypointState {
   waypoints_complete: number[];
 }
 
+export interface RespondToFilingWaypointState {
+  document_type: "motion" | "petition" | "summons" | "order_to_show_cause" | "subpoena" | "unknown" | null;
+  opposing_request: string | null;
+  response_deadline: string | null;
+  knows_deadline: boolean | null;
+  coparent_relationship: "cooperative" | "high_conflict" | "no_contact" | "unknown" | null;
+  child_safety_flag: boolean;
+  snapshot_complete: boolean;
+  post_snapshot_turn: number;
+  waypoints_complete: number[];
+}
+
 export const HEARING_PREP_INITIAL_STATE: HearingPrepWaypointState = {
   hearing_date: null,
   hearing_type: null,
@@ -64,6 +76,18 @@ export const HEARING_PREP_INITIAL_STATE: HearingPrepWaypointState = {
   order_status: null,
   recent_changes: null,
   representation_status: null,
+  child_safety_flag: false,
+  snapshot_complete: false,
+  post_snapshot_turn: 0,
+  waypoints_complete: [],
+};
+
+export const RESPOND_TO_FILING_INITIAL_STATE: RespondToFilingWaypointState = {
+  document_type: null,
+  opposing_request: null,
+  response_deadline: null,
+  knows_deadline: null,
+  coparent_relationship: null,
   child_safety_flag: false,
   snapshot_complete: false,
   post_snapshot_turn: 0,
@@ -339,6 +363,137 @@ jurisdiction is Georgia) or the parent's state legal aid organization before
 moving to waypoint 6. Do not make this a question — make it a resource offer.`;
 }
 
+export function respondToFilingSystemPrompt(state: RespondToFilingWaypointState): string {
+  return `You are Atlas — an AI guide for parents navigating custody proceedings.
+
+You are warm, clear, and direct. You are not a lawyer. You do not give legal advice.
+You give situational guidance: helping parents understand what is happening and what
+they can do about it.
+
+CURRENT SESSION: Respond to Filing
+
+RULES — follow exactly every turn
+
+Rule 1: Every turn follows REFLECT → TRANSLATE → ASK. Acknowledge what the user shared (1 sentence). Give one plain-English insight that helps them understand their situation. Ask exactly one question to advance the next unresolved waypoint.
+
+Rule 2: Skip any waypoint already resolved. Do not re-ask for information already captured in state.
+
+Rule 3: One question per turn only. Never stack questions. Never ask "and also..."
+
+Rule 4: No legal advice. Do not tell the user what to do legally, what to file, or what will happen in court. You can explain what things mean.
+
+Rule 5: Calm, focused, warm tone. These users are scared and overwhelmed. Speak like a knowledgeable friend.
+
+Rule 6: Sensitive moment protocol. If user mentions child abuse, self-harm, or domestic violence: acknowledge it, pause the waypoint flow, provide DFCS (1-855-422-4453) or 988 as appropriate. Resume waypoints next turn.
+
+Rule 7: Document type translations. When the user describes what they received, translate it to plain English before continuing:
+  - Motion → "A formal request the other parent filed asking the judge to change or decide something"
+  - Petition → "A document that started the court case or asked to make major changes"
+  - Summons → "A notice that you've been brought into a court case and must respond"
+  - Order to Show Cause → "A court order requiring you to appear and explain yourself to a judge"
+  - Subpoena → "A legal demand for you to provide documents or testimony"
+
+Rule 8: Never narrate state field names in chat. Do not say things like "I've noted your document_type" or "Your coparent_relationship is set to high_conflict." Speak naturally.
+
+Rule 9: Never repeat empathy openers back-to-back. Vary your acknowledgment across turns. Avoid using "I hear you" more than once per conversation. Use alternatives: "That makes sense," "That's a lot to be dealing with," "It sounds like this caught you off guard," etc.
+
+Waypoint sequence (collect in order, skip if already known):
+1. document_type — What did you receive? (motion, petition, summons, etc.)
+2. opposing_request — What is the other parent asking for?
+3. response_deadline + knows_deadline — Do you know when you need to respond by?
+4. coparent_relationship — How would you describe your relationship with the other parent right now?
+5. Snapshot triggers when waypoints [1, 2, 3, 4] are all complete (waypoints_complete includes 1, 2, 3, 4)
+
+Current state injected into prompt:
+- document_type: ${state.document_type}
+- opposing_request: ${state.opposing_request}
+- response_deadline: ${state.response_deadline}
+- knows_deadline: ${state.knows_deadline}
+- coparent_relationship: ${state.coparent_relationship}
+- waypoints_complete: ${JSON.stringify(state.waypoints_complete)}
+- snapshot_complete: ${state.snapshot_complete}`;
+}
+
+export function respondToFilingPostSnapshotSystemPrompt(params: {
+  case_name: string;
+  snapshotState: RespondToFilingWaypointState;
+  post_snapshot_turn: number;
+}): string {
+  return `You are Atlas — an AI guide for parents navigating custody proceedings.
+
+You are warm, clear, and direct. You are not a lawyer. You do not give legal advice.
+You give situational guidance: helping parents understand what is happening and what
+they can do about it.
+
+CURRENT SESSION: Respond to Filing — Post Snapshot
+Case: ${params.case_name}
+
+The parent has already completed the guided respond-to-filing intake and Atlas has
+already captured the core situation. Stay anchored in that resolved snapshot state
+for every reply. Do not restart the intake. Do not ask broad re-orientation
+questions unless a missing fact is absolutely necessary to answer the one question
+they just asked.
+
+RULES — follow exactly every turn
+
+RULE 1: FIRST RESPONSE RULE
+If this is the first message after the Snapshot (the user's message count in post-snapshot context is 1), do not wait for the user to ask something. Instead, ask ONE deepening question specific to their situation using these guidelines:
+
+- If document_type is motion or petition: ask what claim or request in the papers worries them most
+- If knows_deadline is false: ask what they can see on the top page about dates, hearing times, or response windows
+- If coparent_relationship is high_conflict or no_contact: ask what communication or lack of communication matters most for responding
+- If opposing_request is already known: ask what part of that request feels least fair or least accurate to them
+
+The question must reference something specific from snapshotState.
+Never ask a generic question.
+
+After their answer: give one concrete insight tied to their answer, then end with the Pro nudge.
+
+RULE 2: ANSWER ONE SPECIFIC QUESTION
+Answer the user's current question directly. Give one concrete, actionable insight
+that fits the facts already captured in the snapshot state.
+
+RULE 3: STAY IN CONTEXT
+Use the resolved snapshot state as the active case context. Keep the answer tied to:
+- the document type
+- what the other parent is asking for
+- the response deadline or uncertainty around it
+- the co-parent relationship already captured
+
+RULE 4: KEEP FREE-TIER DEPTH INTENTIONAL
+Do not give a numbered list of 3 or more items.
+Do not provide a full response strategy for free.
+Keep the answer focused, concrete, and useful without exhausting the full strategy.
+
+RULE 5: NO LEGAL ADVICE
+Say what filings typically mean. Say what tends to matter. Use language like
+"here's what I'd focus on next" or "here's what tends to matter most."
+Never promise outcomes. Never frame legal strategy as certainty.
+
+RULE 6: TONE
+Warm, calm, partner-like. Sound like a clear-eyed guide who knows the thread and is
+helping the parent keep moving.
+
+RULE 7: UPGRADE TRANSITION
+After answering, always end with this exact natural transition:
+"There's more to build here. With Pro you can keep going — 200 questions, unlimited documents."
+
+RULE 8: DO NOT CLOSE THE CONVERSATION
+Never say "feel free."
+Never say "I'm here to help."
+Never imply the conversation is over.
+Never sign off.
+
+RULE 9: OUTPUT
+Return plain natural language only. No hidden state blocks. No markdown code fences.
+
+POST SNAPSHOT TURN COUNT:
+${params.post_snapshot_turn}
+
+RESOLVED SNAPSHOT STATE REFERENCE:
+${JSON.stringify(params.snapshotState, null, 2)}`;
+}
+
 export function postSnapshotSystemPrompt(params: {
   case_name: string;
   jurisdiction_county: string;
@@ -490,6 +645,83 @@ Rules:
   }
 }
 
+export async function extractRespondToFilingStateFromConversation(
+  messages: { role: string; content: string }[],
+  currentState: RespondToFilingWaypointState,
+): Promise<RespondToFilingWaypointState> {
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 300,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You extract structured data from custody filing response conversations.
+You receive the full conversation and the current state.
+Return ONLY valid JSON matching this schema exactly — no markdown, no explanation:
+{
+  document_type: 'motion' | 'petition' | 'summons' | 'order_to_show_cause' | 'subpoena' | 'unknown' | null,
+  opposing_request: string | null,
+  response_deadline: string | null,
+  knows_deadline: boolean | null,
+  coparent_relationship: 'cooperative' | 'high_conflict' | 'no_contact' | 'unknown' | null,
+  child_safety_flag: boolean,
+  snapshot_complete: boolean,
+  post_snapshot_turn: number,
+  waypoints_complete: number[]
+}
+Rules:
+- Preserve existing non-null values from current state. Never overwrite a non-null value with null.
+- Infer document_type from natural language when possible (example: "I got served papers" may be summons or unknown).
+- Set knows_deadline: true if user gives any date or timeframe; false if they say they don't know.
+- Set child_safety_flag: true if user mentions child abuse, neglect, or domestic violence.
+- Recalculate waypoints_complete and include a waypoint number if its required fields are non-null:
+  - Waypoint 1: document_type non-null
+  - Waypoint 2: opposing_request non-null
+  - Waypoint 3: knows_deadline non-null
+  - Waypoint 4: coparent_relationship non-null
+- Keep snapshot_complete and post_snapshot_turn unchanged from current state.
+- Return ONLY the JSON object.`,
+        },
+        {
+          role: "user",
+          content: `Current state:\n${JSON.stringify(currentState)}\n\nExtract respond-to-filing state from this conversation:\n${JSON.stringify(messages)}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return currentState;
+
+    const parsed = JSON.parse(rawContent) as Partial<RespondToFilingWaypointState>;
+    const merged: RespondToFilingWaypointState = {
+      document_type: parsed.document_type ?? currentState.document_type ?? null,
+      opposing_request: parsed.opposing_request ?? currentState.opposing_request ?? null,
+      response_deadline: parsed.response_deadline ?? currentState.response_deadline ?? null,
+      knows_deadline: parsed.knows_deadline ?? currentState.knows_deadline ?? null,
+      coparent_relationship: parsed.coparent_relationship ?? currentState.coparent_relationship ?? null,
+      child_safety_flag: Boolean(parsed.child_safety_flag ?? currentState.child_safety_flag),
+      snapshot_complete: currentState.snapshot_complete,
+      post_snapshot_turn: currentState.post_snapshot_turn,
+      waypoints_complete: [],
+    };
+
+    merged.waypoints_complete = [
+      merged.document_type !== null ? 1 : null,
+      merged.opposing_request !== null ? 2 : null,
+      merged.knows_deadline !== null ? 3 : null,
+      merged.coparent_relationship !== null ? 4 : null,
+    ].filter((item): item is number => item !== null);
+
+    return merged;
+  } catch (err) {
+    console.error("[Atlas] Failed to parse extracted respond-to-filing state:", err);
+    return currentState;
+  }
+}
+
 export async function generateSnapshotActions(
   state: HearingPrepWaypointState,
   caseName: string,
@@ -541,6 +773,52 @@ Case name: ${caseName}`,
     return fallbackActions;
   } catch (err) {
     console.error("[Atlas] generateSnapshotActions error:", err);
+    return fallbackActions;
+  }
+}
+
+export async function generateRespondToFilingActions(
+  state: RespondToFilingWaypointState,
+): Promise<string[]> {
+  const fallbackActions = [
+    "Read the document carefully and write down every request or claim that stands out to you.",
+    "Look for any date, deadline, or hearing notice on the papers and write it in one place you will see this week.",
+    "Gather any texts, emails, or records that help explain your side of what the other parent is asking for.",
+  ];
+
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 400,
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content: `You return an array of exactly 3 strings — personalized action items for a parent responding to a custody filing.
+Actions must be concrete and specific, not generic. Return ONLY a JSON array of 3 strings. No markdown. No explanation.`,
+        },
+        {
+          role: "user",
+          content: `Generate 3 action items for this parent:
+Document type: ${state.document_type ?? "unknown"}
+Other parent is asking for: ${state.opposing_request ?? "unknown"}
+Response deadline: ${state.response_deadline ?? "unknown"}
+Knows deadline: ${state.knows_deadline ?? "unknown"}
+Co-parent relationship: ${state.coparent_relationship ?? "unknown"}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return fallbackActions;
+
+    const parsed = JSON.parse(rawContent);
+    if (Array.isArray(parsed) && parsed.length === 3 && parsed.every((item) => typeof item === "string")) {
+      return parsed;
+    }
+    return fallbackActions;
+  } catch (err) {
+    console.error("[Atlas] generateRespondToFilingActions error:", err);
     return fallbackActions;
   }
 }
