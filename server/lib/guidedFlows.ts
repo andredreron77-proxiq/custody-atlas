@@ -1164,11 +1164,13 @@ Return ONLY valid JSON matching this schema exactly — no markdown, no explanat
 Rules:
 - Preserve all existing non-null values.
 - NEVER infer a value the user hasn't explicitly addressed.
+- Current waypoint completion state is authoritative. Current waypoints_complete: ${JSON.stringify(currentState.waypoints_complete)}
 - situation_summary: short plain-English summary of what the user described (1-2 sentences max).
 - situation_summary should capture the overall context the user described, but it must never bleed into primary_concern. They are separate fields.
 - order_status: only set if user explicitly mentions or confirms order status. order_status must reflect the MOST AUTHORITATIVE statement the user has made about their arrangement across the entire conversation. If the user later mentions a court order, prior court involvement, or a judge setting a schedule, that overrides any earlier inference. Specifically: if the user mentions going to court AND a judge or order setting the schedule, set order_status to 'court_order'. If the user mentions a signed written plan not confirmed by a judge, set order_status to 'written_agreement'. If the user describes an informal agreement with no court involvement, set order_status to 'informal'. If no information is provided, return null.
+- primary_concern and concern_category must ONLY be extracted if waypoints [1] and [2] are already in waypoints_complete. If waypoints_complete does not include both 1 and 2, set primary_concern to null and concern_category to null regardless of anything in the conversation.
 - primary_concern: direct quote or close paraphrase of what the user said matters most, but only set it if the user directly answered the question "What matters most to you right now?" or an equivalent direct prompt. A general description of confusion, uncertainty, or not knowing where to start does NOT qualify as a primary_concern answer.
-- concern_category must stay null until primary_concern is set from an explicit answer.
+- concern_category must stay null until primary_concern is set from an explicit answer and waypoints_complete includes both 1 and 2.
 - concern_category: infer from primary_concern using this guide only:
   - safety → user mentions abuse, neglect, danger, drugs, environment
   - stability → user mentions school, housing, routine, consistency
