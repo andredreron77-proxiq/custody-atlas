@@ -157,9 +157,12 @@ export function WelcomeFlow() {
   const [caseNameTouched, setCaseNameTouched] = useState(false);
   const [caseError, setCaseError] = useState<string | null>(null);
   const [caseCreationFailed, setCaseCreationFailed] = useState(false);
+  const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
   const [isCreatingCase, setIsCreatingCase] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [isPreparingGuidedConversation, setIsPreparingGuidedConversation] = useState(false);
+  const [guidedConversationError, setGuidedConversationError] = useState<string | null>(null);
 
   const preferredName = resolvePreferredDisplayName({
     profileDisplayName: profile?.displayName,
@@ -185,8 +188,7 @@ export function WelcomeFlow() {
     window.sessionStorage.setItem(WELCOME_FLOW_ACTIVE_KEY, "1");
   }, []);
 
-  const finish = async (href = "/workspace") => {
-    setIsFinishing(true);
+  const persistWelcomeCompletion = async () => {
     if (jurisdiction) {
       try {
         const res = await apiRequestRaw("PATCH", "/api/user-profile/jurisdiction", {
@@ -217,6 +219,11 @@ export function WelcomeFlow() {
       console.error("[WelcomeFlow] Failed to persist welcome dismissal:", message, error);
       window.sessionStorage.setItem(WELCOME_FLOW_JUST_COMPLETED_KEY, "1");
     }
+  };
+
+  const finish = async (href = "/workspace") => {
+    setIsFinishing(true);
+    await persistWelcomeCompletion();
     setTimeout(() => {
       window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
       navigate(href, { replace: true });
@@ -246,6 +253,10 @@ export function WelcomeFlow() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "We couldn't create the case right now.");
       }
+      const data = await res.json().catch(() => ({} as { case?: { id?: string } }));
+      if (typeof data?.case?.id === "string" && data.case.id.length > 0) {
+        setCreatedCaseId(data.case.id);
+      }
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });
       setStep(4);
     } catch (error) {
@@ -254,6 +265,54 @@ export function WelcomeFlow() {
       setCaseCreationFailed(true);
     } finally {
       setIsCreatingCase(false);
+    }
+  };
+
+  const resolveGuidedCaseId = async (): Promise<string | null> => {
+    if (createdCaseId) return createdCaseId;
+
+    const cachedCases = qc.getQueryData<{ cases: Array<{ id: string }> }>(["/api/cases"]);
+    if (cachedCases?.cases?.[0]?.id) return cachedCases.cases[0].id;
+
+    const res = await apiRequestRaw("GET", "/api/cases");
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({ cases: [] as Array<{ id: string }> }));
+    return data?.cases?.[0]?.id ?? null;
+  };
+
+  const startRespondToFilingConversation = async () => {
+    setGuidedConversationError(null);
+    setIsPreparingGuidedConversation(true);
+    try {
+      const caseId = await resolveGuidedCaseId();
+      if (!caseId) {
+        throw new Error("We couldn't find a case to attach this conversation to yet.");
+      }
+
+      await persistWelcomeCompletion();
+
+      const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
+        caseId,
+        conversation_type: "guided_respond_to_filing",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "We couldn't get Atlas ready right now.");
+      }
+
+      const data = await res.json().catch(() => ({} as { conversation?: { id?: string } }));
+      const conversationId = data?.conversation?.id;
+      if (!conversationId) {
+        throw new Error("Atlas started, but the conversation link was missing.");
+      }
+
+      window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
+      navigate(`/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`, { replace: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "We couldn't get Atlas ready right now.";
+      setGuidedConversationError(message);
+    } finally {
+      setIsPreparingGuidedConversation(false);
     }
   };
 
@@ -491,7 +550,11 @@ export function WelcomeFlow() {
         {step === 4 && (
           <Panel
             heading="Atlas is ready to help."
-            subtext={currentReadyCopy.text}
+            subtext={
+              situationType === "respond_to_filing"
+                ? "Tell Atlas what's going on and we'll figure out next steps together."
+                : currentReadyCopy.text
+            }
           >
             <div className="rounded-xl border bg-muted/20 px-4 py-4">
               <div className="flex items-start gap-3">
@@ -507,18 +570,50 @@ export function WelcomeFlow() {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <Button
-                className="w-full gap-2 sm:w-auto"
-                onClick={() => void finish(currentReadyCopy.href)}
-                disabled={isFinishing}
-                data-testid="button-welcome-primary-cta"
-              >
-                {isFinishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ReadyIcon className="h-4 w-4" />}
-                {currentReadyCopy.cta}
-              </Button>
-            </div>
-            <p className="mt-3 text-center text-sm text-muted-foreground">{currentReadyHint}</p>
+            {situationType === "respond_to_filing" ? (
+              <>
+                <div className="mt-6">
+                  <Button
+                    className="w-full gap-2"
+                    onClick={() => void startRespondToFilingConversation()}
+                    disabled={isPreparingGuidedConversation}
+                    data-testid="button-welcome-guided-respond-filing"
+                  >
+                    {isPreparingGuidedConversation ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {isPreparingGuidedConversation ? "Getting Atlas ready..." : "Talk to Atlas →"}
+                  </Button>
+                  {guidedConversationError ? (
+                    <p className="mt-3 text-sm text-destructive" data-testid="text-welcome-guided-error">
+                      {guidedConversationError}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="mt-4 min-h-[44px] text-sm font-medium text-muted-foreground hover:text-foreground"
+                  onClick={() => void finish("/upload-document")}
+                  disabled={isFinishing || isPreparingGuidedConversation}
+                  data-testid="button-welcome-upload-instead"
+                >
+                  Already have a document? Upload it instead
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    className="w-full gap-2 sm:w-auto"
+                    onClick={() => void finish(currentReadyCopy.href)}
+                    disabled={isFinishing}
+                    data-testid="button-welcome-primary-cta"
+                  >
+                    {isFinishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ReadyIcon className="h-4 w-4" />}
+                    {currentReadyCopy.cta}
+                  </Button>
+                </div>
+                <p className="mt-3 text-center text-sm text-muted-foreground">{currentReadyHint}</p>
+              </>
+            )}
           </Panel>
         )}
       </div>

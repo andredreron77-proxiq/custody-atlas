@@ -5281,6 +5281,7 @@ Do not add facts not present in the provided evidence.`,
     const user = (req as any).user as { id: string };
     const schema = z.object({
       caseId: z.string().uuid(),
+      conversation_type: z.string().trim().min(1).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -5291,7 +5292,9 @@ Do not add facts not present in the provided evidence.`,
       const caseRecord = await getCaseById(parsed.data.caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
 
-      const flow = getGuidedFlowBySituationType(caseRecord.situationType);
+      const flow = parsed.data.conversation_type
+        ? getGuidedFlowByConversationType(parsed.data.conversation_type)
+        : getGuidedFlowBySituationType(caseRecord.situationType);
       if (!flow) {
         return res.status(400).json({ error: "This case does not have a guided flow." });
       }
