@@ -187,7 +187,7 @@ function CasePickerMenu({
 }
 
 export default function AskAIPage() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const urlParams = new URLSearchParams(
     location.split("?")[1] || window.location.search.slice(1)
   );
@@ -383,11 +383,37 @@ export default function AskAIPage() {
   }, [activeCaseId, caseIdParam, cases]);
 
   useEffect(() => {
+    if (caseIdParam) {
+      setActiveCaseId(caseIdParam);
+    }
+  }, [caseIdParam]);
+
+  useEffect(() => {
     setResolvedConversationId(conversationIdParam);
     setResolvedConversationType(undefined);
     setInitializedConversationPayload(null);
     guidedInitRef.current = false;
   }, [activeCaseId, conversationIdParam]);
+
+  useEffect(() => {
+    if (!conversationIdParam) return;
+    if (isLoadingConversation) return;
+    if (initializedConversationPayload) return;
+    if (convMessagesData !== null) return;
+
+    console.warn("[AskAIPage] Conversation from URL failed to load; redirecting to /ask", {
+      conversationIdParam,
+      caseIdParam,
+    });
+    navigate("/ask", { replace: true });
+  }, [
+    caseIdParam,
+    conversationIdParam,
+    convMessagesData,
+    initializedConversationPayload,
+    isLoadingConversation,
+    navigate,
+  ]);
 
   useEffect(() => {
     if (threadIdParam || conversationIdParam || !activeCaseId) return;
