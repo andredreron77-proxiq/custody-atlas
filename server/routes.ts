@@ -5635,14 +5635,15 @@ Do not add facts not present in the provided evidence.`,
         getCaseActions(caseId, user.id),
         supabaseAdmin
           ?.from("case_memory")
-          .select("*")
+          .select("case_id, memory_summary, key_open_questions, key_risks, last_refreshed_at, updated_at")
           .eq("case_id", caseId)
-          .order("created_at", { ascending: false })
+          .order("updated_at", { ascending: false })
           .limit(1)
-          .maybeSingle(),
+          .maybeSingle()
+          .then((result) => result.data ?? null),
       ]);
 
-      const snapshotPayloadRaw = latestSnapshotRow?.data?.memory_summary;
+      const snapshotPayloadRaw = latestSnapshotRow?.memory_summary;
       const parsedSnapshotPayload = (() => {
         if (!snapshotPayloadRaw) return null;
         try {
