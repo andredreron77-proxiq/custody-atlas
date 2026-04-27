@@ -361,6 +361,10 @@ function normalizeMoreTimeState(value: unknown): MoreTimeWaypointState {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function normalizeFiguringItOutState(value: unknown): FiguringItOutWaypointState {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ...FIGURING_IT_OUT_INITIAL_STATE };
@@ -5621,11 +5625,63 @@ Do not add facts not present in the provided evidence.`,
       const caseRecord = await getCaseById(caseId, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
 
-      const [documents, timelineEvents, actions] = await Promise.all([
+      const [documents, timelineEvents, actions, latestSnapshotRow] = await Promise.all([
         getDocumentsByCase(caseId, user.id),
         deriveCaseTimeline(caseId, user.id),
         getCaseActions(caseId, user.id),
+        supabaseAdmin
+          ?.from("case_memory")
+          .select("*")
+          .eq("case_id", caseId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
+
+      const snapshotPayloadRaw = latestSnapshotRow?.data?.memory_summary;
+      const parsedSnapshotPayload = (() => {
+        if (!snapshotPayloadRaw) return null;
+        try {
+          const parsed = typeof snapshotPayloadRaw === "string"
+            ? JSON.parse(snapshotPayloadRaw)
+            : snapshotPayloadRaw;
+          return isRecord(parsed) ? parsed : null;
+        } catch {
+          return null;
+        }
+      })();
+      const snapshotState = isRecord(parsedSnapshotPayload?.snapshotState)
+        ? parsedSnapshotPayload.snapshotState as Record<string, unknown>
+        : null;
+      const snapshotActions = Array.isArray(parsedSnapshotPayload?.actions)
+        ? parsedSnapshotPayload.actions.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : [];
+      const snapshotMemory: (Record<string, unknown> & { actions: string[]; savedAt: string | null }) | null = snapshotState
+        ? {
+            ...snapshotState,
+            actions: snapshotActions,
+            savedAt: typeof parsedSnapshotPayload?.savedAt === "string" ? parsedSnapshotPayload.savedAt : null,
+          }
+        : null;
+      const snapshotExists = Boolean(snapshotMemory);
+      const snapshotTopConcern = typeof snapshotMemory?.top_concern === "string" && snapshotMemory.top_concern.trim()
+        ? snapshotMemory.top_concern.trim()
+        : null;
+      const snapshotConcernCategory = typeof snapshotMemory?.concern_category === "string"
+        ? snapshotMemory.concern_category
+        : null;
+      const snapshotUrgency: "Low" | "Medium" | "High" | null = (() => {
+        if (!snapshotTopConcern) return null;
+        if (snapshotConcernCategory === "safety") return "High";
+        if (snapshotConcernCategory === "fairness_fear" || snapshotConcernCategory === "resource_gap") return "Medium";
+        return "Low";
+      })();
+      const caseCreatedAtMs = Date.parse(caseRecord.createdAt);
+      const caseAgeDays = Number.isFinite(caseCreatedAtMs)
+        ? Math.floor((Date.now() - caseCreatedAtMs) / (1000 * 60 * 60 * 24))
+        : null;
+      const suppressDocumentAlertsForSnapshot = snapshotExists && documents.length === 0 && caseAgeDays !== null && caseAgeDays < 7;
+      const gentleSnapshotDocumentPrompt = snapshotExists && documents.length === 0 && caseAgeDays !== null && caseAgeDays >= 7;
 
       const normalizedTimeline = normalizeDashboardTimeline(timelineEvents);
       const primaryTimeline = normalizedTimeline.filter((event) => event.bucket === "primary");
@@ -5642,7 +5698,8 @@ Do not add facts not present in the provided evidence.`,
 
       const watchouts: string[] = [];
       if (overdueEvents.length > 0) watchouts.push(`${overdueEvents.length} past-due court item${overdueEvents.length > 1 ? "s require" : " requires"} attention`);
-      if (documents.length === 0) watchouts.push("Foundational court documents are missing");
+      if (documents.length === 0 && !snapshotExists) watchouts.push("Foundational court documents are missing");
+      if (gentleSnapshotDocumentPrompt) watchouts.push("Adding your documents will help Atlas give you more specific guidance");
       const missingSummaryDocs = documents.filter((doc) => !getDocumentIntegrity(doc).isAnalysisAvailable);
       if (missingSummaryDocs.length > 0) watchouts.push(`${missingSummaryDocs.length} document${missingSummaryDocs.length > 1 ? "s need" : " needs"} analysis review`);
 
@@ -5742,12 +5799,15 @@ Do not add facts not present in the provided evidence.`,
 
       const urgency: "Low" | "Medium" | "High" = (() => {
         if (overdueEvents.length > 0) return "High";
-        if ((nextCriticalDaysAway !== null && nextCriticalDaysAway <= 7) || missingKeyDocs.length >= 2) return "High";
-        if ((nextCriticalDaysAway !== null && nextCriticalDaysAway <= 21) || openActions.length > 0 || missingKeyDocs.length > 0) return "Medium";
+        if (nextCriticalDaysAway !== null && nextCriticalDaysAway <= 7) return "High";
+        if (missingKeyDocs.length >= 2 && !snapshotExists) return "High";
+        if ((nextCriticalDaysAway !== null && nextCriticalDaysAway <= 21) || openActions.length > 0 || (missingKeyDocs.length > 0 && !snapshotExists)) return "Medium";
+        if (snapshotUrgency) return snapshotUrgency;
         return "Low";
       })();
 
-      const documentCompleteness: "Strong" | "Partial" | "Needs review" = (() => {
+      const documentCompleteness: "Strong" | "Partial" | "Needs review" | "Not yet uploaded" = (() => {
+        if (documents.length === 0 && snapshotExists) return "Not yet uploaded";
         if (documents.length === 0 || keyDocsPresentCount <= 1) return "Needs review";
         if (missingKeyDocs.length === 0) return "Strong";
         return "Partial";
@@ -5756,7 +5816,8 @@ Do not add facts not present in the provided evidence.`,
       const immediateConcern = (() => {
         if (overdueEvents.length > 0) return "A court-related item appears overdue and should be reviewed immediately.";
         if (nextCriticalDaysAway !== null && nextCriticalDaysAway <= 7) return "A hearing or filing deadline is very close and needs immediate preparation.";
-        if (missingKeyDocs.length > 0) return "Key case documents appear missing and should be uploaded or verified.";
+        if (snapshotTopConcern) return snapshotTopConcern;
+        if (missingKeyDocs.length > 0 && !snapshotExists) return "Key case documents appear missing and should be uploaded or verified.";
         if (missingSummaryDocs.length > 0) return "A document appears unanalyzed and should be checked for missing dates or obligations.";
         return "No immediate risks are flagged; continue routine case monitoring.";
       })();
@@ -5792,16 +5853,22 @@ Do not add facts not present in the provided evidence.`,
         {
           alertKey: "missing_document",
           type: "missing_document",
-          title: "Missing document coverage",
-          message: documents.length === 0
-            ? "No case filings are on file, so deadlines and hearing context are incomplete."
-            : "Some key filing coverage appears incomplete for this case.",
+          title: gentleSnapshotDocumentPrompt ? "Add documents for more specific guidance" : "Missing document coverage",
+          message: gentleSnapshotDocumentPrompt
+            ? "Adding your documents will help Atlas give you more specific guidance."
+            : documents.length === 0
+              ? "No case filings are on file, so deadlines and hearing context are incomplete."
+              : "Some key filing coverage appears incomplete for this case.",
           impact: alertImpactWhyThisMatters("missing_document"),
-          severity: documents.length === 0 ? "high" : "medium",
+          severity: gentleSnapshotDocumentPrompt ? "info" : documents.length === 0 ? "high" : "medium",
           relatedItem: "Case document set",
           recommendedAction: "Upload or link the latest petition, order, or hearing notice.",
           target: { label: "Add document", href: `/upload-document?case=${caseId}`, section: "add_document" },
-          shouldBeActive: documents.length === 0 || missingKeyDocs.length > 0,
+          shouldBeActive: suppressDocumentAlertsForSnapshot
+            ? false
+            : gentleSnapshotDocumentPrompt
+              ? true
+              : documents.length === 0 || missingKeyDocs.length > 0,
           autoResolveHighConfidence: (documents.length > 0 && missingKeyDocs.length === 0)
             ? { method: "document", note: "Core filing coverage detected after document upload." }
             : null,
@@ -5863,7 +5930,9 @@ Do not add facts not present in the provided evidence.`,
           relatedItem: "Case readiness",
           recommendedAction: "Upload missing documents or ask Atlas for next best evidence.",
           target: { label: "Ask Atlas", href: `/ask?case=${caseId}`, section: "ask_atlas" },
-          shouldBeActive: documents.length < 2 || primaryTimeline.length < 2 || missingSummaryDocs.length > 0,
+          shouldBeActive: gentleSnapshotDocumentPrompt || suppressDocumentAlertsForSnapshot
+            ? false
+            : documents.length < 2 || primaryTimeline.length < 2 || missingSummaryDocs.length > 0,
           autoResolveHighConfidence: (documents.length >= 2 && primaryTimeline.length >= 2 && missingSummaryDocs.length === 0)
             ? { method: "inferred", note: "Case coverage appears complete based on current records." }
             : null,
@@ -5891,13 +5960,19 @@ Do not add facts not present in the provided evidence.`,
 
       const lifecycleAlerts = reconciled.alerts.filter((alert) => alert.state !== "dismissed");
       const activeLifecycleCount = lifecycleAlerts.filter((alert) => alert.state === "active" || alert.state === "reopened").length;
-      const finalRiskScore = Math.min(100, riskScore + (activeLifecycleCount * 7));
+      const effectiveLifecycleCount = gentleSnapshotDocumentPrompt && activeLifecycleCount > 0
+        ? Math.max(0, activeLifecycleCount - 1)
+        : activeLifecycleCount;
+      const finalRiskScore = Math.min(100, riskScore + (effectiveLifecycleCount * 7));
       const finalRiskLevel = finalRiskScore >= 80 ? "High" : finalRiskScore >= 60 ? "Elevated" : finalRiskScore >= 35 ? "Moderate" : "Low";
-      const finalUrgency: "Low" | "Medium" | "High" = activeLifecycleCount >= 2
+      const finalUrgency: "Low" | "Medium" | "High" = effectiveLifecycleCount >= 2
         ? "High"
-        : activeLifecycleCount > 0 && urgency === "Low"
+        : effectiveLifecycleCount > 0 && urgency === "Low"
           ? "Medium"
           : urgency;
+      const finalPosture = documents.length === 0 && snapshotExists
+        ? "Early stage — guided conversation complete, documents not yet uploaded"
+        : postureByStage[stage.key];
 
       return res.json({
         case: {
@@ -5948,13 +6023,14 @@ Do not add facts not present in the provided evidence.`,
           tags: extractDashboardDocumentTags(doc.analysisJson ?? {}),
         })),
         caseHealth: {
-          currentPosture: postureByStage[stage.key],
+          currentPosture: finalPosture,
           urgency: finalUrgency,
           riskScore: finalRiskScore,
           riskLevel: finalRiskLevel,
           documentCompleteness,
           immediateConcern,
         },
+        snapshotMemory,
         snapshot: {
           currentSituation: normalizeDashboardText(snapshotCurrentSituation, "No snapshot data available."),
           keyPoints,

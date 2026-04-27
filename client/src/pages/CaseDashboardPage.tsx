@@ -38,9 +38,17 @@ type CaseDashboardPayload = {
     urgency: "Low" | "Medium" | "High";
     riskScore: number;
     riskLevel: "Low" | "Moderate" | "Elevated" | "High";
-    documentCompleteness: "Strong" | "Partial" | "Needs review";
+    documentCompleteness: "Strong" | "Partial" | "Needs review" | "Not yet uploaded";
     immediateConcern: string;
   };
+  snapshotMemory: {
+    top_concern?: string | null;
+    concern_category?: string | null;
+    actions?: string[];
+    hearing_date?: string | null;
+    hearing_type?: string | null;
+    savedAt?: string | null;
+  } | null;
   snapshot: {
     currentSituation: string;
     keyPoints: string[];
@@ -155,8 +163,9 @@ function urgencyBadgeClass(value: "Low" | "Medium" | "High"): string {
   return "bg-[hsl(var(--semantic-green)/0.16)] text-[hsl(var(--semantic-green))] border-[hsl(var(--semantic-green)/0.5)]";
 }
 
-function completenessBadgeClass(value: "Strong" | "Partial" | "Needs review"): string {
+function completenessBadgeClass(value: "Strong" | "Partial" | "Needs review" | "Not yet uploaded"): string {
   if (value === "Needs review") return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
+  if (value === "Not yet uploaded") return "bg-[hsl(var(--semantic-blue)/0.16)] text-[hsl(var(--semantic-blue))] border-[hsl(var(--semantic-blue)/0.5)]";
   if (value === "Partial") return "bg-[hsl(var(--semantic-amber)/0.16)] text-[hsl(var(--semantic-amber))] border-[hsl(var(--semantic-amber)/0.5)]";
   return "bg-[hsl(var(--semantic-green)/0.16)] text-[hsl(var(--semantic-green))] border-[hsl(var(--semantic-green)/0.5)]";
 }
@@ -206,6 +215,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function formatSnapshotHearingType(value?: string | null): string {
+  const labels: Record<string, string> = {
+    temporary_custody: "Temporary custody",
+    final: "Final hearing",
+    status_conference: "Status conference",
+    modification: "Modification hearing",
+    contempt: "Contempt hearing",
+    ex_parte: "Emergency hearing",
+    mediation: "Mediation",
+    unknown: "Hearing type not specified",
+  };
+
+  if (!value) return "";
+  return labels[value] ?? value.replace(/_/g, " ");
+}
+
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const [, navigate] = useLocation();
@@ -250,6 +275,25 @@ export default function CaseDashboardPage() {
       urgency: typeof source.urgency === "string" ? source.urgency.trim() : "Medium",
     };
   }, [intelligenceRecord]);
+  const snapshotConcernFallback = useMemo(() => {
+    const topConcern = typeof data?.snapshotMemory?.top_concern === "string"
+      ? data.snapshotMemory.top_concern.trim()
+      : "";
+    if (!topConcern) return null;
+    const category = typeof data?.snapshotMemory?.concern_category === "string"
+      ? data.snapshotMemory.concern_category
+      : null;
+    const urgency = category === "safety"
+      ? "High"
+      : category === "fairness_fear" || category === "resource_gap"
+        ? "Medium"
+        : "Low";
+    return {
+      top_priority: topConcern,
+      reason: "Based on your conversation with Atlas.",
+      urgency,
+    };
+  }, [data?.snapshotMemory]);
   const intelligenceRisks = useMemo<IntelligenceRisk[]>(() => {
     if (!intelligenceRecord || !Array.isArray(intelligenceRecord.risks_json)) return [];
     return intelligenceRecord.risks_json
@@ -278,6 +322,11 @@ export default function CaseDashboardPage() {
       .filter((action) => action.action)
       .slice(0, 4);
   }, [intelligenceRecord]);
+  const snapshotActions = useMemo(() => (
+    Array.isArray(data?.snapshotMemory?.actions)
+      ? data.snapshotMemory.actions.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 3)
+      : []
+  ), [data?.snapshotMemory]);
   const intelligenceKeyDates = useMemo<IntelligenceKeyDate[]>(() => {
     if (!intelligenceRecord || !Array.isArray(intelligenceRecord.key_dates_json)) return [];
     const kindPriority: IntelligenceDateKind[] = ["hearing", "deadline", "filing", "service", "appointment"];
@@ -310,6 +359,16 @@ export default function CaseDashboardPage() {
       })
       .slice(0, 5);
   }, [intelligenceRecord]);
+  const snapshotKeyDate = useMemo(() => {
+    const raw = typeof data?.snapshotMemory?.hearing_date === "string" ? data.snapshotMemory.hearing_date : "";
+    if (!raw) return null;
+    return {
+      raw,
+      kindLabel: "Hearing Date",
+      subLabel: formatSnapshotHearingType(typeof data?.snapshotMemory?.hearing_type === "string" ? data.snapshotMemory.hearing_type : null),
+      parsedDate: raw,
+    };
+  }, [data?.snapshotMemory]);
 
   const alertActionMutation = useMutation({
     mutationFn: async (payload: { alertId: string; actionId: string; confirmSuggested?: boolean }) => {
@@ -470,16 +529,16 @@ export default function CaseDashboardPage() {
           <div className="rounded-md border border-[hsl(var(--semantic-blue)/0.25)] bg-[hsl(var(--semantic-blue)/0.08)] p-3 md:col-span-2">
             {intelligenceQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">Loading case intelligence…</p>
-            ) : intelligenceWhatMatters && intelligenceWhatMatters.top_priority ? (
+            ) : (intelligenceWhatMatters && intelligenceWhatMatters.top_priority) || snapshotConcernFallback ? (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-base font-semibold">{intelligenceWhatMatters.top_priority}</p>
-                  <Badge variant="outline" className={intelligenceUrgencyBadgeClass(intelligenceWhatMatters.urgency)}>
-                    {intelligenceWhatMatters.urgency || "Medium"} urgency
+                  <p className="text-base font-semibold">{(intelligenceWhatMatters ?? snapshotConcernFallback)!.top_priority}</p>
+                  <Badge variant="outline" className={intelligenceUrgencyBadgeClass((intelligenceWhatMatters ?? snapshotConcernFallback)!.urgency)}>
+                    {(intelligenceWhatMatters ?? snapshotConcernFallback)!.urgency || "Medium"} urgency
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {sentence(intelligenceWhatMatters.reason, "No clear reason is available yet.")}
+                  {sentence((intelligenceWhatMatters ?? snapshotConcernFallback)!.reason, "No clear reason is available yet.")}
                 </p>
               </div>
             ) : (
@@ -635,14 +694,19 @@ export default function CaseDashboardPage() {
           <Card data-testid="section-recommended-actions">
             <CardHeader className="pb-2"><CardTitle className="text-base">Recommended Actions</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {intelligenceActions.length > 0 ? (
-                <ul className="space-y-1.5">
-                  {intelligenceActions.map((action) => (
+              {intelligenceActions.length > 0 || snapshotActions.length > 0 ? (
+                <>
+                  {intelligenceActions.length === 0 && snapshotActions.length > 0 ? (
+                    <p className="text-xs font-medium text-muted-foreground">Based on your conversation with Atlas</p>
+                  ) : null}
+                  <ul className="space-y-1.5">
+                    {(intelligenceActions.length > 0 ? intelligenceActions : snapshotActions.map((action, index) => ({ risk_id: `snapshot-${index}`, action }))).map((action) => (
                     <li key={action.risk_id} className="rounded border border-border bg-muted/40 px-2 py-1.5">
                       {action.action}
                     </li>
-                  ))}
-                </ul>
+                    ))}
+                  </ul>
+                </>
               ) : (
                 <p className="text-muted-foreground">No recommended actions yet. Intelligence will update as more case details are available.</p>
               )}
@@ -652,13 +716,16 @@ export default function CaseDashboardPage() {
           <Card data-testid="section-key-dates">
             <CardHeader className="pb-2"><CardTitle className="text-base">Key Dates</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {intelligenceKeyDates.length > 0 ? (
+              {intelligenceKeyDates.length > 0 || snapshotKeyDate ? (
                 <ul className="space-y-1.5">
-                  {intelligenceKeyDates.map((date, index) => (
+                  {(intelligenceKeyDates.length > 0 ? intelligenceKeyDates : [snapshotKeyDate!]).map((date, index) => (
                     <li key={`${date.raw}-${index}`} className="flex items-start justify-between gap-2 rounded border border-border px-2 py-1.5">
                       <div className="min-w-0">
                         <p className="truncate">{date.raw}</p>
-                        <p className="text-xs capitalize text-muted-foreground">{date.kind}</p>
+                        <p className="text-xs capitalize text-muted-foreground">
+                          {"kind" in date ? date.kind : date.kindLabel}
+                          {"subLabel" in date && date.subLabel ? ` • ${date.subLabel}` : ""}
+                        </p>
                       </div>
                       <p className="shrink-0 text-xs text-muted-foreground">
                         {date.parsedDate ? formatDate(date.parsedDate) : "Date TBD"}

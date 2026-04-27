@@ -31,7 +31,7 @@ export type FocusEngineInput = {
   immediateConcern?: string;
   hearingDaysUntil: number | null;
   deadlineDaysUntil: number | null;
-  documentCompleteness: "Strong" | "Partial" | "Needs review";
+  documentCompleteness: "Strong" | "Partial" | "Needs review" | "Not yet uploaded";
   timeline: FocusTimelineItem[];
 };
 
