@@ -192,7 +192,10 @@ function ProtectedWelcomeRoute() {
     (casesData.cases.length === 0 || welcomeFlowActive);
 
   useEffect(() => {
-    if (!isLoading && user && !isProfileLoading && !isCasesFetching && !shouldShowWelcome && !welcomeFlowActive) {
+    const params = new URLSearchParams(window.location.search);
+    const hasConversationParam = params.has("conversation");
+
+    if (!isLoading && user && !isProfileLoading && !isCasesFetching && !shouldShowWelcome && !welcomeFlowActive && !hasConversationParam && !window.location.pathname.startsWith("/ask")) {
       navigate("/workspace", { replace: true });
     }
   }, [isCasesFetching, isLoading, isProfileLoading, navigate, shouldShowWelcome, user, welcomeFlowActive]);
