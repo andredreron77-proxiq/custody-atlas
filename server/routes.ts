@@ -5344,8 +5344,11 @@ Do not add facts not present in the provided evidence.`,
   app.post("/api/conversations/initialize-guided", requireAuth, async (req, res) => {
     const user = (req as any).user as { id: string };
     const schema = z.object({
-      caseId: z.string().uuid(),
+      caseId: z.string().uuid().optional(),
+      case_id: z.string().uuid().optional(),
       conversation_type: z.string().trim().min(1).optional(),
+    }).refine((value) => Boolean(value.caseId ?? value.case_id), {
+      message: "caseId or case_id is required.",
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -5353,7 +5356,8 @@ Do not add facts not present in the provided evidence.`,
     }
 
     try {
-      const caseRecord = await getCaseById(parsed.data.caseId, user.id);
+      const requestedCaseId = parsed.data.caseId ?? parsed.data.case_id;
+      const caseRecord = await getCaseById(requestedCaseId!, user.id);
       if (!caseRecord) return res.status(404).json({ error: "Case not found." });
 
       const flow = parsed.data.conversation_type

@@ -77,6 +77,13 @@ const READY_HINT_COPY: Record<SituationType, string> = {
     "Start anywhere. Atlas is ready to help you make sense of it.",
 };
 
+const GUIDED_CONVERSATION_TYPE_BY_SITUATION: Record<SituationType, string> = {
+  more_time: "guided_more_time",
+  respond_to_filing: "guided_respond_filing",
+  hearing_coming_up: "guided_hearing_prep",
+  figuring_things_out: "guided_figuring_it_out",
+};
+
 const WELCOME_FLOW_ACTIVE_KEY = "custody-atlas:welcome-flow-active";
 
 function lastNameFromDisplayName(name: string | null): string {
@@ -280,41 +287,30 @@ export function WelcomeFlow() {
     }
   };
 
-  const resolveGuidedCaseId = async (): Promise<string | null> => {
-    if (createdCaseId) return createdCaseId;
-
-    const cachedCases = qc.getQueryData<{ cases: Array<{ id: string }> }>(["/api/cases"]);
-    if (cachedCases?.cases?.[0]?.id) return cachedCases.cases[0].id;
-
-    const res = await apiRequestRaw("GET", "/api/cases");
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({ cases: [] as Array<{ id: string }> }));
-    return data?.cases?.[0]?.id ?? null;
-  };
-
-  const startRespondToFilingConversation = async () => {
-    console.log("[WelcomeFlow] Talk to Atlas click handler entry");
+  const startGuidedConversation = async (conversationType: string) => {
+    console.log("[WelcomeFlow] Talk to Atlas click handler entry", { conversationType });
     setGuidedConversationError(null);
     setIsPreparingGuidedConversation(true);
     guidedConversationRedirectRef.current = true;
     try {
-      const caseId = await resolveGuidedCaseId();
+      const caseId = createdCaseId;
       if (!caseId) {
-        throw new Error("Something went wrong. Try again.");
+        throw new Error("Something went wrong. Tap to try again.");
       }
 
       const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
         caseId,
-        conversation_type: "guided_respond_filing",
+        case_id: caseId,
+        conversation_type: conversationType,
       });
       if (!res.ok) {
-        throw new Error("Something went wrong. Try again.");
+        throw new Error("Something went wrong. Tap to try again.");
       }
 
       const data = await res.json().catch(() => ({} as { conversation?: { id?: string } }));
       const conversationId = data?.conversation?.id;
       if (!conversationId) {
-        throw new Error("Something went wrong. Try again.");
+        throw new Error("Something went wrong. Tap to try again.");
       }
 
       console.log("[WelcomeFlow] guided init succeeded", { conversationId, caseId });
@@ -330,7 +326,7 @@ export function WelcomeFlow() {
     } catch (error) {
       console.error("[WelcomeFlow] Failed to initialize guided conversation:", error);
       guidedConversationRedirectRef.current = false;
-      setGuidedConversationError("Something went wrong. Try again.");
+      setGuidedConversationError("Something went wrong. Tap to try again.");
     } finally {
       setIsPreparingGuidedConversation(false);
     }
@@ -592,7 +588,7 @@ export function WelcomeFlow() {
                 <div className="mt-6">
                   <Button
                     className="w-full gap-2"
-                    onClick={() => void startRespondToFilingConversation()}
+                    onClick={() => void startGuidedConversation("guided_respond_filing")}
                     disabled={isPreparingGuidedConversation}
                     data-testid="button-welcome-guided-respond-filing"
                   >
@@ -620,12 +616,23 @@ export function WelcomeFlow() {
                 <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <Button
                     className="w-full gap-2 sm:w-auto"
-                    onClick={() => void finish(currentReadyCopy.href)}
-                    disabled={isFinishing}
+                    onClick={() => {
+                      const guidedConversationType = situationType
+                        ? GUIDED_CONVERSATION_TYPE_BY_SITUATION[situationType]
+                        : null;
+                      if (guidedConversationType) {
+                        void startGuidedConversation(guidedConversationType);
+                        return;
+                      }
+                      void finish(currentReadyCopy.href);
+                    }}
+                    disabled={isFinishing || isPreparingGuidedConversation}
                     data-testid="button-welcome-primary-cta"
                   >
-                    {isFinishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ReadyIcon className="h-4 w-4" />}
-                    {currentReadyCopy.cta}
+                    {isFinishing || isPreparingGuidedConversation
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <ReadyIcon className="h-4 w-4" />}
+                    {isPreparingGuidedConversation ? "Getting Atlas ready..." : currentReadyCopy.cta}
                   </Button>
                 </div>
                 <p className="mt-3 text-center text-sm text-muted-foreground">{currentReadyHint}</p>
