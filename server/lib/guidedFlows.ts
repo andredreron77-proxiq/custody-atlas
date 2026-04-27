@@ -923,7 +923,7 @@ Rules:
   - other → anything else
 - coparent_stance must stay null until the user directly says something about how the other parent feels. "Unknown" is not a valid inference — it is only valid if the user says something like "I have no idea how she feels."
 - prior_court_involvement must stay null until the user explicitly mentions court history or confirms it's their first time. Do not infer false from silence.
-- order_status must stay null until the user explicitly describes whether there is a court order, written agreement, or informal arrangement. Do not infer from schedule description alone.
+- order_status must reflect the MOST AUTHORITATIVE statement the user has made about their arrangement across the entire conversation. If the user later mentions a court order, prior court involvement, or a judge setting a schedule, that overrides any earlier inference. Specifically: if the user mentions going to court AND a judge or order setting the schedule, set order_status to 'court_order'. If the user mentions a signed written plan not confirmed by a judge, set order_status to 'written_agreement'. If the user describes an informal agreement with no court involvement, set order_status to 'informal'. If no information is provided, return null.
 - Set prior_court_involvement: true if user mentions any prior filings, orders, or court appearances; false if explicitly first time
 - Set child_safety_flag: true if user mentions abuse, neglect, or domestic violence
 - Recalculate waypoints_complete. Only include a waypoint number if ALL required fields for that waypoint are non-null AND were provided by the user in this conversation — not inferred:
