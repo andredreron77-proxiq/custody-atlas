@@ -180,6 +180,7 @@ export function WelcomeFlow() {
   const [guidedConversationError, setGuidedConversationError] = useState<string | null>(null);
   const guidedConversationRedirectRef = useRef(false);
   const caseNameInputRef = useRef<HTMLInputElement | null>(null);
+  const createdCaseIdRef = useRef<string | null>(null);
 
   const preferredName = resolvePreferredDisplayName({
     profileDisplayName: profile?.displayName,
@@ -210,6 +211,10 @@ export function WelcomeFlow() {
       setCaseName(suggestedCaseName);
     }
   }, [step, caseName, suggestedCaseName]);
+
+  useEffect(() => {
+    createdCaseIdRef.current = createdCaseId;
+  }, [createdCaseId]);
 
   const persistWelcomeCompletion = async () => {
     if (jurisdiction) {
@@ -253,7 +258,7 @@ export function WelcomeFlow() {
     setGuidedConversationError(null);
     setIsFinishing(true);
 
-    const caseId = createdCaseId;
+    const caseId = createdCaseIdRef.current ?? createdCaseId;
     const conversationTypeMap: Record<string, string> = {
       hearing_prep: "guided_hearing_prep",
       hearing_coming_up: "guided_hearing_prep",
@@ -270,13 +275,9 @@ export function WelcomeFlow() {
         throw new Error("Missing guided conversation context");
       }
 
-      const res = await fetch("/api/conversations/initialize-guided", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversation_type: conversationType,
-          case_id: caseId,
-        }),
+      const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
+        conversation_type: conversationType,
+        case_id: caseId,
       });
       if (!res.ok) {
         throw new Error("Failed to initialize guided conversation");
@@ -339,6 +340,7 @@ export function WelcomeFlow() {
       }
       const data = await res.json().catch(() => ({} as { case?: { id?: string } }));
       if (typeof data?.case?.id === "string" && data.case.id.length > 0) {
+        createdCaseIdRef.current = data.case.id;
         setCreatedCaseId(data.case.id);
       }
       await qc.invalidateQueries({ queryKey: ["/api/cases"] });
@@ -358,7 +360,7 @@ export function WelcomeFlow() {
     setIsPreparingGuidedConversation(true);
     guidedConversationRedirectRef.current = true;
     try {
-      const caseId = createdCaseId;
+      const caseId = createdCaseIdRef.current ?? createdCaseId;
       if (!caseId) {
         throw new Error("Something went wrong. Tap to try again.");
       }
