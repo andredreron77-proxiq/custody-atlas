@@ -67,6 +67,19 @@ export interface RespondToFilingWaypointState {
   waypoints_complete: number[];
 }
 
+export interface MoreTimeWaypointState {
+  current_arrangement: string | null;
+  order_status: "court_order" | "written_agreement" | "informal" | "none" | null;
+  reason_for_more_time: string | null;
+  change_category: "schedule_change" | "relocation" | "child_needs" | "parent_availability" | "safety_concern" | "other" | null;
+  coparent_stance: "supportive" | "resistant" | "unknown" | null;
+  prior_court_involvement: boolean | null;
+  child_safety_flag: boolean;
+  snapshot_complete: boolean;
+  post_snapshot_turn: number;
+  waypoints_complete: number[];
+}
+
 export const HEARING_PREP_INITIAL_STATE: HearingPrepWaypointState = {
   hearing_date: null,
   hearing_type: null,
@@ -88,6 +101,19 @@ export const RESPOND_TO_FILING_INITIAL_STATE: RespondToFilingWaypointState = {
   response_deadline: null,
   knows_deadline: null,
   coparent_relationship: null,
+  child_safety_flag: false,
+  snapshot_complete: false,
+  post_snapshot_turn: 0,
+  waypoints_complete: [],
+};
+
+export const MORE_TIME_INITIAL_STATE: MoreTimeWaypointState = {
+  current_arrangement: null,
+  order_status: null,
+  reason_for_more_time: null,
+  change_category: null,
+  coparent_stance: null,
+  prior_court_involvement: null,
   child_safety_flag: false,
   snapshot_complete: false,
   post_snapshot_turn: 0,
@@ -497,6 +523,138 @@ RESOLVED SNAPSHOT STATE REFERENCE:
 ${JSON.stringify(params.snapshotState, null, 2)}`;
 }
 
+export function moreTimeSystemPrompt(state: MoreTimeWaypointState): string {
+  return `You are Atlas — an AI guide for parents navigating custody proceedings.
+
+You are warm, clear, and direct. You are not a lawyer. You do not give legal advice.
+You give situational guidance: helping parents understand what is happening and what
+they can do about it.
+
+CURRENT SESSION: More Time
+
+RULES — follow exactly every turn
+
+Rule 1: Every turn follows REFLECT → TRANSLATE → ASK. Acknowledge what the user shared (1 sentence). Give one plain-English insight relevant to their situation. Ask exactly one question to advance the next unresolved waypoint.
+
+Rule 2: Skip any waypoint already resolved. Do not re-ask for information already in state.
+
+Rule 3: One question per turn only. Never stack questions.
+
+Rule 4: No legal advice. Do not tell the user what to file, what will happen, or what a judge will decide. You can explain what things mean.
+
+Rule 5: Calm, warm, encouraging tone. These users want something and are afraid they won't get it. Speak like a knowledgeable friend who believes in them.
+
+Rule 6: Sensitive moment protocol. If user mentions domestic violence, child abuse, or self-harm: acknowledge it, pause waypoints, provide DFCS (1-855-422-4453) or 988 as appropriate. Resume waypoints next turn.
+
+Rule 7: Order status translations. When describing the current arrangement, translate the order_status to plain English:
+  - court_order → "a judge signed off on your current schedule — changing it requires going back to court"
+  - written_agreement → "you have a written plan, but it may not have been approved by a judge"
+  - informal → "your arrangement is based on what you and the other parent agreed to informally"
+  - none → "there's no formal arrangement in place yet"
+
+Rule 8: Never narrate state field names in chat. Do not say things like "I've noted your change_category." Speak naturally.
+
+Rule 9: Never repeat empathy openers back-to-back. Vary acknowledgment each turn. Never use "I hear you" more than once. Alternatives: "That makes sense," "That's a real shift," "It sounds like things have changed a lot," etc.
+
+Waypoint sequence (collect in order, skip if already known):
+1. current_arrangement + order_status — What does your current custody arrangement look like?
+2. reason_for_more_time + change_category — What's changed that makes you want more time with your child?
+3. coparent_stance — How does the other parent feel about you having more time?
+4. prior_court_involvement — Have you been to court before for custody, or would this be the first time?
+5. Snapshot triggers when waypoints [1, 2, 3, 4] are all complete
+
+Current state injected into prompt:
+- current_arrangement: ${state.current_arrangement}
+- order_status: ${state.order_status}
+- reason_for_more_time: ${state.reason_for_more_time}
+- change_category: ${state.change_category}
+- coparent_stance: ${state.coparent_stance}
+- prior_court_involvement: ${state.prior_court_involvement}
+- waypoints_complete: ${JSON.stringify(state.waypoints_complete)}
+- snapshot_complete: ${state.snapshot_complete}`;
+}
+
+export function moreTimePostSnapshotSystemPrompt(params: {
+  case_name: string;
+  snapshotState: MoreTimeWaypointState;
+  post_snapshot_turn: number;
+}): string {
+  return `You are Atlas — an AI guide for parents navigating custody proceedings.
+
+You are warm, clear, and direct. You are not a lawyer. You do not give legal advice.
+You give situational guidance: helping parents understand what is happening and what
+they can do about it.
+
+CURRENT SESSION: More Time — Post Snapshot
+Case: ${params.case_name}
+
+The parent has already completed the guided more-time intake and Atlas has already
+captured the core situation. Stay anchored in that resolved snapshot state for every
+reply. Do not restart the intake. Do not ask broad re-orientation questions unless a
+missing fact is absolutely necessary to answer the one question they just asked.
+
+RULES — follow exactly every turn
+
+RULE 1: FIRST RESPONSE RULE
+If this is the first message after the Snapshot (the user's message count in post-snapshot context is 1), do not wait for the user to ask something. Instead, ask ONE deepening question specific to their situation using these guidelines:
+
+- If change_category is schedule_change or parent_availability: ask what day-to-day time with the child they think is most realistic now
+- If change_category is relocation: ask what the move or travel change means for the current parenting schedule
+- If change_category is child_needs: ask what has changed for the child that makes the current schedule stop working
+- If change_category is safety_concern: ask what pattern or incident most makes them think more time with them would protect the child
+- If coparent_stance is resistant: ask what the other parent says when more time comes up
+
+The question must reference something specific from snapshotState.
+Never ask a generic question.
+
+After their answer: give one concrete insight tied to their answer, then end with the Pro nudge.
+
+RULE 2: ANSWER ONE SPECIFIC QUESTION
+Answer the user's current question directly. Give one concrete, actionable insight
+that fits the facts already captured in the snapshot state.
+
+RULE 3: STAY IN CONTEXT
+Use the resolved snapshot state as the active case context. Keep the answer tied to:
+- the current arrangement
+- the order status
+- the reason they want more time
+- the co-parent stance
+- prior court involvement
+
+RULE 4: KEEP FREE-TIER DEPTH INTENTIONAL
+Do not give a numbered list of 3 or more items.
+Do not provide a full modification strategy for free.
+Keep the answer focused, concrete, and useful without exhausting the full strategy.
+
+RULE 5: NO LEGAL ADVICE
+Say what courts typically look at. Say what tends to matter. Use language like
+"here's what I'd focus on next" or "here's what tends to matter most."
+Never promise outcomes. Never frame legal strategy as certainty.
+
+RULE 6: TONE
+Warm, calm, partner-like. Sound like a clear-eyed guide who knows the thread and is
+helping the parent keep moving.
+
+RULE 7: UPGRADE TRANSITION
+After answering, always end with this exact natural transition:
+"There's more to build here. With Pro you can keep going — 200 questions, unlimited documents."
+
+RULE 8: DO NOT CLOSE THE CONVERSATION
+Never say "feel free."
+Never say "I'm here to help."
+Never imply the conversation is over.
+Never sign off.
+
+RULE 9: OUTPUT
+Return plain natural language only. No hidden state blocks. No markdown code fences.
+
+POST SNAPSHOT TURN COUNT:
+${params.post_snapshot_turn}
+
+RESOLVED SNAPSHOT STATE REFERENCE:
+${JSON.stringify(params.snapshotState, null, 2)}`;
+}
+
 export function postSnapshotSystemPrompt(params: {
   case_name: string;
   jurisdiction_county: string;
@@ -726,6 +884,91 @@ Rules:
   }
 }
 
+export async function extractMoreTimeStateFromConversation(
+  messages: { role: string; content: string }[],
+  currentState: MoreTimeWaypointState,
+): Promise<MoreTimeWaypointState> {
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 350,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You extract structured data from custody more-time conversations.
+Return ONLY valid JSON matching this schema exactly — no markdown, no explanation:
+{
+  current_arrangement: string | null,
+  order_status: 'court_order' | 'written_agreement' | 'informal' | 'none' | null,
+  reason_for_more_time: string | null,
+  change_category: 'schedule_change' | 'relocation' | 'child_needs' | 'parent_availability' | 'safety_concern' | 'other' | null,
+  coparent_stance: 'supportive' | 'resistant' | 'unknown' | null,
+  prior_court_involvement: boolean | null,
+  child_safety_flag: boolean,
+  snapshot_complete: boolean,
+  post_snapshot_turn: number,
+  waypoints_complete: number[]
+}
+Rules:
+- Preserve all existing non-null values.
+- Infer change_category from natural language:
+  - schedule_change → user's availability or work schedule changed
+  - relocation → user moved or wants to move
+  - child_needs → child's school, medical, or activity needs changed
+  - parent_availability → user now has more time or flexibility
+  - safety_concern → user has concerns about child's safety with other parent
+  - other → anything else
+- Infer coparent_stance: supportive if other parent seems agreeable, resistant if opposed, unknown if unclear
+- Set prior_court_involvement: true if user mentions any prior filings, orders, or court appearances; false if explicitly first time
+- Set child_safety_flag: true if user mentions abuse, neglect, or domestic violence
+- Recalculate waypoints_complete:
+  - Waypoint 1: current_arrangement non-null AND order_status non-null
+  - Waypoint 2: reason_for_more_time non-null AND change_category non-null
+  - Waypoint 3: coparent_stance non-null
+  - Waypoint 4: prior_court_involvement non-null
+- Keep snapshot_complete and post_snapshot_turn unchanged from current state.
+- Return ONLY the JSON object.`,
+        },
+        {
+          role: "user",
+          content: `Current state:\n${JSON.stringify(currentState)}\n\nExtract more-time state from this conversation:\n${JSON.stringify(messages)}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return currentState;
+
+    const parsed = JSON.parse(rawContent) as Partial<MoreTimeWaypointState>;
+    const merged: MoreTimeWaypointState = {
+      current_arrangement: parsed.current_arrangement ?? currentState.current_arrangement ?? null,
+      order_status: parsed.order_status ?? currentState.order_status ?? null,
+      reason_for_more_time: parsed.reason_for_more_time ?? currentState.reason_for_more_time ?? null,
+      change_category: parsed.change_category ?? currentState.change_category ?? null,
+      coparent_stance: parsed.coparent_stance ?? currentState.coparent_stance ?? null,
+      prior_court_involvement: parsed.prior_court_involvement ?? currentState.prior_court_involvement ?? null,
+      child_safety_flag: Boolean(parsed.child_safety_flag ?? currentState.child_safety_flag),
+      snapshot_complete: currentState.snapshot_complete,
+      post_snapshot_turn: currentState.post_snapshot_turn,
+      waypoints_complete: [],
+    };
+
+    merged.waypoints_complete = [
+      merged.current_arrangement !== null && merged.order_status !== null ? 1 : null,
+      merged.reason_for_more_time !== null && merged.change_category !== null ? 2 : null,
+      merged.coparent_stance !== null ? 3 : null,
+      merged.prior_court_involvement !== null ? 4 : null,
+    ].filter((item): item is number => item !== null);
+
+    return merged;
+  } catch (err) {
+    console.error("[Atlas] Failed to parse extracted more-time state:", err);
+    return currentState;
+  }
+}
+
 export async function generateSnapshotActions(
   state: HearingPrepWaypointState,
   caseName: string,
@@ -823,6 +1066,54 @@ Co-parent relationship: ${state.coparent_relationship ?? "unknown"}`,
     return fallbackActions;
   } catch (err) {
     console.error("[Atlas] generateRespondToFilingActions error:", err);
+    return fallbackActions;
+  }
+}
+
+export async function generateMoreTimeActions(
+  state: MoreTimeWaypointState,
+): Promise<string[]> {
+  const fallbackActions = [
+    "Document every instance of your current parenting time with dates and notes so you have a clear record of what the schedule already looks like.",
+    "Write down exactly what has changed that makes more parenting time realistic now, and keep it tied to your child's day-to-day life.",
+    "Gather any texts, school records, calendars, or messages that show how involved you already are with your child.",
+  ];
+
+  try {
+    const completion = await getGuidedFlowsOpenAIClient().chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 400,
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content: `Return exactly 3 concrete, personalized action strings for a parent seeking more custody time.
+Base them on order_status, change_category, coparent_stance, and prior_court_involvement.
+Never generic. Return ONLY a JSON array of 3 strings.`,
+        },
+        {
+          role: "user",
+          content: `Generate 3 action items for this parent:
+Current arrangement: ${state.current_arrangement ?? "unknown"}
+Order status: ${state.order_status ?? "unknown"}
+Reason for more time: ${state.reason_for_more_time ?? "unknown"}
+Change category: ${state.change_category ?? "unknown"}
+Other parent stance: ${state.coparent_stance ?? "unknown"}
+Prior court involvement: ${state.prior_court_involvement === null ? "unknown" : state.prior_court_involvement ? "yes" : "no"}`,
+        },
+      ],
+    });
+
+    const rawContent = completion.choices[0]?.message?.content?.trim();
+    if (!rawContent) return fallbackActions;
+
+    const parsed = JSON.parse(rawContent);
+    if (Array.isArray(parsed) && parsed.length === 3 && parsed.every((item) => typeof item === "string")) {
+      return parsed;
+    }
+    return fallbackActions;
+  } catch (err) {
+    console.error("[Atlas] generateMoreTimeActions error:", err);
     return fallbackActions;
   }
 }

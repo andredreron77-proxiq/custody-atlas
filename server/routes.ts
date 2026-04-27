@@ -16,8 +16,10 @@ import { getCustodyLaw, listStates } from "./custody-laws-store";
 import { getCountyProcedure } from "./county-procedures-store";
 import { buildSystemPrompt, buildUserPrompt, buildComparisonSystemPrompt, buildComparisonUserPrompt } from "./lib/prompts/legalAssistant";
 import {
+  extractMoreTimeStateFromConversation,
   extractRespondToFilingStateFromConversation,
   extractWaypointStateFromConversation,
+  generateMoreTimeActions,
   generateRespondToFilingActions,
   generateSnapshotActions,
   getGuidedFlowByConversationType,
@@ -25,11 +27,15 @@ import {
   HEARING_PREP_INITIAL_STATE,
   hearingPrepSystemPrompt,
   isGuidedConversationType,
+  MORE_TIME_INITIAL_STATE,
+  moreTimePostSnapshotSystemPrompt,
+  moreTimeSystemPrompt,
   postSnapshotSystemPrompt,
   RESPOND_TO_FILING_INITIAL_STATE,
   respondToFilingPostSnapshotSystemPrompt,
   respondToFilingSystemPrompt,
   type RespondToFilingWaypointState,
+  type MoreTimeWaypointState,
   type HearingPrepWaypointState,
 } from "./lib/guidedFlows";
 import {
@@ -313,6 +319,31 @@ function normalizeRespondToFilingState(value: unknown): RespondToFilingWaypointS
     response_deadline: typeof candidate.response_deadline === "string" ? candidate.response_deadline : null,
     knows_deadline: typeof candidate.knows_deadline === "boolean" ? candidate.knows_deadline : null,
     coparent_relationship: typeof candidate.coparent_relationship === "string" ? candidate.coparent_relationship : null,
+    child_safety_flag: Boolean(candidate.child_safety_flag),
+    snapshot_complete: Boolean(candidate.snapshot_complete),
+    post_snapshot_turn: typeof candidate.post_snapshot_turn === "number" && Number.isFinite(candidate.post_snapshot_turn)
+      ? candidate.post_snapshot_turn
+      : 0,
+    waypoints_complete: Array.isArray(candidate.waypoints_complete)
+      ? candidate.waypoints_complete.filter((item): item is number => typeof item === "number")
+      : [],
+  };
+}
+
+function normalizeMoreTimeState(value: unknown): MoreTimeWaypointState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...MORE_TIME_INITIAL_STATE };
+  }
+
+  const candidate = value as Partial<MoreTimeWaypointState>;
+
+  return {
+    current_arrangement: typeof candidate.current_arrangement === "string" ? candidate.current_arrangement : null,
+    order_status: typeof candidate.order_status === "string" ? candidate.order_status : null,
+    reason_for_more_time: typeof candidate.reason_for_more_time === "string" ? candidate.reason_for_more_time : null,
+    change_category: typeof candidate.change_category === "string" ? candidate.change_category : null,
+    coparent_stance: typeof candidate.coparent_stance === "string" ? candidate.coparent_stance : null,
+    prior_court_involvement: typeof candidate.prior_court_involvement === "boolean" ? candidate.prior_court_involvement : null,
     child_safety_flag: Boolean(candidate.child_safety_flag),
     snapshot_complete: Boolean(candidate.snapshot_complete),
     post_snapshot_turn: typeof candidate.post_snapshot_turn === "number" && Number.isFinite(candidate.post_snapshot_turn)
@@ -5316,6 +5347,8 @@ Do not add facts not present in the provided evidence.`,
             ? { ...HEARING_PREP_INITIAL_STATE }
             : flow.conversationType === "guided_respond_filing"
               ? { ...RESPOND_TO_FILING_INITIAL_STATE }
+              : flow.conversationType === "guided_more_time"
+                ? { ...MORE_TIME_INITIAL_STATE }
               : null,
       });
       if (!conversation) {
@@ -6279,7 +6312,11 @@ Do not add facts not present in the provided evidence.`,
         return res.status(404).json({ error: "Conversation not found." });
       }
 
-      if (conversation.threadType !== "guided_hearing_prep" && conversation.threadType !== "guided_respond_filing") {
+      if (
+        conversation.threadType !== "guided_hearing_prep"
+        && conversation.threadType !== "guided_respond_filing"
+        && conversation.threadType !== "guided_more_time"
+      ) {
         return res.status(400).json({ error: "Direct conversation messaging is only supported for the guided hearing prep flow right now." });
       }
 
@@ -6451,6 +6488,184 @@ Do not add facts not present in the provided evidence.`,
         await trackQuestion(req);
         const snapshotActions = shouldTriggerSnapshot
           ? await generateRespondToFilingActions(nextState)
+          : [];
+        saveQuestion(user.id, {
+          jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",
+          jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
+          questionText: parsed.data.content,
+          responseJson: {
+            summary: cleanedResponse,
+            triggerSnapshot: shouldTriggerSnapshot,
+            snapshotState: nextState,
+            actions: snapshotActions,
+          },
+        }).catch(() => {});
+
+        if (shouldTriggerSnapshot) {
+          responseBody.triggerSnapshot = true;
+          responseBody.snapshotState = nextState;
+          responseBody.actions = snapshotActions;
+        }
+
+        responseBody.message = {
+          ...savedAssistantMessage,
+          content: cleanedResponse,
+        };
+
+        return res.status(201).json(responseBody);
+      }
+
+      if (conversation.threadType === "guided_more_time") {
+        const currentState = normalizeMoreTimeState(conversation.guidedState);
+        const isPostSnapshot = currentState.snapshot_complete === true;
+
+        if (isPostSnapshot) {
+          const nextPostSnapshotTurn = (currentState.post_snapshot_turn ?? 0) + 1;
+          const systemPrompt = moreTimePostSnapshotSystemPrompt({
+            case_name: conversation.title ?? caseRecord.title ?? "Your case",
+            snapshotState: currentState,
+            post_snapshot_turn: nextPostSnapshotTurn,
+          });
+
+          const completion = await getOpenAIClient().chat.completions.create({
+            model: "gpt-4o",
+            messages: openAIMessagesFor(systemPrompt),
+            max_tokens: 900,
+            temperature: 0.4,
+          });
+
+          const rawResponse = completion.choices[0]?.message?.content?.trim();
+          if (!rawResponse) {
+            return res.status(500).json({ error: "No response received from AI service." });
+          }
+
+          const cleanedResponse = rawResponse;
+          const [savedUserMessage, savedAssistantMessage] = await Promise.all([
+            appendConversationMessage(conversationId, "user", parsed.data.content, {
+              caseId: caseRecord.id,
+            }),
+            appendConversationMessage(conversationId, "assistant", cleanedResponse, {
+              caseId: caseRecord.id,
+              messageMetadata: {
+                guided_flow: true,
+                flow_type: "more_time",
+              },
+            }),
+          ]);
+
+          if (!savedAssistantMessage || !savedUserMessage) {
+            return res.status(500).json({ error: "Failed to persist conversation messages." });
+          }
+
+          await updateConversationGuidedState(conversationId, user.id, {
+            ...currentState,
+            post_snapshot_turn: nextPostSnapshotTurn,
+          } as unknown as Record<string, unknown>);
+
+          refreshGuidedCaseMemory({
+            userId: user.id,
+            caseId: caseRecord.id,
+            conversationType: conversation.threadType,
+            userQuestion: parsed.data.content,
+            assistantSummary: cleanedResponse,
+            existingMemories,
+          }).catch((err) => console.error("[guided] memory refresh failed:", err));
+
+          await trackQuestion(req);
+          saveQuestion(user.id, {
+            jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",
+            jurisdictionCounty: caseRecord.jurisdictionCounty ?? "General",
+            questionText: parsed.data.content,
+            responseJson: {
+              summary: cleanedResponse,
+              triggerSnapshot: false,
+              snapshotState: currentState,
+              actions: [],
+            },
+          }).catch(() => {});
+
+          return res.status(201).json({
+            message: {
+              ...savedAssistantMessage,
+              content: cleanedResponse,
+            },
+          });
+        }
+
+        const systemPrompt = moreTimeSystemPrompt(currentState);
+        const completion = await getOpenAIClient().chat.completions.create({
+          model: "gpt-4o",
+          messages: openAIMessagesFor(systemPrompt),
+          max_tokens: 900,
+          temperature: 0.4,
+        });
+
+        const rawResponse = completion.choices[0]?.message?.content?.trim();
+        if (!rawResponse) {
+          return res.status(500).json({ error: "No response received from AI service." });
+        }
+
+        const cleanedResponse = rawResponse;
+        const nextState = normalizeMoreTimeState(await extractMoreTimeStateFromConversation([
+          ...priorMessages.map((message) => ({
+            role: message.role,
+            content: message.messageText,
+          })),
+          { role: "user", content: parsed.data.content },
+          { role: "assistant", content: cleanedResponse },
+        ], currentState));
+        const shouldTriggerSnapshot = [1, 2, 3, 4].every((waypoint) => nextState.waypoints_complete.includes(waypoint));
+        if (shouldTriggerSnapshot) {
+          nextState.snapshot_complete = true;
+        }
+
+        const [savedUserMessage, savedAssistantMessage] = await Promise.all([
+          appendConversationMessage(conversationId, "user", parsed.data.content, {
+            caseId: caseRecord.id,
+          }),
+          appendConversationMessage(conversationId, "assistant", cleanedResponse, {
+            caseId: caseRecord.id,
+            messageMetadata: {
+              guided_flow: true,
+              flow_type: "more_time",
+              ...(shouldTriggerSnapshot ? {
+                trigger_snapshot: true,
+                snapshot_state: nextState,
+              } : {}),
+            },
+          }),
+        ]);
+
+        if (!savedAssistantMessage || !savedUserMessage) {
+          return res.status(500).json({ error: "Failed to persist conversation messages." });
+        }
+
+        await updateConversationGuidedState(conversationId, user.id, nextState as unknown as Record<string, unknown>);
+
+        if (nextState.child_safety_flag) {
+          recordChildSafetySignal({
+            conversationId,
+            caseId: caseRecord.id,
+            userId: user.id,
+          }).catch((err) => console.error("[guided] child safety signal write failed:", err));
+        }
+
+        const responseBody: Record<string, unknown> = {
+          message: savedAssistantMessage,
+        };
+
+        refreshGuidedCaseMemory({
+          userId: user.id,
+          caseId: caseRecord.id,
+          conversationType: conversation.threadType,
+          userQuestion: parsed.data.content,
+          assistantSummary: cleanedResponse,
+          existingMemories,
+        }).catch((err) => console.error("[guided] memory refresh failed:", err));
+
+        await trackQuestion(req);
+        const snapshotActions = shouldTriggerSnapshot
+          ? await generateMoreTimeActions(nextState)
           : [];
         saveQuestion(user.id, {
           jurisdictionState: caseRecord.jurisdictionState ?? "Unknown State",

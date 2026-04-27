@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
 
 export interface GuidedSnapshotState {
+  current_arrangement?: string | null;
+  reason_for_more_time?: string | null;
+  change_category?: "schedule_change" | "relocation" | "child_needs" | "parent_availability" | "safety_concern" | "other" | null;
+  coparent_stance?: "supportive" | "resistant" | "unknown" | null;
+  prior_court_involvement?: boolean | null;
   document_type?:
     | "motion"
     | "petition"
@@ -60,6 +65,10 @@ function capitalizeFirst(value: string): string {
   return value.length > 0 ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value;
 }
 
+function truncateText(value: string, max = 60): string {
+  return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
+}
+
 function formatCoparentRelationship(value: GuidedSnapshotState["coparent_relationship"]): string {
   const labels: Record<NonNullable<GuidedSnapshotState["coparent_relationship"]>, string> = {
     high_conflict: "High Conflict",
@@ -70,6 +79,35 @@ function formatCoparentRelationship(value: GuidedSnapshotState["coparent_relatio
 
   if (!value) return "Not captured yet";
   return labels[value] ?? "Not captured yet";
+}
+
+function formatCoparentStance(value: GuidedSnapshotState["coparent_stance"]): string {
+  const labels: Record<NonNullable<GuidedSnapshotState["coparent_stance"]>, string> = {
+    supportive: "Supportive",
+    resistant: "Resistant",
+    unknown: "Unknown",
+  };
+
+  if (!value) return "Not captured yet";
+  return labels[value] ?? "Not captured yet";
+}
+
+function formatOrderStatus(value: GuidedSnapshotState["order_status"]): string {
+  const labels: Record<NonNullable<GuidedSnapshotState["order_status"]>, string> = {
+    court_order: "Court Order",
+    written_agreement: "Written Agreement",
+    informal: "Informal",
+    none: "No Formal Order",
+  };
+
+  if (!value) return "Not captured yet";
+  return labels[value] ?? "Not captured yet";
+}
+
+function formatPriorCourtInvolvement(value: GuidedSnapshotState["prior_court_involvement"]): string {
+  if (value === true) return "Yes";
+  if (value === false) return "First Time";
+  return "Not captured yet";
 }
 
 function formatHearingType(value: GuidedSnapshotState["hearing_type"]): string {
@@ -120,6 +158,12 @@ export function SnapshotCard({
   actions?: string[];
 }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const isMoreTimeSnapshot = Boolean(
+    snapshot.current_arrangement
+    || snapshot.reason_for_more_time
+    || snapshot.coparent_stance
+    || snapshot.prior_court_involvement !== undefined,
+  );
   const isRespondToFilingSnapshot = Boolean(
     snapshot.document_type || snapshot.opposing_request || snapshot.response_deadline || snapshot.coparent_relationship,
   );
@@ -163,7 +207,49 @@ export function SnapshotCard({
         </div>
       </div>
 
-      {isRespondToFilingSnapshot ? (
+      {isMoreTimeSnapshot ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              Arrangement
+            </div>
+            <p className="mt-1 text-sm text-foreground">
+              {snapshot.current_arrangement ? truncateText(snapshot.current_arrangement) : "Not captured yet"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Scale className="h-3.5 w-3.5" />
+              Order status
+            </div>
+            <p className="mt-1 text-sm text-foreground">{formatOrderStatus(snapshot.order_status)}</p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Reason
+            </div>
+            <p className="mt-1 text-sm text-foreground">
+              {snapshot.reason_for_more_time ? truncateText(snapshot.reason_for_more_time) : "Not captured yet"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Target className="h-3.5 w-3.5" />
+              Other parent
+            </div>
+            <p className="mt-1 text-sm text-foreground">{formatCoparentStance(snapshot.coparent_stance)}</p>
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3 sm:col-span-2">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5" />
+              Prior court involvement
+            </div>
+            <p className="mt-1 text-sm text-foreground">{formatPriorCourtInvolvement(snapshot.prior_court_involvement)}</p>
+          </div>
+        </div>
+      ) : isRespondToFilingSnapshot ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-border/70 bg-card/70 p-3">
             <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
