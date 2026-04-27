@@ -96,6 +96,7 @@ function ProtectedRoute({
 }) {
   const { user, isLoading } = useCurrentUser();
   const [location, navigate] = useLocation();
+  const pathname = location.split("?")[0] || location;
   const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
     queryKey: ["/api/user-profile", user?.id ?? "anon", "welcome-gate"],
     enabled: Boolean(user),
@@ -124,7 +125,7 @@ function ProtectedRoute({
     !welcomeDismissedAt &&
     Array.isArray(casesData?.cases) &&
     casesData.cases.length === 0 &&
-    location !== "/welcome";
+    pathname !== "/welcome";
 
   useEffect(() => {
     if (shouldRedirectToWelcome) {

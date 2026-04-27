@@ -25,20 +25,21 @@ export function DisplayNamePromptGate({ children }: { children: ReactNode }) {
   const { data: profile, isLoading, isError } = useUserProfile();
   const qc = useQueryClient();
   const [location, navigate] = useLocation();
+  const pathname = location.split("?")[0] || location;
   const [draft, setDraft] = useState(() => firstNameFromDisplayName(user?.displayName));
   const [dismissed, setDismissed] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const suppressForRoute =
-    location === "/welcome" ||
-    location === "/workspace" ||
-    location === "/ask" ||
-    location === "/analyze" ||
-    location === "/upload-document" ||
-    location === "/resources" ||
-    location === "/custody-map" ||
-    location.startsWith("/case/") ||
-    location.startsWith("/jurisdiction/") ||
-    location === "/location";
+    pathname === "/welcome" ||
+    pathname === "/workspace" ||
+    pathname === "/ask" ||
+    pathname === "/analyze" ||
+    pathname === "/upload-document" ||
+    pathname === "/resources" ||
+    pathname === "/custody-map" ||
+    pathname.startsWith("/case/") ||
+    pathname.startsWith("/jurisdiction/") ||
+    pathname === "/location";
   const [suppressForCompletedWelcome, setSuppressForCompletedWelcome] = useState(
     () =>
     typeof window !== "undefined" &&
