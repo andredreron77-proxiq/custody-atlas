@@ -30,7 +30,6 @@ begin
         'general',
         'document_review',
         'guided_hearing_prep',
-        'guided_respond_to_filing',
         'guided_respond_filing',
         'guided_more_time',
         'guided_figuring_it_out'

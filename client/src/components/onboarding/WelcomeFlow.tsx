@@ -299,7 +299,7 @@ export function WelcomeFlow() {
 
       const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
         caseId,
-        conversation_type: "guided_respond_to_filing",
+        conversation_type: "guided_respond_filing",
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

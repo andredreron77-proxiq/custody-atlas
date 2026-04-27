@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link } from "wouter";
 import { Calendar, MapPin, Scale, ShieldCheck, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
+import UpgradeModal from "@/components/app/UpgradeModal";
 
 export interface GuidedSnapshotState {
   situation_summary?: string | null;
@@ -178,6 +178,7 @@ export function SnapshotCard({
   actions?: string[];
 }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const isMoreTimeSnapshot = Boolean(
     snapshot.current_arrangement
     || snapshot.reason_for_more_time
@@ -428,16 +429,15 @@ export function SnapshotCard({
                 ? "Save failed — try again"
                 : "Save Snapshot"}
         </Button>
-        <Link href="/upgrade">
-          <Button type="button" className="min-h-11 w-full">
-            Keep preparing with Pro — $19.99/mo
-          </Button>
-        </Link>
+        <Button type="button" className="min-h-11 w-full" onClick={() => setUpgradeOpen(true)}>
+          Keep preparing with Pro — $19.99/mo
+        </Button>
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">
         Situational guidance, not legal advice.
       </p>
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </div>
   );
 }
