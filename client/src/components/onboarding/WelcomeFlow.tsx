@@ -77,12 +77,20 @@ const READY_HINT_COPY: Record<SituationType, string> = {
     "Start anywhere. Atlas is ready to help you make sense of it.",
 };
 
-const GUIDED_CONVERSATION_TYPE_BY_SITUATION: Record<SituationType, string> = {
-  more_time: "guided_more_time",
-  respond_to_filing: "guided_respond_filing",
-  hearing_coming_up: "guided_hearing_prep",
-  figuring_things_out: "guided_figuring_it_out",
-};
+function getGuidedConversationTypeForSituation(situationType: SituationType | null): string | null {
+  switch (situationType) {
+    case "hearing_coming_up":
+      return "guided_hearing_prep";
+    case "respond_to_filing":
+      return "guided_respond_filing";
+    case "more_time":
+      return "guided_more_time";
+    case "figuring_things_out":
+      return "guided_figuring_it_out";
+    default:
+      return null;
+  }
+}
 
 const WELCOME_FLOW_ACTIVE_KEY = "custody-atlas:welcome-flow-active";
 
@@ -235,23 +243,62 @@ export function WelcomeFlow() {
     }
   };
 
-  const finish = async (href = "/workspace") => {
-    console.log("[WelcomeFlow] completion handler entry", { href });
+  const finish = async (fallbackHref = "/ask") => {
+    console.log("[WelcomeFlow] completion handler entry", { fallbackHref, situationType, createdCaseId });
     if (guidedConversationRedirectRef.current) {
       console.log("[WelcomeFlow] completion handler bypassed for guided conversation redirect");
       return;
     }
+    setGuidedConversationError(null);
     setIsFinishing(true);
-    await persistWelcomeCompletion();
-    setTimeout(() => {
+
+    const caseId = createdCaseId;
+    const conversationType = getGuidedConversationTypeForSituation(situationType);
+
+    try {
+      if (!caseId || !conversationType) {
+        throw new Error("Missing guided conversation context");
+      }
+
+      const res = await apiRequestRaw("POST", "/api/conversations/initialize-guided", {
+        case_id: caseId,
+        conversation_type: conversationType,
+      });
+      if (!res.ok) {
+        throw new Error("Failed to initialize guided conversation");
+      }
+
+      const data = await res.json().catch(() => ({} as { conversation?: { id?: string } }));
+      const conversationId = data?.conversation?.id;
+      if (!conversationId) {
+        throw new Error("Missing conversation id");
+      }
+
+      guidedConversationRedirectRef.current = true;
+      console.log("[WelcomeFlow] guided init succeeded", { conversationId, caseId, conversationType });
+      console.log("[WelcomeFlow] navigate", {
+        href: `/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`,
+        source: "finish",
+      });
+      navigate(`/ask?case=${encodeURIComponent(caseId)}&conversation=${encodeURIComponent(conversationId)}`, { replace: true });
+      setTimeout(() => {
+        window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
+        void persistWelcomeCompletion();
+      }, 0);
+      return;
+    } catch (error) {
+      console.error("[WelcomeFlow] Guided completion fallback:", error);
+      await persistWelcomeCompletion();
       window.sessionStorage.removeItem(WELCOME_FLOW_ACTIVE_KEY);
-      console.log("[WelcomeFlow] navigate", { href, source: "finish" });
-      navigate(href, { replace: true });
-    }, 0);
+      console.log("[WelcomeFlow] navigate", { href: fallbackHref, source: "finish-fallback" });
+      navigate(fallbackHref, { replace: true });
+    } finally {
+      setIsFinishing(false);
+    }
   };
 
   const skipFlow = () => {
-    void finish("/workspace");
+    void finish("/ask");
   };
 
   const createCase = async () => {
@@ -617,11 +664,9 @@ export function WelcomeFlow() {
                   <Button
                     className="w-full gap-2 sm:w-auto"
                     onClick={() => {
-                      const guidedConversationType = situationType
-                        ? GUIDED_CONVERSATION_TYPE_BY_SITUATION[situationType]
-                        : null;
+                      const guidedConversationType = getGuidedConversationTypeForSituation(situationType);
                       if (guidedConversationType) {
-                        void startGuidedConversation(guidedConversationType);
+                        void finish("/ask");
                         return;
                       }
                       void finish(currentReadyCopy.href);
