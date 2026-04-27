@@ -365,6 +365,50 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function parseCaseMemorySnapshotPayload(raw: unknown): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildSnapshotCaseContextBlock(snapshotPayload: Record<string, unknown> | null): string {
+  if (!snapshotPayload || !isRecord(snapshotPayload.snapshotState)) return "";
+
+  const snapshotState = snapshotPayload.snapshotState as Record<string, unknown>;
+  const situation = typeof snapshotState.situation_summary === "string" && snapshotState.situation_summary.trim().length > 0
+    ? snapshotState.situation_summary.trim()
+    : typeof snapshotState.current_arrangement === "string" && snapshotState.current_arrangement.trim().length > 0
+      ? snapshotState.current_arrangement.trim()
+      : null;
+  const topConcern = typeof snapshotState.top_concern === "string" && snapshotState.top_concern.trim().length > 0
+    ? snapshotState.top_concern.trim()
+    : typeof snapshotState.primary_concern === "string" && snapshotState.primary_concern.trim().length > 0
+      ? snapshotState.primary_concern.trim()
+      : null;
+  const orderStatus = typeof snapshotState.order_status === "string" && snapshotState.order_status.trim().length > 0
+    ? snapshotState.order_status.trim()
+    : null;
+  const actions = Array.isArray(snapshotPayload.actions)
+    ? snapshotPayload.actions.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+
+  const lines = [
+    "CASE CONTEXT (from prior conversation):",
+    `- Situation: ${situation ?? "Unknown"}`,
+    `- Top concern: ${topConcern ?? "Unknown"}`,
+    `- Order status: ${orderStatus ?? "Unknown"}`,
+    `- Actions recommended: ${actions.length > 0 ? `\n${actions.map((action) => `  - ${action}`).join("\n")}` : "None recorded"}`,
+    "",
+    "Use this context to personalize your responses. Do not re-ask for information already captured here. Reference it naturally without narrating it.",
+  ];
+
+  return `\n\n---\n${lines.join("\n")}`;
+}
+
 function normalizeFiguringItOutState(value: unknown): FiguringItOutWaypointState {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ...FIGURING_IT_OUT_INITIAL_STATE };
@@ -2268,6 +2312,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       // the system prompt so Atlas is aware of prior context for this specific case.
       // resolvedCaseMemories is also passed to the deterministic fact resolver below.
       let caseMemoryText = "";
+      let caseSnapshotContextText = "";
       let resolvedCaseMemories: Array<{ content: string; memoryType: string }> = [];
       if (effectiveCaseId && userId) {
         resolvedCaseMemories = await listCaseMemory(effectiveCaseId, userId);
@@ -2275,6 +2320,19 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
           caseMemoryText = "\n\n---\nCASE MEMORY (facts saved from prior sessions):\n" +
             resolvedCaseMemories.map((m) => `[${m.memoryType}] ${m.content}`).join("\n");
         }
+
+        const latestSnapshotRow = await supabaseAdmin
+          ?.from("case_memory")
+          .select("case_id, memory_summary, key_open_questions, key_risks, last_refreshed_at, updated_at")
+          .eq("case_id", effectiveCaseId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+          .then((result) => result.data ?? null);
+
+        caseSnapshotContextText = buildSnapshotCaseContextBlock(
+          parseCaseMemorySnapshotPayload(latestSnapshotRow?.memory_summary),
+        );
       }
 
       // ── Document-scoped context ──────────────────────────────────────────────
@@ -2633,6 +2691,7 @@ GUEST DEMO RESPONSE GUIDANCE
           : "") +
         officialContactAddendum +
         caseJurisdictionAddendum +
+        caseSnapshotContextText +
         caseMemoryText +
         documentContextAddendum +
         caseDocumentTextAddendum +
@@ -5644,17 +5703,7 @@ Do not add facts not present in the provided evidence.`,
       ]);
 
       const snapshotPayloadRaw = latestSnapshotRow?.memory_summary;
-      const parsedSnapshotPayload = (() => {
-        if (!snapshotPayloadRaw) return null;
-        try {
-          const parsed = typeof snapshotPayloadRaw === "string"
-            ? JSON.parse(snapshotPayloadRaw)
-            : snapshotPayloadRaw;
-          return isRecord(parsed) ? parsed : null;
-        } catch {
-          return null;
-        }
-      })();
+      const parsedSnapshotPayload = parseCaseMemorySnapshotPayload(snapshotPayloadRaw);
       const snapshotState = isRecord(parsedSnapshotPayload?.snapshotState)
         ? parsedSnapshotPayload.snapshotState as Record<string, unknown>
         : null;
