@@ -21,6 +21,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { useUserProfile } from "@/hooks/use-user-profile";
 import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
 import { buildWhatMattersNow, type RawSignal, type UserTier } from "@/lib/signals";
+import type { GuidedSnapshotState } from "@/components/app/SnapshotCard";
 
 const PENDING_GUIDED_CONVERSATION_KEY = "pendingGuidedConversation";
 
@@ -269,10 +270,10 @@ export default function AskAIPage() {
 
   const { data: convMessagesData, isLoading: isLoadingConversation } = useQuery<{
     conversation?: CaseConversationRecord;
-    snapshotMemory?: {
+    snapshotMemory?: (GuidedSnapshotState & {
       actions?: string[];
       savedAt?: string | null;
-    } | null;
+    }) | null;
     messages: Array<{
       id: string;
       role: "user" | "assistant";
@@ -600,6 +601,9 @@ export default function AskAIPage() {
         ?? convMessagesData?.conversation
         ?? null;
   const activeGuidedState = activeConversationRecord?.guidedState ?? null;
+  const activeSnapshotState = convMessagesData?.snapshotMemory
+    ? ({ ...convMessagesData.snapshotMemory } as GuidedSnapshotState)
+    : undefined;
   const activeSnapshotActions = Array.isArray(convMessagesData?.snapshotMemory?.actions)
     ? convMessagesData.snapshotMemory.actions.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : undefined;
@@ -911,6 +915,7 @@ export default function AskAIPage() {
           answeringScopeLabel={answeringScopeLabel}
           conversationType={resolvedConversationType}
           guidedState={activeGuidedState}
+          guidedSnapshotState={activeSnapshotState}
           guidedSnapshotActions={activeSnapshotActions}
           guidedMemoryChips={guidedMemoryChips}
           guidedProgressLabel={guidedProgress ?? undefined}

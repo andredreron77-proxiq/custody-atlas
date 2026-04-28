@@ -59,6 +59,7 @@ interface ChatBoxProps {
   conversationType?: string;
   caseName?: string;
   guidedState?: Record<string, unknown> | null;
+  guidedSnapshotState?: GuidedSnapshotState;
   guidedSnapshotActions?: string[];
   guidedProgressLabel?: string;
   guidedMemoryChips?: Array<{
@@ -175,6 +176,27 @@ function stripAtlasHiddenBlocks(content: string): string {
     .replace(/<!--ATLAS_STATE:[\s\S]*?-->/g, "")
     .replace(/<!--ATLAS_TRIGGER:[\s\S]*?-->/g, "")
     .trim();
+}
+
+function hasRenderableSnapshotFields(snapshot?: GuidedSnapshotState | null): boolean {
+  if (!snapshot) return false;
+  return Boolean(
+    snapshot.hearing_date
+    || snapshot.hearing_type
+    || snapshot.top_concern
+    || snapshot.current_schedule
+    || snapshot.document_type
+    || snapshot.opposing_request
+    || snapshot.response_deadline
+    || snapshot.coparent_relationship
+    || snapshot.current_arrangement
+    || snapshot.reason_for_more_time
+    || snapshot.coparent_stance
+    || snapshot.prior_court_involvement !== undefined
+    || snapshot.situation_summary
+    || snapshot.primary_concern
+    || snapshot.concern_category
+  );
 }
 
 function MarkdownAssistantMessage({
@@ -906,6 +928,7 @@ export function ChatBox({
   conversationType,
   caseName,
   guidedState,
+  guidedSnapshotState,
   guidedSnapshotActions,
   guidedProgressLabel,
   guidedMemoryChips = [],
@@ -1465,13 +1488,16 @@ export function ChatBox({
                 const nextStepCard = isAssistant && i >= 2 ? detectNextStepCard(msg, jurisdiction, caseId) : null;
                 const snapshotState = (msg.metadata as GuidedMessageMetadata | undefined)?.snapshot_state;
                 const snapshotActions = (msg.metadata as GuidedMessageMetadata | undefined)?.snapshot_actions;
+                const resolvedSnapshotState = hasRenderableSnapshotFields(snapshotState)
+                  ? snapshotState
+                  : guidedSnapshotState;
                 const resolvedSnapshotActions =
                   Array.isArray(snapshotActions) && snapshotActions.length > 0
                     ? snapshotActions
                     : guidedSnapshotActions;
                 const shouldRenderSnapshot =
                   Boolean((msg.metadata as GuidedMessageMetadata | undefined)?.trigger_snapshot) &&
-                  Boolean(snapshotState);
+                  Boolean(resolvedSnapshotState);
                 const snapshotCaseName = caseName?.trim() || answeringScopeLabel?.trim() || "Your case";
                 const snapshotJurisdictionLabel = formatJurisdictionLabel(jurisdiction.state, jurisdiction.county);
 
@@ -1667,7 +1693,7 @@ export function ChatBox({
                             conversationId={conversationIdRef.current}
                             caseName={snapshotCaseName}
                             jurisdictionLabel={snapshotJurisdictionLabel}
-                            snapshot={snapshotState!}
+                            snapshot={resolvedSnapshotState!}
                             actions={resolvedSnapshotActions}
                             initiallySaved={isCompletedGuidedConversation}
                           />
