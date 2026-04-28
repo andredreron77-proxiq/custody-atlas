@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Calendar, MapPin, Scale, ShieldCheck, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
@@ -169,6 +169,7 @@ export function SnapshotCard({
   jurisdictionLabel,
   snapshot,
   actions,
+  initiallySaved = false,
 }: {
   caseId?: string;
   conversationId?: string;
@@ -176,8 +177,11 @@ export function SnapshotCard({
   jurisdictionLabel: string;
   snapshot: GuidedSnapshotState;
   actions?: string[];
+  initiallySaved?: boolean;
 }) {
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
+    initiallySaved ? "saved" : "idle",
+  );
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const isMoreTimeSnapshot = Boolean(
     snapshot.current_arrangement
@@ -201,7 +205,13 @@ export function SnapshotCard({
     ? snapshot.recent_changes.join(", ")
     : "No recent changes noted";
 
-  const canSave = Boolean(caseId && conversationId) && saveState !== "saving";
+  useEffect(() => {
+    if (initiallySaved) {
+      setSaveState("saved");
+    }
+  }, [initiallySaved]);
+
+  const canSave = Boolean(caseId && conversationId) && saveState !== "saving" && saveState !== "saved";
 
   const handleSave = async () => {
     if (!caseId || !conversationId || saveState === "saving") return;

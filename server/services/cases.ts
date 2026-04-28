@@ -201,7 +201,7 @@ function mapConversation(r: any): Conversation {
     jurisdictionState: r.jurisdiction_state ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     documentId: r.document_id ?? null,
-    createdAt: r.created_at,
+    createdAt: r.last_message_at ?? r.created_at,
   };
 }
 
@@ -535,6 +535,30 @@ export async function listConversations(
       .from("conversations")
       .select("*")
       .eq("case_id", caseId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error || !data) return [];
+    return data.map(mapConversation);
+  } catch {
+    return [];
+  }
+}
+
+export async function listRecentUserConversations(
+  userId: string,
+  limit = 20,
+): Promise<Conversation[]> {
+  if (!supabaseAdmin) return [];
+  try {
+    const cases = await listCases(userId, 100);
+    const caseIds = cases.map((caseRecord) => caseRecord.id);
+    if (caseIds.length === 0) return [];
+
+    const { data, error } = await supabaseAdmin
+      .from("conversations")
+      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
+      .in("case_id", caseIds)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error || !data) return [];

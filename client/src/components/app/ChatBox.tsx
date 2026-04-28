@@ -58,6 +58,7 @@ interface ChatBoxProps {
   onMessageCountChange?: (count: number) => void;
   conversationType?: string;
   caseName?: string;
+  guidedState?: Record<string, unknown> | null;
   guidedProgressLabel?: string;
   guidedMemoryChips?: Array<{
     kind: "calendar" | "map" | "target";
@@ -903,6 +904,7 @@ export function ChatBox({
   onMessageCountChange,
   conversationType,
   caseName,
+  guidedState,
   guidedProgressLabel,
   guidedMemoryChips = [],
 }: ChatBoxProps) {
@@ -950,6 +952,7 @@ export function ChatBox({
     queryFn: fetchUsageState,
   });
   const isGuidedConversation = Boolean(conversationType?.startsWith("guided_"));
+  const isCompletedGuidedConversation = Boolean(guidedState && guidedState.snapshot_complete === true);
   const isFreeUser = usage?.isAuthenticated && usage.tier === "free";
   const shouldShowUpgradeNudge =
     Boolean(isFreeUser) &&
@@ -1660,6 +1663,7 @@ export function ChatBox({
                             jurisdictionLabel={snapshotJurisdictionLabel}
                             snapshot={snapshotState!}
                             actions={snapshotActions}
+                            initiallySaved={isCompletedGuidedConversation}
                           />
                         ) : null}
                       </div>

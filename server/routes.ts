@@ -104,6 +104,7 @@ import {
   getCaseById,
   createConversation,
   listConversations,
+  listRecentUserConversations,
   getConversationById,
   getConversationByIdForCase,
   listMessages,
@@ -3983,11 +3984,32 @@ ${userQuestion}`;
   app.get("/api/workspace", requireAuth, async (req, res) => {
     const user = (req as any).user;
     try {
-      const [threads, rawDocuments, timelineEvents] = await Promise.all([
+      const [threads, recentConversations, rawDocuments, timelineEvents] = await Promise.all([
         listThreads(user.id, 10),
+        listRecentUserConversations(user.id, 10),
         getDocuments(user.id),
         listTimelineEvents(user.id),
       ]);
+      const mergedThreads = [
+        ...recentConversations.map((conversation) => ({
+          id: conversation.id,
+          title: conversation.title,
+          threadType: conversation.threadType,
+          jurisdictionState: conversation.jurisdictionState,
+          jurisdictionCounty: conversation.jurisdictionCounty,
+          documentId: conversation.documentId,
+          createdAt: conversation.createdAt,
+          caseId: conversation.caseId,
+          linkMode: "conversation" as const,
+        })),
+        ...threads.map((thread) => ({
+          ...thread,
+          caseId: null,
+          linkMode: "thread" as const,
+        })),
+      ]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 10);
       console.info("[trace][workspace-api] raw canonical DB rows", rawDocuments.map((doc) => ({
         id: doc.id,
         file_name: doc.fileName,
@@ -4173,7 +4195,7 @@ ${userQuestion}`;
           rows: duplicateRowsInResponse,
         });
       }
-      return res.json({ threads, documents, timelineEvents });
+      return res.json({ threads: mergedThreads, documents, timelineEvents });
     } catch (err) {
       console.error("[workspace] GET error:", err);
       return res.status(500).json({ error: "Failed to load workspace." });
@@ -7253,8 +7275,12 @@ Do not add facts not present in the provided evidence.`,
     const user = (req as any).user;
     const conversationId = asString(req.params.conversationId);
     try {
+      const conversation = await getConversationById(conversationId, user.id);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found." });
+      }
       const messages = await listMessages(conversationId, user.id);
-      return res.json({ messages });
+      return res.json({ conversation, messages });
     } catch (err) {
       console.error("[cases] GET messages error:", err);
       return res.status(500).json({ error: "Failed to list messages." });

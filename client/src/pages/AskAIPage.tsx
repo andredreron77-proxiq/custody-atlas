@@ -47,6 +47,7 @@ interface CaseConversationRecord {
   id: string;
   title: string | null;
   threadType: string;
+  guidedState?: Record<string, unknown> | null;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
   createdAt: string;
@@ -267,6 +268,7 @@ export default function AskAIPage() {
   const effectiveConversationId = conversationIdParam ?? resolvedConversationId;
 
   const { data: convMessagesData, isLoading: isLoadingConversation } = useQuery<{
+    conversation?: CaseConversationRecord;
     messages: Array<{
       id: string;
       role: "user" | "assistant";
@@ -495,11 +497,13 @@ export default function AskAIPage() {
 
   useEffect(() => {
     if (!effectiveConversationId) return;
-    const matchingConversation = caseConversationsData?.conversations?.find((conversation) => conversation.id === effectiveConversationId);
+    const matchingConversation =
+      caseConversationsData?.conversations?.find((conversation) => conversation.id === effectiveConversationId)
+      ?? convMessagesData?.conversation;
     if (matchingConversation?.threadType) {
       setResolvedConversationType(matchingConversation.threadType);
     }
-  }, [caseConversationsData?.conversations, effectiveConversationId]);
+  }, [caseConversationsData?.conversations, convMessagesData?.conversation, effectiveConversationId]);
 
   useEffect(() => {
     if (caseJurisdictionApplied) return;
@@ -584,6 +588,14 @@ export default function AskAIPage() {
     guidedMemoryChips.push({ kind: "map", label: locationLabel });
   }
   const guidedProgress = guidedContextLabel ? guidedProgressLabel(chatMessageCount) : null;
+  const initializedConversation = initializedConversationPayload?.conversation ?? null;
+  const activeConversationRecord =
+    initializedConversation?.id === effectiveConversationId
+      ? initializedConversation
+      : caseConversationsData?.conversations?.find((conversation) => conversation.id === effectiveConversationId)
+        ?? convMessagesData?.conversation
+        ?? null;
+  const activeGuidedState = activeConversationRecord?.guidedState ?? null;
   const selectedDocCount = chatSelectedDocumentIds ? chatSelectedDocumentIds.length : userDocuments.length;
   const userTier: UserTier = isProUser ? "pro" : "free";
 
@@ -891,6 +903,7 @@ export default function AskAIPage() {
           onSelectCase={(id) => setActiveCaseId(id)}
           answeringScopeLabel={answeringScopeLabel}
           conversationType={resolvedConversationType}
+          guidedState={activeGuidedState}
           guidedMemoryChips={guidedMemoryChips}
           guidedProgressLabel={guidedProgress ?? undefined}
           className="flex-1 min-h-0"

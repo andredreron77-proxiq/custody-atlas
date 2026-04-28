@@ -43,6 +43,9 @@ type CaseDashboardPayload = {
   };
   snapshotMemory: {
     top_concern?: string | null;
+    reason_for_more_time?: string | null;
+    primary_concern?: string | null;
+    opposing_request?: string | null;
     concern_category?: string | null;
     actions?: string[];
     hearing_date?: string | null;
@@ -276,9 +279,11 @@ export default function CaseDashboardPage() {
     };
   }, [intelligenceRecord]);
   const snapshotConcernFallback = useMemo(() => {
-    const topConcern = typeof data?.snapshotMemory?.top_concern === "string"
-      ? data.snapshotMemory.top_concern.trim()
-      : "";
+    const topConcern =
+      (typeof data?.snapshotMemory?.top_concern === "string" ? data.snapshotMemory.top_concern.trim() : "")
+      || (typeof data?.snapshotMemory?.reason_for_more_time === "string" ? data.snapshotMemory.reason_for_more_time.trim() : "")
+      || (typeof data?.snapshotMemory?.primary_concern === "string" ? data.snapshotMemory.primary_concern.trim() : "")
+      || (typeof data?.snapshotMemory?.opposing_request === "string" ? data.snapshotMemory.opposing_request.trim() : "");
     if (!topConcern) return null;
     const category = typeof data?.snapshotMemory?.concern_category === "string"
       ? data.snapshotMemory.concern_category

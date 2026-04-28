@@ -65,6 +65,8 @@ interface WorkspaceThread {
   jurisdictionCounty: string | null;
   documentId: string | null;
   createdAt: string;
+  caseId?: string | null;
+  linkMode?: "thread" | "conversation";
 }
 
 type DocType = "custody_order" | "communication" | "financial" | "other";
@@ -242,7 +244,9 @@ function CaseMemoryStrip({
       ? "text-amber-700 dark:text-amber-300"
       : "text-foreground";
   const followUpHref = lastThread
-    ? `/ask?case=${encodeURIComponent(activeCase.id)}&thread=${encodeURIComponent(lastThread.id)}`
+    ? lastThread.linkMode === "conversation"
+      ? `/ask?case=${encodeURIComponent(lastThread.caseId ?? activeCase.id)}&conversation=${encodeURIComponent(lastThread.id)}`
+      : `/ask?case=${encodeURIComponent(activeCase.id)}&thread=${encodeURIComponent(lastThread.id)}`
     : null;
 
   return (
@@ -1322,11 +1326,18 @@ function TimelineAndActivityPanel({
 
               if (item.kind === "thread") {
                 const thread = item.thread;
-                const params = new URLSearchParams({ thread: thread.id });
-                if (thread.jurisdictionState) params.set("state", thread.jurisdictionState);
-                if (thread.jurisdictionCounty) params.set("county", thread.jurisdictionCounty);
+                const href = thread.linkMode === "conversation"
+                  ? `/ask?${new URLSearchParams({
+                      ...(thread.caseId ? { case: thread.caseId } : {}),
+                      conversation: thread.id,
+                    }).toString()}`
+                  : `/ask?${new URLSearchParams({
+                      thread: thread.id,
+                      ...(thread.jurisdictionState ? { state: thread.jurisdictionState } : {}),
+                      ...(thread.jurisdictionCounty ? { county: thread.jurisdictionCounty } : {}),
+                    }).toString()}`;
                 return (
-                  <Link key={`thread-${thread.id}`} href={`/ask?${params.toString()}`}>
+                  <Link key={`thread-${thread.id}`} href={href}>
                     <li
                       className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-muted/30 cursor-pointer group"
                       data-testid={`conversation-item-${thread.id}`}
@@ -1729,7 +1740,11 @@ export default function WorkspacePage() {
 
     // All conversation-resume scenarios
     const lastThread = threads[0];
-    const threadParam = lastThread ? `thread=${lastThread.id}` : null;
+    const threadParam = lastThread
+      ? lastThread.linkMode === "conversation"
+        ? `conversation=${lastThread.id}${lastThread.caseId ? `&case=${lastThread.caseId}` : ""}`
+        : `thread=${lastThread.id}`
+      : null;
     if (jParams) {
       return threadParam ? `/ask?${threadParam}&${jParams}` : `/ask?${jParams}`;
     }
@@ -1744,9 +1759,18 @@ export default function WorkspacePage() {
   const resumeHref = (() => {
     const lastThread = threads[0];
     if (!lastThread) return askAIPath;
-    const p = new URLSearchParams({ thread: lastThread.id });
-    if (lastThread.jurisdictionState) p.set("state", lastThread.jurisdictionState);
-    if (lastThread.jurisdictionCounty) p.set("county", lastThread.jurisdictionCounty);
+    const p = new URLSearchParams(
+      lastThread.linkMode === "conversation"
+        ? {
+            ...(lastThread.caseId ? { case: lastThread.caseId } : {}),
+            conversation: lastThread.id,
+          }
+        : { thread: lastThread.id },
+    );
+    if (lastThread.linkMode !== "conversation") {
+      if (lastThread.jurisdictionState) p.set("state", lastThread.jurisdictionState);
+      if (lastThread.jurisdictionCounty) p.set("county", lastThread.jurisdictionCounty);
+    }
     return `/ask?${p.toString()}`;
   })();
   const preferredName = resolvePreferredFirstName({
