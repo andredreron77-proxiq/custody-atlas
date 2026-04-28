@@ -19,8 +19,6 @@ import type { UsageState } from "@/services/usageService";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useUserProfile } from "@/hooks/use-user-profile";
-import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
-import { buildWhatMattersNow, type RawSignal, type UserTier } from "@/lib/signals";
 import type { GuidedSnapshotState } from "@/components/app/SnapshotCard";
 
 const PENDING_GUIDED_CONVERSATION_KEY = "pendingGuidedConversation";
@@ -608,31 +606,6 @@ export default function AskAIPage() {
     ? convMessagesData.snapshotMemory.actions.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : undefined;
   const selectedDocCount = chatSelectedDocumentIds ? chatSelectedDocumentIds.length : userDocuments.length;
-  const userTier: UserTier = isProUser ? "pro" : "free";
-
-  const { data: signalsData, isLoading: isLoadingSignals } = useQuery<{ signals: RawSignal[] }>({
-    queryKey: ["/api/signals", "case", activeCaseId],
-    enabled: !!activeCaseId,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      if (!activeCaseId) return { signals: [] };
-      const res = await apiRequestRaw("GET", `/api/signals?caseId=${encodeURIComponent(activeCaseId)}`);
-      if (!res.ok) return { signals: [] };
-      return res.json();
-    },
-  });
-
-  const whatMattersNowPreview = activeCaseId
-    ? buildWhatMattersNow(signalsData?.signals ?? [], {
-        tier: userTier,
-        totalDocuments: userDocuments.length,
-        lastActivityDaysAgo: 0,
-      })
-    : null;
-  const topCaseSignals: RawSignal[] = (whatMattersNowPreview?.signals ?? [])
-    .slice(0, 2)
-    .map(({ score, locked, daysUntilDue, ...raw }) => raw);
 
   if ((threadIdParam && isLoadingThread) || (effectiveConversationId && !initializedConversationPayload && isLoadingConversation) || isInitializingGuidedConversation) {
     return (
@@ -890,15 +863,6 @@ export default function AskAIPage() {
             </div>
           )}
 
-          {activeCaseId && (isLoadingSignals || topCaseSignals.length > 0) ? (
-            <DismissibleWhatMattersNow
-              rawSignals={topCaseSignals}
-              tier={userTier}
-              totalDocuments={userDocuments.length}
-              lastActivityDaysAgo={0}
-              loading={isLoadingSignals}
-            />
-          ) : null}
         </div>
       </div>
 
