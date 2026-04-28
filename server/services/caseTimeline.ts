@@ -56,6 +56,7 @@ export interface CaseTimelineEvent {
 /* ── Date parsing ─────────────────────────────────────────────────────────── */
 
 const SPLIT_RE = /\s[–—\-]\s/;
+const ANNUAL_MARKER_RE = /\b(annually|annual|every year)\b/i;
 
 /**
  * Try to extract a usable Date from a raw string.
@@ -71,8 +72,27 @@ function parseDate(raw: string): Date | null {
   // For key_dates items that include a description after a dash separator,
   // take only the leading portion so "March 15, 2024 – Order effective" parses.
   const datePortion = raw.split(SPLIT_RE)[0].trim();
+  const normalizedDatePortion = datePortion.replace(ANNUAL_MARKER_RE, "").replace(/\s+/g, " ").trim();
 
-  const d = new Date(datePortion);
+  if (ANNUAL_MARKER_RE.test(datePortion)) {
+    const today = todayMidnight();
+    const currentYearText = `${normalizedDatePortion}, ${today.getFullYear()}`;
+    const currentYearDate = new Date(currentYearText);
+    if (!isNaN(currentYearDate.getTime())) {
+      const currentYearMidnight = new Date(
+        currentYearDate.getFullYear(),
+        currentYearDate.getMonth(),
+        currentYearDate.getDate(),
+      );
+      if (currentYearMidnight >= today) return currentYearMidnight;
+      const nextYearDate = new Date(`${normalizedDatePortion}, ${today.getFullYear() + 1}`);
+      if (!isNaN(nextYearDate.getTime())) {
+        return new Date(nextYearDate.getFullYear(), nextYearDate.getMonth(), nextYearDate.getDate());
+      }
+    }
+  }
+
+  const d = new Date(normalizedDatePortion);
   if (!isNaN(d.getTime())) return d;
 
   // Fallback: try the full string (handles some unusual formats)
@@ -96,7 +116,15 @@ function classify(
   const eventDay = new Date(dateParsed.getFullYear(), dateParsed.getMonth(), dateParsed.getDate());
   const isPast = eventDay < today;
   const isUpcoming = !isPast;
-  const isOverdue = isPast && (type === "hearing" || type === "fact");
+  const daysPast = isPast
+    ? Math.floor((today.getTime() - eventDay.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isOverdue = Boolean(
+    isPast
+      && daysPast !== null
+      && daysPast <= 30
+      && (type === "hearing" || type === "fact"),
+  );
   return { isPast, isUpcoming, isOverdue };
 }
 

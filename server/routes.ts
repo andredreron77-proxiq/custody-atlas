@@ -1396,15 +1396,15 @@ function timelineSpecificityScore(event: NormalizedDashboardTimelineEvent): numb
 }
 
 function computeTimelineStatus(event: CaseTimelineEvent, normalizedType: DashboardTimelineType): DashboardTimelineStatus {
-  if (event.isOverdue) return "overdue";
   if (!event.dateParsed) return event.isPast ? "past" : "future";
   const msPerDay = 86400000;
   const daysAway = Math.ceil((event.dateParsed.getTime() - Date.now()) / msPerDay);
+  if (daysAway >= 0 && daysAway <= 30) return "upcoming";
   if (daysAway < 0) {
-    if (normalizedType === "hearing" || normalizedType === "deadline" || normalizedType === "mediation") return "overdue";
+    const daysPast = Math.abs(daysAway);
+    if ((normalizedType === "hearing" || normalizedType === "deadline") && daysPast <= 30) return "overdue";
     return "past";
   }
-  if (daysAway <= 30) return "upcoming";
   return "future";
 }
 
@@ -5856,6 +5856,13 @@ Do not add facts not present in the provided evidence.`,
       const visibleTimeline = primaryTimeline.slice(0, visibleTimelineLimit);
       const upcomingEvents = primaryTimeline.filter((event) => event.status === "upcoming");
       const overdueEvents = primaryTimeline.filter((event) => event.status === "overdue");
+      const recentOutcomeNeededEvents = primaryTimeline.filter((event) => {
+        if ((event.normalizedType !== "hearing" && event.normalizedType !== "deadline") || !event.dateParsed) {
+          return false;
+        }
+        const daysPast = Math.floor((Date.now() - event.dateParsed.getTime()) / (1000 * 60 * 60 * 24));
+        return daysPast >= 0 && daysPast <= 90;
+      });
 
       const openActions = actions
         .filter((action) => action.status === "open")
@@ -6046,16 +6053,16 @@ Do not add facts not present in the provided evidence.`,
           alertKey: "overdue_event",
           type: "overdue_event",
           title: "Overdue event needs outcome",
-          message: overdueEvents[0]
-            ? `${overdueEvents[0].normalizedLabel} dated ${overdueEvents[0].dateRaw} requires immediate review.`
+          message: recentOutcomeNeededEvents[0]
+            ? `${recentOutcomeNeededEvents[0].normalizedLabel} dated ${recentOutcomeNeededEvents[0].dateRaw} requires immediate review.`
             : "No overdue event detected.",
           impact: alertImpactWhyThisMatters("overdue_event"),
           severity: "high",
-          relatedItem: overdueEvents[0] ? `${overdueEvents[0].normalizedLabel} (${overdueEvents[0].dateRaw})` : "Timeline",
+          relatedItem: recentOutcomeNeededEvents[0] ? `${recentOutcomeNeededEvents[0].normalizedLabel} (${recentOutcomeNeededEvents[0].dateRaw})` : "Timeline",
           recommendedAction: "Add a timeline outcome or upload the related filing.",
           target: { label: "Review timeline", href: `/cases/${caseId}/dashboard#timeline`, section: "timeline" },
-          shouldBeActive: overdueEvents.length > 0,
-          autoResolveHighConfidence: overdueEvents.length === 0 ? { method: "event", note: "No overdue events remain in the timeline." } : null,
+          shouldBeActive: recentOutcomeNeededEvents.length > 0,
+          autoResolveHighConfidence: recentOutcomeNeededEvents.length === 0 ? { method: "event", note: "No overdue hearing or deadline events remain in the recent timeline." } : null,
         },
         {
           alertKey: "upcoming_deadline",

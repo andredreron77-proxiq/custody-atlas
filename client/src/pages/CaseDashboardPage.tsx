@@ -599,16 +599,30 @@ export default function CaseDashboardPage() {
           <CardContent className="space-y-2 text-sm">
             {intelligenceActions.length > 0 || snapshotActions.length > 0 ? (
               <>
-                {intelligenceActions.length === 0 && snapshotActions.length > 0 ? (
-                  <p className="text-xs font-medium text-muted-foreground">Based on your conversation with Atlas</p>
+                {snapshotActions.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">From your conversation with Atlas</p>
+                    <ul className="space-y-1.5">
+                      {snapshotActions.map((action, index) => (
+                        <li key={`snapshot-${index}`} className="rounded border border-border bg-muted/40 px-2 py-1.5">
+                          {action}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
-                <ul className="space-y-1.5">
-                  {(intelligenceActions.length > 0 ? intelligenceActions : snapshotActions.map((action, index) => ({ risk_id: `snapshot-${index}`, action }))).map((action) => (
-                    <li key={action.risk_id} className="rounded border border-border bg-muted/40 px-2 py-1.5">
-                      {action.action}
-                    </li>
-                  ))}
-                </ul>
+                {intelligenceActions.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">Based on your court document</p>
+                    <ul className="space-y-1.5">
+                      {intelligenceActions.map((action) => (
+                        <li key={action.risk_id} className="rounded border border-border bg-muted/40 px-2 py-1.5">
+                          {action.action}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </>
             ) : (
               <p className="text-muted-foreground">No recommended actions yet. Intelligence will update as more case details are available.</p>
