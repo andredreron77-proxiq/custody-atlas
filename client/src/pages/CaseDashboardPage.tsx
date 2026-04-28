@@ -593,303 +593,301 @@ export default function CaseDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 lg:grid-cols-5">
-        <div className="space-y-3 lg:col-span-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Legal Timeline</CardTitle>
-            </CardHeader>
-            <CardContent id="timeline">
-              {data.timeline.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No timeline events available for this case.</p>
-              ) : (
-                <>
-                <ol className="space-y-1.5 text-sm">
-                  {(showFullTimeline ? data.timeline : data.timeline.slice(0, data.timelineMeta?.visibleCount ?? 8)).map((event) => (
-                    <li key={event.id} className={`rounded border px-2 py-1.5 ${timelineStatusClass(event.status)}`}>
-                      <div className="flex items-center justify-between gap-2">
+      <div className="grid gap-3 md:grid-cols-2 md:items-start">
+        <Card data-testid="section-recommended-actions" className="md:col-start-2 md:row-start-1">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Recommended Actions</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {intelligenceActions.length > 0 || snapshotActions.length > 0 ? (
+              <>
+                {intelligenceActions.length === 0 && snapshotActions.length > 0 ? (
+                  <p className="text-xs font-medium text-muted-foreground">Based on your conversation with Atlas</p>
+                ) : null}
+                <ul className="space-y-1.5">
+                  {(intelligenceActions.length > 0 ? intelligenceActions : snapshotActions.map((action, index) => ({ risk_id: `snapshot-${index}`, action }))).map((action) => (
+                    <li key={action.risk_id} className="rounded border border-border bg-muted/40 px-2 py-1.5">
+                      {action.action}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="text-muted-foreground">No recommended actions yet. Intelligence will update as more case details are available.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="section-key-dates" className="md:col-start-1 md:row-start-2">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Key Dates</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {intelligenceKeyDates.length > 0 || snapshotKeyDate ? (
+              <ul className="space-y-1.5">
+                {(intelligenceKeyDates.length > 0 ? intelligenceKeyDates : [snapshotKeyDate!]).map((date, index) => (
+                  <li key={`${date.raw}-${index}`} className="flex items-start justify-between gap-2 rounded border border-border px-2 py-1.5">
+                    <div className="min-w-0">
+                      <p className="truncate">{date.raw}</p>
+                      <p className="text-xs capitalize text-muted-foreground">
+                        {"kind" in date ? date.kind : date.kindLabel}
+                        {"subLabel" in date && date.subLabel ? ` • ${date.subLabel}` : ""}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-xs text-muted-foreground">
+                      {date.parsedDate ? formatDate(date.parsedDate) : "Date TBD"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground">No high-priority dates are available yet.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-start-1 md:row-start-1">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Legal Timeline</CardTitle>
+          </CardHeader>
+          <CardContent id="timeline">
+            {data.timeline.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No timeline events available for this case.</p>
+            ) : (
+              <>
+              <ol className="space-y-1.5 text-sm">
+                {(showFullTimeline ? data.timeline : data.timeline.slice(0, data.timelineMeta?.visibleCount ?? 8)).map((event) => (
+                  <li key={event.id} className={`rounded border px-2 py-1.5 ${timelineStatusClass(event.status)}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5">
+                        {timelineTypeIcon(event.type, event.status)}
+                        {formatDate(event.date)}
+                      </span>
+                      <span className="truncate pl-2 text-right">{event.label}</span>
+                    </div>
+                    {event.whyThisMatters ? <p className="pl-6 pt-0.5 text-xs text-muted-foreground">{event.whyThisMatters}</p> : null}
+                  </li>
+                ))}
+              </ol>
+              {data.timelineMeta?.hasMore ? (
+                <div className="mt-2">
+                  <Button size="sm" variant="outline" className="h-7" onClick={() => setShowFullTimeline((value) => !value)}>
+                    {showFullTimeline ? "Show fewer items" : `View full timeline (${data.timelineMeta.totalCount})`}
+                  </Button>
+                </div>
+              ) : null}
+              {data.timelineSecondary && data.timelineSecondary.length > 0 ? (
+                <Collapsible className="mt-3">
+                  <CollapsibleTrigger asChild>
+                    <Button size="sm" variant="ghost" className="h-7 px-0 text-xs text-muted-foreground">
+                      Context & allegations ({data.timelineMeta?.secondaryCount ?? data.timelineSecondary.length})
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-1 space-y-1.5">
+                    {data.timelineSecondary.map((event) => (
+                      <div key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 text-xs ${timelineStatusClass(event.status)}`}>
                         <span className="flex items-center gap-1.5">
                           {timelineTypeIcon(event.type, event.status)}
                           {formatDate(event.date)}
                         </span>
                         <span className="truncate pl-2 text-right">{event.label}</span>
                       </div>
-                      {event.whyThisMatters ? <p className="pl-6 pt-0.5 text-xs text-muted-foreground">{event.whyThisMatters}</p> : null}
-                    </li>
-                  ))}
-                </ol>
-                {data.timelineMeta?.hasMore ? (
-                  <div className="mt-2">
-                    <Button size="sm" variant="outline" className="h-7" onClick={() => setShowFullTimeline((value) => !value)}>
-                      {showFullTimeline ? "Show fewer items" : `View full timeline (${data.timelineMeta.totalCount})`}
-                    </Button>
-                  </div>
-                ) : null}
-                {data.timelineSecondary && data.timelineSecondary.length > 0 ? (
-                  <Collapsible className="mt-3">
-                    <CollapsibleTrigger asChild>
-                      <Button size="sm" variant="ghost" className="h-7 px-0 text-xs text-muted-foreground">
-                        Context & allegations ({data.timelineMeta?.secondaryCount ?? data.timelineSecondary.length})
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-1 space-y-1.5">
-                      {data.timelineSecondary.map((event) => (
-                        <div key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 text-xs ${timelineStatusClass(event.status)}`}>
-                          <span className="flex items-center gap-1.5">
-                            {timelineTypeIcon(event.type, event.status)}
-                            {formatDate(event.date)}
-                          </span>
-                          <span className="truncate pl-2 text-right">{event.label}</span>
-                        </div>
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
-                ) : null}
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Documents</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {data.documents.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No documents linked to this case.</p>
-              ) : data.documents.map((doc) => (
-                <div key={doc.id} className="flex items-start justify-between gap-2 border-b pb-2 last:border-b-0 last:pb-0">
-                  <div className="min-w-0 space-y-1">
-                    <p className="truncate text-sm font-medium">{doc.title}</p>
-                    <div className="flex flex-wrap gap-1">
-                      <Badge variant="secondary" className="h-5 border-border px-1.5 text-[10px]">{doc.status}</Badge>
-                      {doc.tags.slice(0, 3).map((tag) => <Badge key={tag} variant="outline" className="h-5 border-border px-1.5 text-[10px] text-muted-foreground">{tag}</Badge>)}
-                    </div>
-                  </div>
-                  <Link href={`/document/${doc.id}`}><Button size="sm" variant="ghost" className="h-7 px-2">View</Button></Link>
-                </div>
-              ))}
-              <div className="pt-1">
-                <Link href="/upload-document"><Button size="sm" variant="outline" className="h-7">+ Add Document</Button></Link>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-3 lg:col-span-2">
-          <CaseStrengthScore caseId={data.case.id} />
-
-          <Card data-testid="section-top-risks">
-            <CardHeader className="pb-2"><CardTitle className="text-base">Top Risks</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {intelligenceRisks.length > 0 ? intelligenceRisks.map((risk) => (
-                <div key={risk.id} className="space-y-1 rounded border border-border p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium">{risk.title}</p>
-                    <Badge variant="outline" className={intelligenceSeverityBadgeClass(risk.severity)}>
-                      {risk.severity}
-                    </Badge>
-                  </div>
-                  <p className="text-muted-foreground">{sentence(risk.description, "No additional detail was provided.")}</p>
-                </div>
-              )) : (
-                <p className="text-muted-foreground">No major risks are flagged right now.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card data-testid="section-recommended-actions">
-            <CardHeader className="pb-2"><CardTitle className="text-base">Recommended Actions</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {intelligenceActions.length > 0 || snapshotActions.length > 0 ? (
-                <>
-                  {intelligenceActions.length === 0 && snapshotActions.length > 0 ? (
-                    <p className="text-xs font-medium text-muted-foreground">Based on your conversation with Atlas</p>
-                  ) : null}
-                  <ul className="space-y-1.5">
-                    {(intelligenceActions.length > 0 ? intelligenceActions : snapshotActions.map((action, index) => ({ risk_id: `snapshot-${index}`, action }))).map((action) => (
-                    <li key={action.risk_id} className="rounded border border-border bg-muted/40 px-2 py-1.5">
-                      {action.action}
-                    </li>
                     ))}
-                  </ul>
-                </>
-              ) : (
-                <p className="text-muted-foreground">No recommended actions yet. Intelligence will update as more case details are available.</p>
-              )}
-            </CardContent>
-          </Card>
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : null}
+              </>
+            )}
+          </CardContent>
+        </Card>
 
-          <Card data-testid="section-key-dates">
-            <CardHeader className="pb-2"><CardTitle className="text-base">Key Dates</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {intelligenceKeyDates.length > 0 || snapshotKeyDate ? (
-                <ul className="space-y-1.5">
-                  {(intelligenceKeyDates.length > 0 ? intelligenceKeyDates : [snapshotKeyDate!]).map((date, index) => (
-                    <li key={`${date.raw}-${index}`} className="flex items-start justify-between gap-2 rounded border border-border px-2 py-1.5">
-                      <div className="min-w-0">
-                        <p className="truncate">{date.raw}</p>
-                        <p className="text-xs capitalize text-muted-foreground">
-                          {"kind" in date ? date.kind : date.kindLabel}
-                          {"subLabel" in date && date.subLabel ? ` • ${date.subLabel}` : ""}
-                        </p>
-                      </div>
-                      <p className="shrink-0 text-xs text-muted-foreground">
-                        {date.parsedDate ? formatDate(date.parsedDate) : "Date TBD"}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-muted-foreground">No high-priority dates are available yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Case Health</CardTitle></CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current posture</p>
-                <p>{sentence(data.caseHealth.currentPosture, "Case posture is still being assessed.")}</p>
-              </section>
-              <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Urgency</p>
-                <Badge variant="outline" className={urgencyBadgeClass(data.caseHealth.urgency)}>
-                  {data.caseHealth.urgency}
-                </Badge>
-              </section>
-              <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Risk level</p>
-                <div className="space-y-2">
-                  <Badge variant="outline" className={riskBadgeClass(data.caseHealth.riskLevel)}>
-                    {data.caseHealth.riskLevel} ({data.caseHealth.riskScore}/100)
-                  </Badge>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full rounded-full transition-all ${riskProgressClass(data.caseHealth.riskLevel)}`}
-                      style={{ width: `${Math.max(0, Math.min(100, data.caseHealth.riskScore))}%` }}
-                    />
-                  </div>
-                </div>
-              </section>
-              <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Document completeness</p>
-                <Badge variant="outline" className={completenessBadgeClass(data.caseHealth.documentCompleteness)}>
-                  {data.caseHealth.documentCompleteness}
-                </Badge>
-              </section>
-              <section>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Immediate concern</p>
-                <p>{sentence(data.caseHealth.immediateConcern, "No immediate concern identified.")}</p>
-              </section>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Alerts</CardTitle></CardHeader>
-            <CardContent id="alerts" className="space-y-2 text-sm">
-              {data.alerts.length > 0 ? data.alerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  id={`alert-${alert.id}`}
-                  ref={(node) => { alertRefs.current[alert.id] = node; }}
-                  tabIndex={-1}
-                  className={`flex items-start gap-2 rounded border border-l-4 px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${alertToneClass(alert.severity)}`}
-                >
-                  {alertIcon(alert.kind)}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{alert.title}</p>
-                      <Badge variant="outline" className={alertStateBadgeClass(alert.state)}>{alert.state.replace("_", " ")}</Badge>
-                    </div>
-                    <p>{alert.message}</p>
-                    <p className="text-xs text-muted-foreground">{alert.impact}</p>
-                    <p className="text-xs text-muted-foreground">Related: {alert.relatedItem}</p>
-                    <p className="text-xs">{alert.recommendedAction}</p>
-                    {alert.suggestedResolution?.confidence === "medium" ? (
-                      <div className="rounded border border-[hsl(var(--semantic-amber)/0.5)] bg-[hsl(var(--semantic-amber)/0.1)] p-2 text-xs">
-                        <p className="mb-1">{alert.suggestedResolution.prompt}</p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7"
-                          disabled={alertActionMutation.isPending}
-                          onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: "mark_resolved", confirmSuggested: true })}
-                        >
-                          Confirm resolution
-                        </Button>
-                      </div>
-                    ) : null}
-                    <Textarea
-                      placeholder="Optional resolution note…"
-                      value={resolutionNotes[alert.id] ?? ""}
-                      onChange={(event) => setResolutionNotes((prev) => ({ ...prev, [alert.id]: event.target.value }))}
-                      className="min-h-[64px] text-xs"
-                    />
-                    <div className="flex flex-wrap gap-1.5">
-                      {alert.allowedActions.map((action) => (
-                        <Button
-                          key={action.id}
-                          size="sm"
-                          variant="outline"
-                          className="h-7"
-                          disabled={alertActionMutation.isPending}
-                          onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: action.id })}
-                        >
-                          {action.label}
-                        </Button>
-                      ))}
-                      {alert.state !== "active" && alert.state !== "reopened" ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7"
-                          disabled={alertActionMutation.isPending}
-                          onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: "reopen" })}
-                        >
-                          Reopen
-                        </Button>
-                      ) : null}
-                      <Link href={alert.target.href}><Button size="sm" variant="secondary" className="h-7">{alert.target.label}</Button></Link>
-                    </div>
-                  </div>
-                </div>
-              )) : (
-                <div className="flex items-start gap-2 rounded border border-border px-2 py-1.5 text-muted-foreground">
-                  <AlertTriangle className="h-4 w-4" />
-                  <p>No alerts require attention right now.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <div className="md:col-start-2 md:row-start-2">
+          <CaseStrengthScore caseId={data.case.id} />
         </div>
-      </div>
 
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Ask Atlas</CardTitle></CardHeader>
-        <CardContent className="space-y-2">
-          <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleAskAtlasSubmit}>
-            <Input
-              placeholder="Ask about this case…"
-              aria-label="Ask about this case"
-              value={askAtlasQuestion}
-              onChange={(event) => setAskAtlasQuestion(event.target.value)}
-              onKeyDown={handleAskAtlasKeyDown}
-            />
-            <Button type="submit" disabled={!askAtlasQuestion.trim()} className="sm:self-start">
-              Ask Atlas
-            </Button>
-          </form>
-          <div className="flex flex-wrap gap-1.5">
-            {suggestedPrompts.map((prompt) => (
-              <Link key={prompt} href={`/ask?case=${data.case.id}&q=${encodeURIComponent(prompt)}`}>
-                <Button variant="outline" size="sm" className="h-7 text-xs">{prompt}</Button>
-              </Link>
+        <Card className="md:col-start-2 md:row-start-3">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Case Health</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <section>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current posture</p>
+              <p>{sentence(data.caseHealth.currentPosture, "Case posture is still being assessed.")}</p>
+            </section>
+            <section>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Urgency</p>
+              <Badge variant="outline" className={urgencyBadgeClass(data.caseHealth.urgency)}>
+                {data.caseHealth.urgency}
+              </Badge>
+            </section>
+            <section>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Risk level</p>
+              <div className="space-y-2">
+                <Badge variant="outline" className={riskBadgeClass(data.caseHealth.riskLevel)}>
+                  {data.caseHealth.riskLevel} ({data.caseHealth.riskScore}/100)
+                </Badge>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={`h-full rounded-full transition-all ${riskProgressClass(data.caseHealth.riskLevel)}`}
+                    style={{ width: `${Math.max(0, Math.min(100, data.caseHealth.riskScore))}%` }}
+                  />
+                </div>
+              </div>
+            </section>
+            <section>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Document completeness</p>
+              <Badge variant="outline" className={completenessBadgeClass(data.caseHealth.documentCompleteness)}>
+                {data.caseHealth.documentCompleteness}
+              </Badge>
+            </section>
+            <section>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Immediate concern</p>
+              <p>{sentence(data.caseHealth.immediateConcern, "No immediate concern identified.")}</p>
+            </section>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-start-1 md:row-start-3">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Ask Atlas</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleAskAtlasSubmit}>
+              <Input
+                placeholder="Ask about this case…"
+                aria-label="Ask about this case"
+                value={askAtlasQuestion}
+                onChange={(event) => setAskAtlasQuestion(event.target.value)}
+                onKeyDown={handleAskAtlasKeyDown}
+              />
+              <Button type="submit" disabled={!askAtlasQuestion.trim()} className="sm:self-start">
+                Ask Atlas
+              </Button>
+            </form>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestedPrompts.map((prompt) => (
+                <Link key={prompt} href={`/ask?case=${data.case.id}&q=${encodeURIComponent(prompt)}`}>
+                  <Button variant="outline" size="sm" className="h-7 text-xs">{prompt}</Button>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2 md:row-start-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Documents</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {data.documents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No documents linked to this case.</p>
+            ) : data.documents.map((doc) => (
+              <div key={doc.id} className="flex items-start justify-between gap-2 border-b pb-2 last:border-b-0 last:pb-0">
+                <div className="min-w-0 space-y-1">
+                  <p className="truncate text-sm font-medium">{doc.title}</p>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="secondary" className="h-5 border-border px-1.5 text-[10px]">{doc.status}</Badge>
+                    {doc.tags.slice(0, 3).map((tag) => <Badge key={tag} variant="outline" className="h-5 border-border px-1.5 text-[10px] text-muted-foreground">{tag}</Badge>)}
+                  </div>
+                </div>
+                <Link href={`/document/${doc.id}`}><Button size="sm" variant="ghost" className="h-7 px-2">View</Button></Link>
+              </div>
             ))}
-          </div>
-        </CardContent>
-      </Card>
+            <div className="pt-1">
+              <Link href="/upload-document"><Button size="sm" variant="outline" className="h-7">+ Add Document</Button></Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="section-top-risks" className="md:col-span-2 md:row-start-6">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Top Risks</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {intelligenceRisks.length > 0 ? intelligenceRisks.map((risk) => (
+              <div key={risk.id} className="space-y-1 rounded border border-border p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium">{risk.title}</p>
+                  <Badge variant="outline" className={intelligenceSeverityBadgeClass(risk.severity)}>
+                    {risk.severity}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground">{sentence(risk.description, "No additional detail was provided.")}</p>
+              </div>
+            )) : (
+              <p className="text-muted-foreground">No major risks are flagged right now.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2 md:row-start-5">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Alerts</CardTitle></CardHeader>
+          <CardContent id="alerts" className="space-y-2 text-sm">
+            {data.alerts.length > 0 ? data.alerts.map((alert) => (
+              <div
+                key={alert.id}
+                id={`alert-${alert.id}`}
+                ref={(node) => { alertRefs.current[alert.id] = node; }}
+                tabIndex={-1}
+                className={`flex items-start gap-2 rounded border border-l-4 px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${alertToneClass(alert.severity)}`}
+              >
+                {alertIcon(alert.kind)}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{alert.title}</p>
+                    <Badge variant="outline" className={alertStateBadgeClass(alert.state)}>{alert.state.replace("_", " ")}</Badge>
+                  </div>
+                  <p>{alert.message}</p>
+                  <p className="text-xs text-muted-foreground">{alert.impact}</p>
+                  <p className="text-xs text-muted-foreground">Related: {alert.relatedItem}</p>
+                  <p className="text-xs">{alert.recommendedAction}</p>
+                  {alert.suggestedResolution?.confidence === "medium" ? (
+                    <div className="rounded border border-[hsl(var(--semantic-amber)/0.5)] bg-[hsl(var(--semantic-amber)/0.1)] p-2 text-xs">
+                      <p className="mb-1">{alert.suggestedResolution.prompt}</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        disabled={alertActionMutation.isPending}
+                        onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: "mark_resolved", confirmSuggested: true })}
+                      >
+                        Confirm resolution
+                      </Button>
+                    </div>
+                  ) : null}
+                  <Textarea
+                    placeholder="Optional resolution note…"
+                    value={resolutionNotes[alert.id] ?? ""}
+                    onChange={(event) => setResolutionNotes((prev) => ({ ...prev, [alert.id]: event.target.value }))}
+                    className="min-h-[64px] text-xs"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {alert.allowedActions.map((action) => (
+                      <Button
+                        key={action.id}
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        disabled={alertActionMutation.isPending}
+                        onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: action.id })}
+                      >
+                        {action.label}
+                      </Button>
+                    ))}
+                    {alert.state !== "active" && alert.state !== "reopened" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7"
+                        disabled={alertActionMutation.isPending}
+                        onClick={() => alertActionMutation.mutate({ alertId: alert.id, actionId: "reopen" })}
+                      >
+                        Reopen
+                      </Button>
+                    ) : null}
+                    <Link href={alert.target.href}><Button size="sm" variant="secondary" className="h-7">{alert.target.label}</Button></Link>
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="flex items-start gap-2 rounded border border-border px-2 py-1.5 text-muted-foreground">
+                <AlertTriangle className="h-4 w-4" />
+                <p>No alerts require attention right now.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <Card>
