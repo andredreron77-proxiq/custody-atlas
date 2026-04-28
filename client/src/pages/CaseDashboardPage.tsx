@@ -299,6 +299,8 @@ export default function CaseDashboardPage() {
       urgency,
     };
   }, [data?.snapshotMemory]);
+  const resolvedWhatMatters = snapshotConcernFallback
+    ?? ((intelligenceWhatMatters && intelligenceWhatMatters.top_priority) ? intelligenceWhatMatters : null);
   const intelligenceRisks = useMemo<IntelligenceRisk[]>(() => {
     if (!intelligenceRecord || !Array.isArray(intelligenceRecord.risks_json)) return [];
     return intelligenceRecord.risks_json
@@ -534,16 +536,16 @@ export default function CaseDashboardPage() {
           <div className="rounded-md border border-[hsl(var(--semantic-blue)/0.25)] bg-[hsl(var(--semantic-blue)/0.08)] p-3 md:col-span-2">
             {intelligenceQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">Loading case intelligence…</p>
-            ) : (intelligenceWhatMatters && intelligenceWhatMatters.top_priority) || snapshotConcernFallback ? (
+            ) : resolvedWhatMatters ? (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-base font-semibold">{(intelligenceWhatMatters ?? snapshotConcernFallback)!.top_priority}</p>
-                  <Badge variant="outline" className={intelligenceUrgencyBadgeClass((intelligenceWhatMatters ?? snapshotConcernFallback)!.urgency)}>
-                    {(intelligenceWhatMatters ?? snapshotConcernFallback)!.urgency || "Medium"} urgency
+                  <p className="text-base font-semibold">{resolvedWhatMatters.top_priority}</p>
+                  <Badge variant="outline" className={intelligenceUrgencyBadgeClass(resolvedWhatMatters.urgency)}>
+                    {resolvedWhatMatters.urgency || "Medium"} urgency
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {sentence((intelligenceWhatMatters ?? snapshotConcernFallback)!.reason, "No clear reason is available yet.")}
+                  {sentence(resolvedWhatMatters.reason, resolvedWhatMatters.top_priority)}
                 </p>
               </div>
             ) : (

@@ -7279,8 +7279,32 @@ Do not add facts not present in the provided evidence.`,
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found." });
       }
+      const latestSnapshotRow = conversation.caseId
+        ? await supabaseAdmin
+            ?.from("case_memory")
+            .select("case_id, memory_summary, key_open_questions, key_risks, last_refreshed_at, updated_at")
+            .eq("case_id", conversation.caseId)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then((result) => result.data ?? null)
+        : null;
+      const parsedSnapshotPayload = parseCaseMemorySnapshotPayload(latestSnapshotRow?.memory_summary);
+      const snapshotState = isRecord(parsedSnapshotPayload?.snapshotState)
+        ? parsedSnapshotPayload.snapshotState as Record<string, unknown>
+        : null;
+      const snapshotActions = Array.isArray(parsedSnapshotPayload?.actions)
+        ? parsedSnapshotPayload.actions.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : [];
+      const snapshotMemory = snapshotState
+        ? {
+            ...snapshotState,
+            actions: snapshotActions,
+            savedAt: typeof parsedSnapshotPayload?.savedAt === "string" ? parsedSnapshotPayload.savedAt : null,
+          }
+        : null;
       const messages = await listMessages(conversationId, user.id);
-      return res.json({ conversation, messages });
+      return res.json({ conversation, messages, snapshotMemory });
     } catch (err) {
       console.error("[cases] GET messages error:", err);
       return res.status(500).json({ error: "Failed to list messages." });

@@ -59,6 +59,7 @@ interface ChatBoxProps {
   conversationType?: string;
   caseName?: string;
   guidedState?: Record<string, unknown> | null;
+  guidedSnapshotActions?: string[];
   guidedProgressLabel?: string;
   guidedMemoryChips?: Array<{
     kind: "calendar" | "map" | "target";
@@ -905,6 +906,7 @@ export function ChatBox({
   conversationType,
   caseName,
   guidedState,
+  guidedSnapshotActions,
   guidedProgressLabel,
   guidedMemoryChips = [],
 }: ChatBoxProps) {
@@ -1463,6 +1465,10 @@ export function ChatBox({
                 const nextStepCard = isAssistant && i >= 2 ? detectNextStepCard(msg, jurisdiction, caseId) : null;
                 const snapshotState = (msg.metadata as GuidedMessageMetadata | undefined)?.snapshot_state;
                 const snapshotActions = (msg.metadata as GuidedMessageMetadata | undefined)?.snapshot_actions;
+                const resolvedSnapshotActions =
+                  Array.isArray(snapshotActions) && snapshotActions.length > 0
+                    ? snapshotActions
+                    : guidedSnapshotActions;
                 const shouldRenderSnapshot =
                   Boolean((msg.metadata as GuidedMessageMetadata | undefined)?.trigger_snapshot) &&
                   Boolean(snapshotState);
@@ -1662,7 +1668,7 @@ export function ChatBox({
                             caseName={snapshotCaseName}
                             jurisdictionLabel={snapshotJurisdictionLabel}
                             snapshot={snapshotState!}
-                            actions={snapshotActions}
+                            actions={resolvedSnapshotActions}
                             initiallySaved={isCompletedGuidedConversation}
                           />
                         ) : null}
