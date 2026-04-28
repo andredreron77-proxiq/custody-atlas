@@ -410,6 +410,67 @@ function buildSnapshotCaseContextBlock(snapshotPayload: Record<string, unknown> 
   return `\n\n---\n${lines.join("\n")}`;
 }
 
+function normalizeConflictValue(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildDocumentSnapshotConflictBlock(
+  docs: SavedDocument[],
+  snapshotPayload: Record<string, unknown> | null,
+): string {
+  if (!snapshotPayload || !isRecord(snapshotPayload.snapshotState) || docs.length === 0) return "";
+
+  const snapshotState = snapshotPayload.snapshotState as Record<string, unknown>;
+  const fieldConfig: Array<{
+    factField: string;
+    snapshotField: string;
+    label: string;
+  }> = [
+    { factField: "hearing_date", snapshotField: "hearing_date", label: "Hearing date" },
+    { factField: "filing_date", snapshotField: "filing_date", label: "Filing date" },
+    { factField: "effective_date", snapshotField: "effective_date", label: "Effective date" },
+    { factField: "case_number", snapshotField: "case_number", label: "Case number" },
+    { factField: "filing_party", snapshotField: "filing_party", label: "Filing party" },
+    { factField: "responding_party", snapshotField: "responding_party", label: "Responding party" },
+  ];
+
+  const conflicts: string[] = [];
+
+  for (const { factField, snapshotField, label } of fieldConfig) {
+    let documentValue: string | null = null;
+
+    for (const doc of docs) {
+      const extractedFacts = isRecord(doc.analysisJson?.extracted_facts)
+        ? doc.analysisJson.extracted_facts as Record<string, unknown>
+        : null;
+      const rawValue = extractedFacts?.[factField];
+      if (typeof rawValue === "string" && rawValue.trim().length > 0) {
+        documentValue = rawValue.trim();
+        break;
+      }
+    }
+
+    const rawSnapshotValue = snapshotState[snapshotField];
+    const snapshotValue = typeof rawSnapshotValue === "string" && rawSnapshotValue.trim().length > 0
+      ? rawSnapshotValue.trim()
+      : null;
+
+    if (!documentValue || !snapshotValue) continue;
+    if (normalizeConflictValue(documentValue) === normalizeConflictValue(snapshotValue)) continue;
+
+    conflicts.push(`- ${label}: Document says "${documentValue}", user said "${snapshotValue}" — use document value`);
+  }
+
+  if (conflicts.length === 0) return "";
+
+  return `\n\n---\nDETECTED CONFLICTS (document vs conversation):\n${conflicts.join("\n")}`;
+}
+
 function normalizeFiguringItOutState(value: unknown): FiguringItOutWaypointState {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ...FIGURING_IT_OUT_INITIAL_STATE };
@@ -2314,6 +2375,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       // resolvedCaseMemories is also passed to the deterministic fact resolver below.
       let caseMemoryText = "";
       let caseSnapshotContextText = "";
+      let caseSnapshotPayload: Record<string, unknown> | null = null;
       let resolvedCaseMemories: Array<{ content: string; memoryType: string }> = [];
       if (effectiveCaseId && userId) {
         resolvedCaseMemories = await listCaseMemory(effectiveCaseId, userId);
@@ -2331,9 +2393,8 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
           .maybeSingle()
           .then((result) => result.data ?? null);
 
-        caseSnapshotContextText = buildSnapshotCaseContextBlock(
-          parseCaseMemorySnapshotPayload(latestSnapshotRow?.memory_summary),
-        );
+        caseSnapshotPayload = parseCaseMemorySnapshotPayload(latestSnapshotRow?.memory_summary);
+        caseSnapshotContextText = buildSnapshotCaseContextBlock(caseSnapshotPayload);
       }
 
       // ── Document-scoped context ──────────────────────────────────────────────
@@ -2343,6 +2404,7 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       let scopedDocument: SavedDocument | null = null;
       let documentContextAddendum = "";
       let contextDocumentsForInsights: SavedDocument[] = [];
+      let documentSnapshotConflictAddendum = "";
 
       if (documentId && userId) {
         scopedDocument = await getDocumentById(documentId, userId);
@@ -2399,6 +2461,10 @@ RULES FOR DOCUMENT-SCOPED QUESTIONS:
 3. For fact questions: quote the exact value and state which section it appeared in.
 4. If the answer is NOT present in this document, say clearly: "I could not find [X] in this specific document." Do not substitute with general guidance.
 5. Reference the document by name ("${scopedDocument.fileName}") when citing values.`;
+
+        if (!isGuidedConversationType(activeConversationType) && caseSnapshotPayload) {
+          documentSnapshotConflictAddendum = buildDocumentSnapshotConflictBlock([scopedDocument], caseSnapshotPayload);
+        }
       }
 
       // ── Intent detection + deterministic fact resolver ───────────────────────
@@ -2577,6 +2643,10 @@ RULES:
 2. If details conflict across chunks/documents, call out the conflict explicitly.
 3. Do not invent text that is not present in the chunks.`;
           }
+
+          if (!isGuidedConversationType(activeConversationType) && caseSnapshotPayload) {
+            documentSnapshotConflictAddendum = buildDocumentSnapshotConflictBlock(recentDocs, caseSnapshotPayload);
+          }
         }
       }
 
@@ -2602,6 +2672,24 @@ Answer specifically for that jurisdiction — name the actual courts, agencies, 
 Do not give generic statewide answers when county-specific information exists.
 Use the case jurisdiction as the primary jurisdiction for this answer, even if the Ask Atlas location differs.`
         : "";
+      const sourcePriorityAddendum =
+        !isGuidedConversationType(activeConversationType) &&
+        caseSnapshotPayload &&
+        (
+          Boolean(caseDocumentTextAddendum.trim())
+          || Boolean(generalDocSummaryAddendum.trim())
+          || Boolean(documentContextAddendum.trim())
+        )
+          ? `
+
+---
+SOURCE PRIORITY RULES (follow strictly):
+1. Court documents (uploaded and analyzed) are the source of truth for all factual claims — dates, parties, case numbers, orders, deadlines, and legal status.
+2. Conversation snapshot data reflects what the user reported and may be incomplete or inaccurate. Use it for emotional context, stated concerns, and background — not for legal facts.
+3. When document data and snapshot data conflict on a factual matter, always defer to the document.
+4. When you detect a conflict, surface it naturally and helpfully — never silently pick one. Example: "The motion shows your hearing is June 14th — you mentioned August earlier, so just want to make sure you have the right date."
+5. Never contradict a court document. If the user insists on a fact that conflicts with an uploaded document, acknowledge their concern but restate what the document says.`
+          : "";
 
       if (intent === "FACT") {
         const factsText = buildDocumentFactsText(intentUserDocs);
@@ -2698,6 +2786,8 @@ GUEST DEMO RESPONSE GUIDANCE
         caseDocumentTextAddendum +
         generalDocSummaryAddendum +
         retainedChunkAddendum +
+        documentSnapshotConflictAddendum +
+        sourcePriorityAddendum +
         factModeAddendum;
 
       const adaptedSystemPrompt = buildAdaptiveSystemPrompt(
