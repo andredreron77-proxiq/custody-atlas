@@ -79,7 +79,7 @@ import {
   trackDocument,
 } from "./services/usage";
 import { saveQuestion } from "./services/questions";
-import { getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, updateDocumentLifecycleStatuses, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, saveDocumentWithDuplicateOutcome, getAllDocumentsForUser, findDocumentByIntakeTextHash, recordUploadIntakeAttempt, type DocumentType, type SavedDocument } from "./services/documents";
+import { getDocuments, getDocumentsByCase, getDocumentById, updateDocumentType, updateDocumentAnalysis, updateDocumentLifecycleStatuses, createDocumentSignedUrl, deleteDocument, findDuplicateDocument, ensureDocumentCaseAssociation, getDocumentCaseIds, getDocumentIntegrity, getDocumentCaseAssignmentView, setDocumentCaseAssignment, setDocumentCaseSuggestion, saveDocumentWithDuplicateOutcome, getAllDocumentsForUser, findDocumentByIntakeTextHash, recordUploadIntakeAttempt, incrementDocumentQuestionUsage, type DocumentType, type SavedDocument } from "./services/documents";
 import { buildChunks, createAnalysisRun, getDocumentIntelligenceChunks, replaceDocumentChunks, replaceDocumentDates, replaceDocumentFacts } from "./services/documentIntelligence";
 import { upsertFactsFromDocument, resolveFromCaseFacts, getCaseFacts, upsertCaseFact } from "./services/caseFacts";
 import { generateActionsFromFacts, getCaseActions, createCaseAction, updateActionStatus, enrichAndSortActions } from "./services/caseActions";
@@ -3807,6 +3807,7 @@ CRITICAL RULES:
   // ── Document Follow-up Q&A ─────────────────────────────────────────────────
   app.post("/api/ask-document", requireAuth, async (req, res) => {
     try {
+      const user = (req as any).user as { id: string; tier?: string };
       const parsed = documentQARequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({
@@ -3820,7 +3821,25 @@ CRITICAL RULES:
         return res.status(503).json({ error: "AI service not configured." });
       }
 
-      const { documentAnalysis, extractedText, jurisdiction, userQuestion, history } = parsed.data;
+      const { documentId, documentAnalysis, extractedText, jurisdiction, userQuestion, history } = parsed.data;
+      const isProTier = String(user?.tier ?? "free").toLowerCase() === "pro";
+      let ownedDocument = null as Awaited<ReturnType<typeof getDocumentById>>;
+
+      if (documentId) {
+        ownedDocument = await getDocumentById(documentId, user.id);
+        if (!ownedDocument) {
+          return res.status(404).json({ error: "Document not found." });
+        }
+
+        if (!isProTier && ownedDocument.docQuestionsUsed >= 3) {
+          return res.status(429).json({
+            error: "You've used your 3 free questions for this document. Upgrade to Pro to keep asking — 200 questions/month, unlimited documents.",
+            code: "DOCUMENT_QUESTION_LIMIT_REACHED",
+            documentQuestionsUsed: ownedDocument.docQuestionsUsed,
+            documentQuestionsLimit: 3,
+          });
+        }
+      }
 
       const jurisdictionLine = jurisdiction?.state
         ? `The user is located in ${jurisdiction.state}${jurisdiction.county ? `, ${jurisdiction.county} County` : ""}${jurisdiction.country ? `, ${jurisdiction.country}` : ""}.`
@@ -3916,7 +3935,16 @@ ${userQuestion}`;
         return res.status(500).json({ error: "AI response structure was unexpected. Please try again." });
       }
 
-      return res.json(validated.data);
+      let nextDocumentQuestionsUsed = ownedDocument?.docQuestionsUsed ?? null;
+      if (documentId) {
+        nextDocumentQuestionsUsed = await incrementDocumentQuestionUsage(documentId, user.id);
+      }
+
+      return res.json({
+        ...validated.data,
+        documentQuestionsUsed: nextDocumentQuestionsUsed,
+        documentQuestionsLimit: isProTier ? null : 3,
+      });
     } catch (err: any) {
       console.error("Document Q&A error:", err);
       return res.status(500).json({

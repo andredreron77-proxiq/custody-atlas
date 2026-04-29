@@ -13,6 +13,7 @@
  *   doc_type      text              -- custody_order | communication | financial | other
  *   analysis_json jsonb
  *   extracted_text text
+ *   doc_questions_used integer not null default 0
  *   case_id       uuid              -- FK → cases(id) ON DELETE SET NULL  ← confirmed present
  *   created_at    timestamptz NOT NULL DEFAULT now()
  *
@@ -47,6 +48,7 @@ export interface SavedDocument {
   storagePath: string | null;
   mimeType: string;
   pageCount: number;
+  docQuestionsUsed: number;
   docType: DocumentType;
   analysisJson: Record<string, unknown>;
   extractedText: string;
@@ -246,6 +248,7 @@ function mapRow(r: any): SavedDocument {
     storagePath:   r.storage_path ?? null,
     mimeType:      r.mime_type ?? "application/octet-stream",
     pageCount:     r.page_count ?? 1,
+    docQuestionsUsed: typeof r.doc_questions_used === "number" ? r.doc_questions_used : 0,
     docType:       (r.doc_type ?? "other") as DocumentType,
     analysisJson:  r.analysis_json ?? {},
     extractedText: r.extracted_text ?? "",
@@ -493,7 +496,7 @@ export async function saveDocument(
 
 export async function saveDocumentWithDuplicateOutcome(
   userId: string,
-  fields: Omit<SavedDocument, "id" | "userId" | "createdAt">,
+  fields: Omit<SavedDocument, "id" | "userId" | "createdAt" | "docQuestionsUsed">,
 ): Promise<SaveDocumentOutcome> {
   if (!supabaseAdmin) {
     return {
@@ -1006,6 +1009,36 @@ export async function getDocumentById(
     return mapRow(data);
   } catch (err) {
     console.error("[documents] getDocumentById exception:", err);
+    return null;
+  }
+}
+
+export async function incrementDocumentQuestionUsage(
+  documentId: string,
+  userId: string,
+): Promise<number | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data: existing, error: readError } = await supabaseAdmin
+      .from("documents")
+      .select("doc_questions_used")
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .single();
+
+    if (readError || !existing) return null;
+
+    const nextCount = (typeof existing.doc_questions_used === "number" ? existing.doc_questions_used : 0) + 1;
+    const { error: updateError } = await supabaseAdmin
+      .from("documents")
+      .update({ doc_questions_used: nextCount })
+      .eq("id", documentId)
+      .eq("user_id", userId);
+
+    if (updateError) return null;
+    return nextCount;
+  } catch (err) {
+    console.error("[documents] incrementDocumentQuestionUsage exception:", err);
     return null;
   }
 }

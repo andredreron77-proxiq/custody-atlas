@@ -26,11 +26,18 @@ export interface UsageState {
   questionsLimit: number | null;
   documentsUsed: number;
   documentsLimit: number | null;
+  documentQuestionsUsed: number | null;
+  documentQuestionsLimit: number | null;
 }
 
 export const TIER_LIMITS: Record<"free" | "pro", { questions: number; documents: number }> = {
   free: { questions: 10,  documents: 1 },
   pro:  { questions: 200, documents: 10 },
+};
+
+const DOCUMENT_QUESTION_LIMITS: Record<"free" | "pro", number | null> = {
+  free: 3,
+  pro: null,
 };
 
 function currentBillingPeriod(): string {
@@ -75,6 +82,22 @@ async function getLifetimeQuestionUsage(userId: string): Promise<number> {
   }
 }
 
+async function getDocumentQuestionUsage(userId: string, documentId: string): Promise<number | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data } = await supabaseAdmin
+      .from("documents")
+      .select("doc_questions_used")
+      .eq("id", documentId)
+      .eq("user_id", userId)
+      .single();
+
+    return typeof data?.doc_questions_used === "number" ? data.doc_questions_used : 0;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Return the full usage state for the requesting user.
  */
@@ -89,16 +112,23 @@ export async function getUsageState(req: Request): Promise<UsageState> {
       questionsLimit: null,
       documentsUsed: 0,
       documentsLimit: null,
+      documentQuestionsUsed: null,
+      documentQuestionsLimit: null,
     };
   }
 
   const tier = await getUserTier(user.id);
   const limits = TIER_LIMITS[tier];
+  const documentQuestionsLimit = DOCUMENT_QUESTION_LIMITS[tier];
   const currentUsage = await getCurrentUsage(user.id);
   const { documentsUsed } = currentUsage;
   const questionsUsed = tier === "free"
     ? await getLifetimeQuestionUsage(user.id)
     : currentUsage.questionsUsed;
+  const documentId = typeof req.query.documentId === "string" ? req.query.documentId : null;
+  const documentQuestionsUsed = documentId
+    ? await getDocumentQuestionUsage(user.id, documentId)
+    : null;
 
   return {
     isAuthenticated: true,
@@ -107,6 +137,8 @@ export async function getUsageState(req: Request): Promise<UsageState> {
     questionsLimit: limits.questions,
     documentsUsed,
     documentsLimit: limits.documents,
+    documentQuestionsUsed,
+    documentQuestionsLimit,
   };
 }
 

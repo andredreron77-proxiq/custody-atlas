@@ -17,9 +17,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useJurisdiction } from "@/hooks/useJurisdiction";
 import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
+import UpgradeModal from "@/components/app/UpgradeModal";
 import { TTSControls } from "@/components/app/TTSControls";
 import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
-import { fetchUsageState, type UsageState, USAGE_QUERY_KEY } from "@/services/usageService";
+import { fetchDocumentUsageState, fetchUsageState, type UsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 import { getAccessToken } from "@/lib/tokenStore";
 import { trackEvent } from "@/lib/analytics";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
@@ -309,20 +310,39 @@ interface DocQAMessage {
 }
 
 interface DocumentQASectionProps {
+  documentId: string | null;
   result: DocumentAnalysisResult;
   jurisdiction: { state: string; county: string; country?: string } | null;
 }
 
-function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
+function DocumentQASection({ documentId, result, jurisdiction }: DocumentQASectionProps) {
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [qaMessages, setQaMessages] = useState<DocQAMessage[]>([]);
   const [qaError, setQaError] = useState<string | null>(null);
   const [qaLimitReached, setQaLimitReached] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const docContainerRef = useRef<HTMLDivElement>(null);
   const lastAssistantDocRef = useRef<HTMLDivElement>(null);
   const docJustSubmitted = useRef(false);
   const { toast } = useToast();
+  const { data: usage } = useQuery<UsageState>({
+    queryKey: [...USAGE_QUERY_KEY, "document", documentId ?? "none"],
+    enabled: !!documentId,
+    queryFn: () => fetchDocumentUsageState(documentId!),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const documentQuestionLimitReached =
+    usage?.isAuthenticated === true &&
+    usage.tier === "free" &&
+    usage.documentQuestionsLimit !== null &&
+    usage.documentQuestionsUsed !== null &&
+    usage.documentQuestionsUsed >= usage.documentQuestionsLimit;
+
+  useEffect(() => {
+    setQaLimitReached(documentQuestionLimitReached);
+  }, [documentQuestionLimitReached]);
 
   // Scroll the container so the target element's top sits near the top of
   // the visible area (with a small breathing-room top offset).
@@ -362,7 +382,7 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
 
   const submitQuestion = async (q: string) => {
     const trimmed = q.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || qaLimitReached) return;
 
     // Snapshot history BEFORE adding the new user message
     const history = qaMessages
@@ -377,6 +397,7 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
 
     try {
       const body: Record<string, unknown> = {
+        documentId: documentId ?? undefined,
         documentAnalysis: result,
         extractedText: result.extractedText ?? "",
         userQuestion: trimmed,
@@ -403,6 +424,9 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
       const data = await res.json();
       if (res.status === 429) {
         setQaLimitReached(true);
+        if (typeof data?.error === "string") {
+          setQaError(data.error);
+        }
         setQaMessages((prev) => prev.slice(0, -1));
         return;
       }
@@ -440,6 +464,12 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
   };
 
   const hasMessages = qaMessages.length > 0;
+  const documentQuestionUsageLabel =
+    usage?.tier === "free" && usage.documentQuestionsLimit !== null
+      ? `${usage.documentQuestionsUsed ?? 0}/${usage.documentQuestionsLimit} used for this document`
+      : usage?.tier === "pro"
+        ? "Unlimited questions for this document"
+        : null;
 
   const jurisdictionLabel = formatJurisdictionLabel(jurisdiction?.state ?? "", jurisdiction?.county ?? "");
 
@@ -452,6 +482,10 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
           hasMessages ? (
             <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal ml-1.5">
               {Math.ceil(qaMessages.length / 2)} Q&amp;A
+            </Badge>
+          ) : documentQuestionUsageLabel ? (
+            <Badge variant="outline" className="text-xs px-1.5 py-0 h-4 font-normal ml-1.5">
+              {documentQuestionUsageLabel}
             </Badge>
           ) : undefined
         }
@@ -560,7 +594,17 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
         )}
 
         {qaLimitReached && (
-          <UpgradePromptCard type="document" className="mt-2" />
+          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm dark:border-amber-800/50 dark:bg-amber-950/30">
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              You&apos;ve used your 3 free questions for this document.
+            </p>
+            <p className="mt-1 text-amber-800 dark:text-amber-300">
+              Upgrade to Pro to keep asking — 200 questions/month, unlimited documents.
+            </p>
+            <Button size="sm" className="mt-3" onClick={() => setUpgradeOpen(true)}>
+              Upgrade to Pro
+            </Button>
+          </div>
         )}
 
         {qaError && (
@@ -611,6 +655,7 @@ function DocumentQASection({ result, jurisdiction }: DocumentQASectionProps) {
           </form>
         )}
       </PanelContent>
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </Panel>
   );
 }
@@ -2109,7 +2154,7 @@ export default function UploadDocumentPage() {
                 })()}
 
                 {/* Document Q&A */}
-                <DocumentQASection result={result} jurisdiction={jurisdiction} />
+                <DocumentQASection documentId={documentId} result={result} jurisdiction={jurisdiction} />
               </SectionStack>
 
               <div className="min-w-0 max-w-full">

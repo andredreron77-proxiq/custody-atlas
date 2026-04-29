@@ -304,6 +304,7 @@ export type CaseIntelligence = z.infer<typeof caseIntelligenceSchema>;
  * Document follow-up Q&A — request / response types.
  */
 export const documentQARequestSchema = z.object({
+  documentId: z.string().uuid().optional(),
   documentAnalysis: documentAnalysisResultSchema,
   extractedText: z.string().optional(),
   jurisdiction: z.object({
@@ -325,6 +326,8 @@ export const documentQAResponseSchema = z.object({
   questionsToAskAttorney: z.array(z.string()),
   caution: z.string(),
   disclaimer: z.string(),
+  documentQuestionsUsed: z.number().nullable().optional(),
+  documentQuestionsLimit: z.number().nullable().optional(),
 });
 
 export type DocumentQAResponse = z.infer<typeof documentQAResponseSchema>;

@@ -23,6 +23,8 @@ export interface UsageState {
   questionsLimit: number | null;
   documentsUsed: number;
   documentsLimit: number | null;
+  documentQuestionsUsed: number | null;
+  documentQuestionsLimit: number | null;
   isAtQuestionLimit: boolean;
   isAtDocumentLimit: boolean;
 }
@@ -34,6 +36,8 @@ const DEFAULT_USAGE: UsageState = {
   questionsLimit: GUEST_QUESTION_LIMIT,
   documentsUsed: 0,
   documentsLimit: null,
+  documentQuestionsUsed: null,
+  documentQuestionsLimit: null,
   isAtQuestionLimit: false,
   isAtDocumentLimit: false,
 };
@@ -47,8 +51,10 @@ function canUseStorage() {
 function normalizeUsageState(data: Partial<UsageState>): UsageState {
   const questionsLimit = data.questionsLimit ?? null;
   const documentsLimit = data.documentsLimit ?? null;
+  const documentQuestionsLimit = data.documentQuestionsLimit ?? null;
   const questionsUsed = data.questionsUsed ?? 0;
   const documentsUsed = data.documentsUsed ?? 0;
+  const documentQuestionsUsed = data.documentQuestionsUsed ?? null;
 
   return {
     isAuthenticated: data.isAuthenticated ?? false,
@@ -57,6 +63,8 @@ function normalizeUsageState(data: Partial<UsageState>): UsageState {
     questionsLimit,
     documentsUsed,
     documentsLimit,
+    documentQuestionsUsed,
+    documentQuestionsLimit,
     isAtQuestionLimit:
       typeof data.isAtQuestionLimit === "boolean"
         ? data.isAtQuestionLimit
@@ -150,6 +158,8 @@ export async function fetchUsageState(): Promise<UsageState> {
         questionsLimit: GUEST_QUESTION_LIMIT,
         documentsUsed: 0,
         documentsLimit: null,
+        documentQuestionsUsed: null,
+        documentQuestionsLimit: null,
         isAtQuestionLimit: questionsUsed >= GUEST_QUESTION_LIMIT,
         isAtDocumentLimit: false,
       });
@@ -161,6 +171,34 @@ export async function fetchUsageState(): Promise<UsageState> {
       questionsLimit: data.questionsLimit ?? null,
       documentsUsed: data.documentsUsed ?? 0,
       documentsLimit: data.documentsLimit ?? null,
+      documentQuestionsUsed: typeof data.documentQuestionsUsed === "number" ? data.documentQuestionsUsed : null,
+      documentQuestionsLimit: typeof data.documentQuestionsLimit === "number" ? data.documentQuestionsLimit : null,
+    }));
+  } catch {
+    return getLastKnownUsageState() ?? DEFAULT_USAGE;
+  }
+}
+
+export async function fetchDocumentUsageState(documentId: string): Promise<UsageState> {
+  try {
+    const token = getAccessToken();
+    const res = await fetch(`/api/usage?documentId=${encodeURIComponent(documentId)}`, {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return getLastKnownUsageState() ?? DEFAULT_USAGE;
+    const data = await res.json();
+    if (!data.isAuthenticated) return getLastKnownUsageState() ?? DEFAULT_USAGE;
+
+    return writeLastKnownUsage(normalizeUsageState({
+      isAuthenticated: data.isAuthenticated ?? false,
+      tier: data.tier ?? "anonymous",
+      questionsUsed: data.questionsUsed ?? 0,
+      questionsLimit: data.questionsLimit ?? null,
+      documentsUsed: data.documentsUsed ?? 0,
+      documentsLimit: data.documentsLimit ?? null,
+      documentQuestionsUsed: typeof data.documentQuestionsUsed === "number" ? data.documentQuestionsUsed : null,
+      documentQuestionsLimit: typeof data.documentQuestionsLimit === "number" ? data.documentQuestionsLimit : null,
     }));
   } catch {
     return getLastKnownUsageState() ?? DEFAULT_USAGE;
