@@ -1450,7 +1450,7 @@ export default function WorkspacePage() {
   const { data: usage } = useQuery<UsageState>({
     queryKey: ["/api/usage"],
     queryFn: fetchUsageState,
-    staleTime: 30_000,
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 

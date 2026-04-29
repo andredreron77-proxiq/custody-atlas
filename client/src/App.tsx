@@ -360,7 +360,7 @@ function App() {
   const { data: usage } = useQuery({
     queryKey: ["/api/usage", "analytics-identify", user?.id ?? "anon"],
     enabled: Boolean(user),
-    staleTime: 30_000,
+    staleTime: 60_000,
     retry: false,
     queryFn: fetchUsageState,
   });

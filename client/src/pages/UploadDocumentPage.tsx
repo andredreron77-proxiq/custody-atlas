@@ -1108,7 +1108,7 @@ export default function UploadDocumentPage() {
   const { data: usage } = useQuery<UsageState>({
     queryKey: ["/api/usage"],
     queryFn: fetchUsageState,
-    staleTime: 30_000,
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
   const { data: casesData } = useQuery({

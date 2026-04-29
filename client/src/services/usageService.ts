@@ -13,6 +13,7 @@ export const FREE_TIER_QUESTION_LIMIT = 10;
 export const GUEST_QUESTION_LIMIT = 3;
 const GUEST_FINGERPRINT_KEY = "custody-atlas:guest-fingerprint";
 const GUEST_QUESTION_COUNT_KEY = "custody-atlas:guest-questions";
+const LAST_KNOWN_USAGE_KEY = "custody-atlas:last-known-usage";
 
 export interface UsageState {
   isAuthenticated: boolean;
@@ -36,8 +37,56 @@ const DEFAULT_USAGE: UsageState = {
   isAtDocumentLimit: false,
 };
 
+let lastKnownUsageState: UsageState | null = null;
+
 function canUseStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function normalizeUsageState(data: Partial<UsageState>): UsageState {
+  const questionsLimit = data.questionsLimit ?? null;
+  const documentsLimit = data.documentsLimit ?? null;
+  const questionsUsed = data.questionsUsed ?? 0;
+  const documentsUsed = data.documentsUsed ?? 0;
+
+  return {
+    isAuthenticated: data.isAuthenticated ?? false,
+    tier: data.tier ?? "anonymous",
+    questionsUsed,
+    questionsLimit,
+    documentsUsed,
+    documentsLimit,
+    isAtQuestionLimit:
+      typeof data.isAtQuestionLimit === "boolean"
+        ? data.isAtQuestionLimit
+        : questionsLimit !== null && questionsUsed >= questionsLimit,
+    isAtDocumentLimit:
+      typeof data.isAtDocumentLimit === "boolean"
+        ? data.isAtDocumentLimit
+        : documentsLimit !== null && documentsUsed >= documentsLimit,
+  };
+}
+
+function readLastKnownUsage(): UsageState | null {
+  if (lastKnownUsageState) return lastKnownUsageState;
+  if (!canUseStorage()) return null;
+  const raw = window.localStorage.getItem(LAST_KNOWN_USAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<UsageState>;
+    lastKnownUsageState = normalizeUsageState(parsed);
+    return lastKnownUsageState;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastKnownUsage(state: UsageState): UsageState {
+  lastKnownUsageState = state;
+  if (canUseStorage()) {
+    window.localStorage.setItem(LAST_KNOWN_USAGE_KEY, JSON.stringify(state));
+  }
+  return state;
 }
 
 export function getGuestFingerprint(): string {
@@ -74,11 +123,11 @@ export async function fetchUsageState(): Promise<UsageState> {
       credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) return DEFAULT_USAGE;
+    if (!res.ok) return readLastKnownUsage() ?? DEFAULT_USAGE;
     const data = await res.json();
     if (!data.isAuthenticated) {
       const questionsUsed = getGuestQuestionsUsed();
-      return {
+      return writeLastKnownUsage({
         isAuthenticated: false,
         tier: "anonymous",
         questionsUsed,
@@ -87,23 +136,17 @@ export async function fetchUsageState(): Promise<UsageState> {
         documentsLimit: null,
         isAtQuestionLimit: questionsUsed >= GUEST_QUESTION_LIMIT,
         isAtDocumentLimit: false,
-      };
+      });
     }
-    return {
+    return writeLastKnownUsage(normalizeUsageState({
       isAuthenticated: data.isAuthenticated ?? false,
       tier: data.tier ?? "anonymous",
       questionsUsed: data.questionsUsed ?? 0,
       questionsLimit: data.questionsLimit ?? null,
       documentsUsed: data.documentsUsed ?? 0,
       documentsLimit: data.documentsLimit ?? null,
-      isAtQuestionLimit:
-        data.questionsLimit !== null &&
-        data.questionsUsed >= data.questionsLimit,
-      isAtDocumentLimit:
-        data.documentsLimit !== null &&
-        data.documentsUsed >= data.documentsLimit,
-    };
+    }));
   } catch {
-    return DEFAULT_USAGE;
+    return readLastKnownUsage() ?? DEFAULT_USAGE;
   }
 }

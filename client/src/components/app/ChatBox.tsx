@@ -972,7 +972,7 @@ export function ChatBox({
   const { data: usage } = useQuery({
     queryKey: ["/api/usage", "chatbox", user?.id ?? "anon"],
     enabled: true,
-    staleTime: 30_000,
+    staleTime: 60_000,
     retry: false,
     queryFn: fetchUsageState,
   });
