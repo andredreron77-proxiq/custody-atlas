@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { classifyDateStatus } from "@shared/dateStatus";
+import { classifyDateStatus, classifyDetailedDateStatus } from "@shared/dateStatus";
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
 
@@ -183,10 +183,10 @@ export function deriveObligations(analysis: DocAnalysis): ObligationItem[] {
 
   // Explicit hearing date in structured extraction → highest priority signal
   if (ef.hearing_date) {
-    const hearingStatus = classifyDateStatus(ef.hearing_date);
-    if (hearingStatus === "upcoming" || hearingStatus === "today") {
+    const hearingStatus = classifyDetailedDateStatus(ef.hearing_date);
+    if (hearingStatus === "next" || hearingStatus === "today") {
       obligations.push({ label: hearingStatus === "today" ? "Hearing today" : "Upcoming hearing", variant: "hearing" });
-    } else if (hearingStatus === "past") {
+    } else if (hearingStatus === "past_due" || hearingStatus === "historical") {
       obligations.push({ label: "Past hearing", variant: "historical" });
     }
   } else if (keyDates.some(d => d.includes("hearing"))) {
@@ -323,13 +323,13 @@ export function deriveActionInsight(analysis: DocAnalysis, docType?: string): st
 
   // Most specific first: hearing with a known date
   if (hasHearing && ef.hearing_date) {
-    const hearingStatus = classifyDateStatus(ef.hearing_date);
-    if (hearingStatus === "upcoming" || hearingStatus === "today") {
+    const hearingStatus = classifyDetailedDateStatus(ef.hearing_date);
+    if (hearingStatus === "next" || hearingStatus === "today") {
       return hearingStatus === "today"
         ? `Hearing is scheduled for today (${ef.hearing_date}) — prepare now and confirm logistics`
         : `You may need to prepare for a hearing on ${ef.hearing_date}`;
     }
-    if (hearingStatus === "past") {
+    if (hearingStatus === "past_due" || hearingStatus === "historical") {
       return `Past hearing date detected (${ef.hearing_date}). This hearing appears to have already occurred — review related orders, outcomes, or follow-up deadlines`;
     }
   }

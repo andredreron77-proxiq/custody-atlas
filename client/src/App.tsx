@@ -11,7 +11,7 @@ import { DisplayNamePromptGate } from "@/components/app/DisplayNamePromptGate";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { identifyUser } from "@/lib/analytics";
 import { apiRequestRaw } from "@/lib/queryClient";
-import { fetchUsageState } from "@/services/usageService";
+import { fetchUsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 
 import LandingPage from "@/pages/LandingPage";
 import LocationPage from "@/pages/LocationPage";
@@ -358,7 +358,7 @@ function HomeRoute() {
 function App() {
   const { user, isLoading } = useCurrentUser();
   const { data: usage } = useQuery({
-    queryKey: ["/api/usage", "analytics-identify", user?.id ?? "anon"],
+    queryKey: USAGE_QUERY_KEY,
     enabled: Boolean(user),
     staleTime: 60_000,
     retry: false,

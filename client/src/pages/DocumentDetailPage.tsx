@@ -41,7 +41,7 @@ import {
   deriveObligations,
 } from "@/components/app/DocIntelPanel";
 import { apiRequestRaw } from "@/lib/queryClient";
-import { classifyDateStatus } from "@shared/dateStatus";
+import { classifyDetailedDateStatus, dateStatusLabel, dateStatusMessage } from "@shared/dateStatus";
 import {
   fetchDocumentDetail,
   type DocumentDetail,
@@ -145,16 +145,41 @@ function KeyDatesSection({ analysisJson }: { analysisJson: Record<string, unknow
     <section data-testid="doc-detail-key-dates">
       <h2 className="text-lg font-semibold mb-4">Key dates &amp; deadlines</h2>
       <ul className="space-y-4">
-        {key_dates.map((date, i) => (
-          <li key={i} className="flex items-start gap-3 text-base text-foreground leading-relaxed">
-            {classifyDateStatus(date) === "past" ? (
-              <span className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">✓</span>
-            ) : (
-              <Clock className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-            )}
-            <span className={classifyDateStatus(date) === "past" ? "text-muted-foreground" : ""}>{date}</span>
-          </li>
-        ))}
+        {key_dates.map((date, i) => {
+          const status = classifyDetailedDateStatus(date);
+          const badge = dateStatusLabel(status);
+          const helper = dateStatusMessage(status);
+
+          return (
+            <li key={i} className="flex items-start gap-3 text-base text-foreground leading-relaxed">
+              {status === "past_due" || status === "historical" ? (
+                <span className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">✓</span>
+              ) : (
+                <Clock className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={status === "historical" ? "text-muted-foreground" : ""}>{date}</span>
+                  {badge ? (
+                    <Badge
+                      variant="outline"
+                      className={
+                        status === "past_due"
+                          ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+                          : status === "historical"
+                            ? "border-border bg-muted text-muted-foreground"
+                            : "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-400/40 dark:bg-sky-500/10 dark:text-sky-200"
+                      }
+                    >
+                      {badge}
+                    </Badge>
+                  ) : null}
+                </div>
+                {helper ? <p className="mt-1 text-sm text-muted-foreground">{helper}</p> : null}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -258,7 +283,10 @@ function WhatMattersNowSection({
       ? "Current status: A hearing-related milestone is active."
       : "Current status: Review appears active with no completed hearing signal detected.";
 
-  const upcomingDate = keyDates.find(date => classifyDateStatus(date) === "today" || classifyDateStatus(date) === "upcoming")
+  const upcomingDate = keyDates.find(date => {
+    const status = classifyDetailedDateStatus(date);
+    return status === "today" || status === "next";
+  })
     ?? ef?.hearing_date
     ?? ef?.effective_date
     ?? ef?.filing_date;

@@ -8,6 +8,7 @@
 import { getAccessToken } from "@/lib/tokenStore";
 
 export type Tier = "anonymous" | "free" | "pro";
+export const USAGE_QUERY_KEY = ["/api/usage"] as const;
 
 export const FREE_TIER_QUESTION_LIMIT = 10;
 export const GUEST_QUESTION_LIMIT = 3;
@@ -67,7 +68,7 @@ function normalizeUsageState(data: Partial<UsageState>): UsageState {
   };
 }
 
-function readLastKnownUsage(): UsageState | null {
+export function getLastKnownUsageState(): UsageState | null {
   if (lastKnownUsageState) return lastKnownUsageState;
   if (!canUseStorage()) return null;
   const raw = window.localStorage.getItem(LAST_KNOWN_USAGE_KEY);
@@ -123,7 +124,7 @@ export async function fetchUsageState(): Promise<UsageState> {
       credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) return readLastKnownUsage() ?? DEFAULT_USAGE;
+    if (!res.ok) return getLastKnownUsageState() ?? DEFAULT_USAGE;
     const data = await res.json();
     if (!data.isAuthenticated) {
       const questionsUsed = getGuestQuestionsUsed();
@@ -147,6 +148,6 @@ export async function fetchUsageState(): Promise<UsageState> {
       documentsLimit: data.documentsLimit ?? null,
     }));
   } catch {
-    return readLastKnownUsage() ?? DEFAULT_USAGE;
+    return getLastKnownUsageState() ?? DEFAULT_USAGE;
   }
 }

@@ -9,7 +9,7 @@ import {
   Activity,
   FolderOpen,
 } from "lucide-react";
-import { fetchUsageState } from "@/services/usageService";
+import { fetchUsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1448,7 +1448,7 @@ export default function WorkspacePage() {
   }, [navigate]);
 
   const { data: usage } = useQuery<UsageState>({
-    queryKey: ["/api/usage"],
+    queryKey: USAGE_QUERY_KEY,
     queryFn: fetchUsageState,
     staleTime: 60_000,
     refetchOnWindowFocus: false,

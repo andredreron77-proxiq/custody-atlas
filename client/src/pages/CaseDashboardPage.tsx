@@ -12,6 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiRequest, apiRequestRaw, queryClient } from "@/lib/queryClient";
 import { generateSuggestedFocus } from "@/lib/suggestedFocus";
+import { classifyDetailedDateStatus, dateStatusLabel, dateStatusMessage, parseDateWithAnnualProjection, type DetailedDateStatus } from "@shared/dateStatus";
 
 type CaseDashboardPayload = {
   case: {
@@ -126,9 +127,20 @@ function sentence(input: string, fallback: string): string {
 }
 
 function formatDate(value: string): string {
-  const parsed = new Date(value);
+  const parsed = parseDateWithAnnualProjection(value);
+  if (!parsed) return value;
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function dateBadgeClass(status: DetailedDateStatus): string {
+  if (status === "past_due") {
+    return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200";
+  }
+  if (status === "historical") {
+    return "border-border bg-muted text-muted-foreground";
+  }
+  return "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-400/40 dark:bg-sky-500/10 dark:text-sky-200";
 }
 
 function alertIcon(kind: CaseDashboardPayload["alerts"][number]["kind"]) {
@@ -635,20 +647,34 @@ export default function CaseDashboardPage() {
           <CardContent className="space-y-2 text-sm">
             {intelligenceKeyDates.length > 0 || snapshotKeyDate ? (
               <ul className="space-y-1.5">
-                {(intelligenceKeyDates.length > 0 ? intelligenceKeyDates : [snapshotKeyDate!]).map((date, index) => (
-                  <li key={`${date.raw}-${index}`} className="flex items-start justify-between gap-2 rounded border border-border px-2 py-1.5">
-                    <div className="min-w-0">
-                      <p className="truncate">{date.raw}</p>
-                      <p className="text-xs capitalize text-muted-foreground">
-                        {"kind" in date ? date.kind : date.kindLabel}
-                        {"subLabel" in date && date.subLabel ? ` • ${date.subLabel}` : ""}
+                {(intelligenceKeyDates.length > 0 ? intelligenceKeyDates : [snapshotKeyDate!]).map((date, index) => {
+                  const status = classifyDetailedDateStatus(date.parsedDate ?? date.raw);
+                  const badge = dateStatusLabel(status);
+                  const helper = dateStatusMessage(status);
+
+                  return (
+                    <li key={`${date.raw}-${index}`} className="flex items-start justify-between gap-2 rounded border border-border px-2 py-1.5">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className={status === "historical" ? "truncate text-muted-foreground" : "truncate"}>{date.raw}</p>
+                          {badge ? (
+                            <Badge variant="outline" className={dateBadgeClass(status)}>
+                              {badge}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="text-xs capitalize text-muted-foreground">
+                          {"kind" in date ? date.kind : date.kindLabel}
+                          {"subLabel" in date && date.subLabel ? ` • ${date.subLabel}` : ""}
+                        </p>
+                        {helper ? <p className="mt-1 text-xs text-muted-foreground">{helper}</p> : null}
+                      </div>
+                      <p className="shrink-0 text-xs text-muted-foreground">
+                        {date.parsedDate ? formatDate(date.parsedDate) : "Date TBD"}
                       </p>
-                    </div>
-                    <p className="shrink-0 text-xs text-muted-foreground">
-                      {date.parsedDate ? formatDate(date.parsedDate) : "Date TBD"}
-                    </p>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="text-muted-foreground">No high-priority dates are available yet.</p>
@@ -666,18 +692,35 @@ export default function CaseDashboardPage() {
             ) : (
               <>
               <ol className="space-y-1.5 text-sm">
-                {(showFullTimeline ? data.timeline : data.timeline.slice(0, data.timelineMeta?.visibleCount ?? 8)).map((event) => (
-                  <li key={event.id} className={`rounded border px-2 py-1.5 ${timelineStatusClass(event.status)}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5">
-                        {timelineTypeIcon(event.type, event.status)}
-                        {formatDate(event.date)}
-                      </span>
-                      <span className="truncate pl-2 text-right">{event.label}</span>
-                    </div>
-                    {event.whyThisMatters ? <p className="pl-6 pt-0.5 text-xs text-muted-foreground">{event.whyThisMatters}</p> : null}
-                  </li>
-                ))}
+                {(showFullTimeline ? data.timeline : data.timeline.slice(0, data.timelineMeta?.visibleCount ?? 8)).map((event) => {
+                  const status = classifyDetailedDateStatus(event.date);
+                  const badge = dateStatusLabel(status);
+                  const helper = dateStatusMessage(status);
+                  const effectiveVisualStatus = status === "past_due"
+                    ? "overdue"
+                    : status === "historical"
+                      ? "past"
+                      : "upcoming";
+
+                  return (
+                    <li key={event.id} className={`rounded border px-2 py-1.5 ${timelineStatusClass(effectiveVisualStatus)}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5">
+                          {timelineTypeIcon(event.type, effectiveVisualStatus)}
+                          {formatDate(event.date)}
+                          {badge ? (
+                            <Badge variant="outline" className={dateBadgeClass(status)}>
+                              {badge}
+                            </Badge>
+                          ) : null}
+                        </span>
+                        <span className="truncate pl-2 text-right">{event.label}</span>
+                      </div>
+                      {helper ? <p className="pl-6 pt-0.5 text-xs text-muted-foreground">{helper}</p> : null}
+                      {!helper && event.whyThisMatters ? <p className="pl-6 pt-0.5 text-xs text-muted-foreground">{event.whyThisMatters}</p> : null}
+                    </li>
+                  );
+                })}
               </ol>
               {data.timelineMeta?.hasMore ? (
                 <div className="mt-2">
@@ -694,15 +737,30 @@ export default function CaseDashboardPage() {
                     </Button>
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-1 space-y-1.5">
-                    {data.timelineSecondary.map((event) => (
-                      <div key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 text-xs ${timelineStatusClass(event.status)}`}>
-                        <span className="flex items-center gap-1.5">
-                          {timelineTypeIcon(event.type, event.status)}
-                          {formatDate(event.date)}
-                        </span>
-                        <span className="truncate pl-2 text-right">{event.label}</span>
-                      </div>
-                    ))}
+                    {data.timelineSecondary.map((event) => {
+                      const status = classifyDetailedDateStatus(event.date);
+                      const badge = dateStatusLabel(status);
+                      const effectiveVisualStatus = status === "past_due"
+                        ? "overdue"
+                        : status === "historical"
+                          ? "past"
+                          : "upcoming";
+
+                      return (
+                        <div key={event.id} className={`flex items-center justify-between rounded border px-2 py-1.5 text-xs ${timelineStatusClass(effectiveVisualStatus)}`}>
+                          <span className="flex items-center gap-1.5">
+                            {timelineTypeIcon(event.type, effectiveVisualStatus)}
+                            {formatDate(event.date)}
+                            {badge ? (
+                              <Badge variant="outline" className={dateBadgeClass(status)}>
+                                {badge}
+                              </Badge>
+                            ) : null}
+                          </span>
+                          <span className="truncate pl-2 text-right">{event.label}</span>
+                        </div>
+                      );
+                    })}
                   </CollapsibleContent>
                 </Collapsible>
               ) : null}

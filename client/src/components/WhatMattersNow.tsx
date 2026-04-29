@@ -5,6 +5,7 @@ import { Clock3, Lock, ShieldAlert, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ScoredSignal, UserTier, WhatMattersNowResult } from "@/lib/signals";
+import { classifyDetailedDateStatus, dateStatusLabel, dateStatusMessage, parseDateWithAnnualProjection } from "@shared/dateStatus";
 
 interface WhatMattersNowProps {
   result: WhatMattersNowResult;
@@ -31,8 +32,8 @@ function urgencyClass(urgency: Urgency): string {
 
 function formatDate(value?: string): string | null {
   if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+  const parsed = parseDateWithAnnualProjection(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -41,8 +42,9 @@ function formatDate(value?: string): string | null {
 }
 
 function dueFraming(signal: ScoredSignal): string {
-  if ((signal.daysUntilDue ?? 99) < 0) {
-    return "This already moved without waiting for you.";
+  const status = classifyDetailedDateStatus(signal.dueDate);
+  if (status === "past_due" || status === "historical") {
+    return dateStatusMessage(status) ?? "This already moved without waiting for you.";
   }
   return "This will happen whether you are ready or not.";
 }
@@ -231,14 +233,33 @@ export default function WhatMattersNow({
                 <div key={signal.id} className="min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
+                      {(() => {
+                        const status = classifyDetailedDateStatus(signal.dueDate);
+                        const badge = dateStatusLabel(status);
+                        return (
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{formatDate(signal.dueDate) ?? "Date TBD"}</p>
-                        {index === 0 ? (
+                        {badge ? (
+                          <Badge
+                            variant="outline"
+                            className={
+                              status === "past_due"
+                                ? "border-amber-300 bg-amber-50 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-900 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200"
+                                : status === "historical"
+                                  ? "border-border bg-muted text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground"
+                                  : "border-sky-300 bg-sky-50 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-800 dark:border-sky-400/40 dark:bg-sky-500/10 dark:text-sky-200"
+                            }
+                          >
+                            {badge}
+                          </Badge>
+                        ) : index === 0 ? (
                           <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-800 dark:border-sky-400/40 dark:bg-sky-500/10 dark:text-sky-200">
                             Next
                           </Badge>
                         ) : null}
                       </div>
+                        );
+                      })()}
                       <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{signal.title}</p>
                       <p className="mt-2 text-xs italic text-slate-500 dark:text-slate-400">{dueFraming(signal)}</p>
                     </div>

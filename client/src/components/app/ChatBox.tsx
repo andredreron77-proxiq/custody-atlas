@@ -28,6 +28,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import {
   fetchUsageState,
+  USAGE_QUERY_KEY,
   incrementGuestQuestionsUsed,
 } from "@/services/usageService";
 
@@ -970,7 +971,7 @@ export function ChatBox({
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
   const { data: usage } = useQuery({
-    queryKey: ["/api/usage", "chatbox", user?.id ?? "anon"],
+    queryKey: USAGE_QUERY_KEY,
     enabled: true,
     staleTime: 60_000,
     retry: false,

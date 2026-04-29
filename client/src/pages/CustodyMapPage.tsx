@@ -23,6 +23,7 @@ import {
   getGuestQuestionsUsed,
   GUEST_QUESTION_LIMIT,
   incrementGuestQuestionsUsed,
+  USAGE_QUERY_KEY,
 } from "@/services/usageService";
 import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
@@ -603,9 +604,9 @@ function ComparisonAISection({ stateA, stateB }: ComparisonAISectionProps) {
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
   const { data: usage } = useQuery({
-    queryKey: ["/api/usage", "comparison-ai", user?.id ?? "anon"],
+    queryKey: USAGE_QUERY_KEY,
     queryFn: fetchUsageState,
-    staleTime: 30_000,
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 

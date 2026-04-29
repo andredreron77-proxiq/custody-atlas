@@ -14,7 +14,7 @@ import type { ChatMessage, Jurisdiction } from "@shared/schema";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchUsageState } from "@/services/usageService";
+import { fetchUsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -294,7 +294,7 @@ export default function AskAIPage() {
   });
 
   const { data: usage } = useQuery<UsageState>({
-    queryKey: ["/api/usage"],
+    queryKey: USAGE_QUERY_KEY,
     queryFn: fetchUsageState,
     staleTime: 60_000,
     refetchOnWindowFocus: false,

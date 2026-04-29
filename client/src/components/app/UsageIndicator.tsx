@@ -6,11 +6,12 @@
 import { MessageSquare, FileSearch } from "lucide-react";
 import { useState } from "react";
 import { Progress } from "@/components/ui/progress";
-import { useQuery } from "@tanstack/react-query";
-import { fetchUsageState } from "@/services/usageService";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchUsageState, getLastKnownUsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 import { cn } from "@/lib/utils";
 import UpgradeModal from "@/components/app/UpgradeModal";
+import { useCurrentUser } from "@/hooks/use-auth";
 
 interface UsageIndicatorProps {
   compact?: boolean;
@@ -18,14 +19,36 @@ interface UsageIndicatorProps {
 
 export function UsageIndicator({ compact = false }: UsageIndicatorProps) {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const { user, isLoading: isAuthLoading } = useCurrentUser();
+  const cachedUsage = queryClient.getQueryData<UsageState>(USAGE_QUERY_KEY) ?? getLastKnownUsageState();
   const { data: usage } = useQuery<UsageState>({
-    queryKey: ["/api/usage"],
+    queryKey: USAGE_QUERY_KEY,
     queryFn: fetchUsageState,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
+    initialData: cachedUsage ?? undefined,
+    placeholderData: (previous) => previous ?? cachedUsage ?? undefined,
   });
 
-  if (!usage || !usage.isAuthenticated) return null;
+  if (!usage) {
+    if (isAuthLoading || !user) return null;
+
+    if (compact) {
+      return <div className="flex items-center gap-3 text-xs text-slate-400">—</div>;
+    }
+
+    return (
+      <div className="flex flex-col gap-1.5 min-w-[130px]" data-testid="usage-indicator">
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <MessageSquare className="w-3 h-3" />
+          <span>—</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!usage.isAuthenticated) return null;
 
   const isFreeUser = usage.tier === "free";
   const qPct = usage.questionsLimit

@@ -19,11 +19,12 @@ import { ChildSupportImpactCard } from "@/components/app/ChildSupportImpactCard"
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { TTSControls } from "@/components/app/TTSControls";
 import DismissibleWhatMattersNow from "@/components/DismissibleWhatMattersNow";
-import { fetchUsageState, type UsageState } from "@/services/usageService";
+import { fetchUsageState, type UsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 import { getAccessToken } from "@/lib/tokenStore";
 import { trackEvent } from "@/lib/analytics";
 import { formatJurisdictionLabel } from "@/lib/jurisdictionUtils";
 import type { RawSignal, UserTier } from "@/lib/signals";
+import { classifyDetailedDateStatus, dateStatusLabel, dateStatusMessage } from "@shared/dateStatus";
 import {
   PageContainer, PageIntro, ContextBar,
   HeroPanel, HeroPanelHeader, HeroPanelContent, HeroPanelFooter,
@@ -1106,7 +1107,7 @@ export default function UploadDocumentPage() {
   const [pendingCaseSelection, setPendingCaseSelection] = useState<string>("unassigned");
   const queryClient = useQueryClient();
   const { data: usage } = useQuery<UsageState>({
-    queryKey: ["/api/usage"],
+    queryKey: USAGE_QUERY_KEY,
     queryFn: fetchUsageState,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -1985,12 +1986,37 @@ export default function UploadDocumentPage() {
                         <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Key Dates</h3>
                       </div>
                       <ul className="space-y-1.5">
-                        {result.key_dates.map((date, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200" data-testid={`key-date-${i}`}>
-                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                            <span className="leading-relaxed">{date}</span>
-                          </li>
-                        ))}
+                        {result.key_dates.map((date, i) => {
+                          const status = classifyDetailedDateStatus(date);
+                          const badge = dateStatusLabel(status);
+                          const helper = dateStatusMessage(status);
+
+                          return (
+                            <li key={i} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200" data-testid={`key-date-${i}`}>
+                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="leading-relaxed">{date}</span>
+                                  {badge ? (
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        status === "past_due"
+                                          ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+                                          : status === "historical"
+                                            ? "border-border bg-muted text-muted-foreground"
+                                            : "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-400/40 dark:bg-sky-500/10 dark:text-sky-200"
+                                      }
+                                    >
+                                      {badge}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                {helper ? <p className="mt-1 text-xs text-muted-foreground">{helper}</p> : null}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </InsetPanel>
                   )}

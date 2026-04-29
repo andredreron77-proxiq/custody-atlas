@@ -13,7 +13,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchUsageState } from "@/services/usageService";
+import { fetchUsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 import type { UsageState } from "@/services/usageService";
 
 interface UseUsageResult {
@@ -24,7 +24,7 @@ interface UseUsageResult {
 
 export function useUsage(): UseUsageResult {
   const { data, isLoading, refetch } = useQuery<UsageState>({
-    queryKey: ["/api/usage"],
+    queryKey: USAGE_QUERY_KEY,
     queryFn: fetchUsageState,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
