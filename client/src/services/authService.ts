@@ -6,6 +6,7 @@
 
 import { supabase } from "@/lib/supabaseClient";
 import { resetAnalytics } from "@/lib/analytics";
+import { clearGuestUsageState } from "@/services/usageService";
 
 export type UserTier = "free" | "pro";
 
@@ -49,6 +50,7 @@ export async function signInWithEmail(
   password: string,
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (!error) clearGuestUsageState();
   return { error: error?.message ?? null };
 }
 
@@ -60,6 +62,7 @@ export async function signUpWithEmail(
   password: string,
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.auth.signUp({ email, password });
+  if (!error) clearGuestUsageState();
   return { error: error?.message ?? null };
 }
 

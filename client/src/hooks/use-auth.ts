@@ -25,6 +25,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { setAccessToken } from "@/lib/tokenStore";
 import type { AuthUser } from "@/services/authService";
+import { clearGuestUsageState } from "@/services/usageService";
 
 const AUTH_USER_ID_STORAGE_KEY = "custody-atlas:auth-user-id";
 
@@ -81,6 +82,7 @@ export function useCurrentUser(): UseAuthResult {
 
         setAccessToken(session?.access_token ?? null);
         if (session?.user) {
+          clearGuestUsageState();
           setUser(buildUser(session.user));
           sessionStorage.setItem(AUTH_USER_ID_STORAGE_KEY, session.user.id);
 
@@ -111,6 +113,7 @@ export function useCurrentUser(): UseAuthResult {
       }
       setAccessToken(session?.access_token ?? null);
       if (session?.user) {
+        clearGuestUsageState();
         setUser(buildUser(session.user));
         sessionStorage.setItem(AUTH_USER_ID_STORAGE_KEY, session.user.id);
       } else {

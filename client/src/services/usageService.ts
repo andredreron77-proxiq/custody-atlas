@@ -117,6 +117,21 @@ export function incrementGuestQuestionsUsed(): number {
   return next;
 }
 
+export function clearGuestUsageState(): void {
+  if (!canUseStorage()) {
+    lastKnownUsageState = null;
+    return;
+  }
+
+  window.localStorage.removeItem(GUEST_FINGERPRINT_KEY);
+  window.localStorage.removeItem(GUEST_QUESTION_COUNT_KEY);
+
+  if (!lastKnownUsageState || !lastKnownUsageState.isAuthenticated) {
+    lastKnownUsageState = null;
+    window.localStorage.removeItem(LAST_KNOWN_USAGE_KEY);
+  }
+}
+
 export async function fetchUsageState(): Promise<UsageState> {
   try {
     const token = getAccessToken();
