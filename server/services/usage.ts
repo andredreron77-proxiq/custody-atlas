@@ -200,7 +200,7 @@ export async function trackQuestion(req: Request): Promise<void> {
     const userId = user.id;
     const { data: existing } = await supabaseAdmin
       .from("usage_limits")
-      .select("questions_used")
+      .select("questions_used, documents_used")
       .eq("user_id", userId)
       .eq("billing_period", billingPeriodStr)
       .single();
@@ -210,7 +210,7 @@ export async function trackQuestion(req: Request): Promise<void> {
       date: billingPeriodStr,
       billing_period: billingPeriodStr,
       questions_used: (existing?.questions_used ?? 0) + 1,
-      documents_used: 0,
+      documents_used: existing?.documents_used ?? 0,
     }, { onConflict: "user_id,billing_period" });
   } catch (err) {
     console.error("[usage] trackQuestion error:", err);
@@ -227,7 +227,7 @@ export async function trackDocument(req: Request): Promise<void> {
     const billingPeriodStr = currentBillingPeriod();
     const { data: existing } = await supabaseAdmin
       .from("usage_limits")
-      .select("documents_used")
+      .select("questions_used, documents_used")
       .eq("user_id", user.id)
       .eq("billing_period", billingPeriodStr)
       .single();
@@ -236,7 +236,7 @@ export async function trackDocument(req: Request): Promise<void> {
       user_id: user.id,
       date: billingPeriodStr,
       billing_period: billingPeriodStr,
-      questions_used: 0,
+      questions_used: existing?.questions_used ?? 0,
       documents_used: (existing?.documents_used ?? 0) + 1,
     }, { onConflict: "user_id,billing_period" });
   } catch (err) {
