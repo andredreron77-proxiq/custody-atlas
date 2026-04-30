@@ -1,8 +1,9 @@
-import { FormEvent, KeyboardEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronUp, Clock3, FileWarning, FileText, Gavel, Info, Lightbulb, Scale, TriangleAlert } from "lucide-react";
 import CaseStrengthScore from "@/components/CaseStrengthScore";
+import { useUserProfile } from "@/hooks/use-user-profile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiRequest, apiRequestRaw, queryClient } from "@/lib/queryClient";
 import { generateSuggestedFocus } from "@/lib/suggestedFocus";
+import { fetchUsageState, type UsageState, USAGE_QUERY_KEY } from "@/services/usageService";
 import { classifyDetailedDateStatus, dateStatusLabel, dateStatusMessage, parseDateWithAnnualProjection, type DetailedDateStatus } from "@shared/dateStatus";
 
 type CaseDashboardPayload = {
@@ -168,6 +170,46 @@ type CirKeyDate = IntelligenceKeyDate & {
   subLabel?: string;
 };
 
+type CIRProposalChange = {
+  field: string;
+  currentValue: string | null;
+  proposedValue: string;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+};
+
+type CIRProposalAction = {
+  text: string;
+  reason: string;
+};
+
+type PendingCIRProposal = {
+  id: string;
+  case_id: string;
+  user_id: string;
+  conversation_id: string;
+  proposal_data: {
+    conversationId: string;
+    caseId: string;
+    proposedChanges: CIRProposalChange[];
+    newActions: CIRProposalAction[];
+    createdAt: string;
+  };
+  status: "pending" | "accepted" | "rejected" | "partially_accepted" | "auto_applied";
+  reviewed_at: string | null;
+  created_at: string;
+};
+
+type PendingProposalResponse = {
+  proposal: PendingCIRProposal | null;
+};
+
+type HistoryResponse = {
+  history: CaseIntelligenceRecordPayload["change_log"];
+};
+
+type CIRHistoryTrigger = CaseIntelligenceRecordPayload["change_log"][number]["trigger"];
+
 function sentence(input: string, fallback: string): string {
   const normalized = (input || "").trim();
   if (!normalized) return fallback;
@@ -300,6 +342,44 @@ function cirSourceLabel(source: CirFactSource | "document" | "conversation"): st
   return "Based on your saved case details";
 }
 
+function formatFactLabel(field: string): string {
+  const labels: Record<string, string> = {
+    hearing_date: "Hearing Date",
+    response_deadline: "Response Deadline",
+    hearing_type: "Hearing Type",
+    order_status: "Order Status",
+    document_type: "Document Type",
+    top_concern: "Top Concern",
+    concern_category: "Concern Type",
+    current_arrangement: "Current Arrangement",
+    opposing_request: "Their Request",
+    coparent_relationship: "Co-parent Relationship",
+    coparent_stance: "Other Parent's Position",
+    representation_status: "Representation Status",
+    reason_for_change: "Reason for Change",
+    prior_court_involvement: "Prior Court Involvement",
+    situation_summary: "Situation",
+    child_safety_flag: "Child Safety Flag",
+    case_number: "Case Number",
+    court_name: "Court Name",
+    judge_name: "Judge Name",
+    filing_party: "Filing Party",
+    responding_party: "Responding Party",
+    filing_date: "Filing Date",
+    effective_date: "Effective Date",
+    child_support_amount: "Child Support Amount",
+  };
+
+  return labels[field] ?? field.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatTriggerLabel(trigger: CIRHistoryTrigger): string {
+  if (trigger === "snapshot_save") return "Snapshot saved";
+  if (trigger === "document_upload") return "Document upload";
+  if (trigger === "conversation_refresh") return "Conversation refresh";
+  return "User edit";
+}
+
 function getFactValue(
   facts: Record<string, CaseIntelligenceFact> | undefined,
   key: string,
@@ -313,7 +393,7 @@ function getFactValue(
 
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [expanded, setExpanded] = useState(false);
   const [showFullTimeline, setShowFullTimeline] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
@@ -323,7 +403,14 @@ export default function CaseDashboardPage() {
   const [askAtlasQuestion, setAskAtlasQuestion] = useState("");
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventDate, setNewEventDate] = useState("");
+  const [selectedProposalFields, setSelectedProposalFields] = useState<Record<string, boolean>>({});
+  const [includeProposalActions, setIncludeProposalActions] = useState(true);
   const alertRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const { data: userProfile } = useUserProfile();
+  const reviewProposalRequested = useMemo(() => {
+    const params = new URLSearchParams(location.split("?")[1] ?? "");
+    return params.get("review_proposal") === "true";
+  }, [location]);
 
   const dashboardQuery = useQuery<CaseDashboardPayload>({
     queryKey: ["/api/cases", caseId, "dashboard"],
@@ -352,10 +439,35 @@ export default function CaseDashboardPage() {
       return res.json();
     },
   });
+  const usageQuery = useQuery<UsageState>({
+    queryKey: USAGE_QUERY_KEY,
+    staleTime: 60_000,
+    queryFn: fetchUsageState,
+  });
+  const pendingProposalQuery = useQuery<PendingProposalResponse>({
+    queryKey: ["/api/cases", caseId, "intelligence", "pending-proposals"],
+    enabled: Boolean(caseId),
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/intelligence/pending-proposals`);
+      if (!res.ok) throw new Error("Failed to load pending case intelligence updates.");
+      return res.json();
+    },
+  });
+  const historyQuery = useQuery<HistoryResponse>({
+    queryKey: ["/api/cases", caseId, "intelligence", "history"],
+    enabled: Boolean(caseId) && usageQuery.data?.tier === "pro",
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/intelligence/history`);
+      if (!res.ok) throw new Error("Failed to load case intelligence history.");
+      return res.json();
+    },
+  });
 
   const data = dashboardQuery.data;
   const cirRecord = intelligenceQuery.data;
   const cirFacts = cirRecord?.intelligence_data?.facts;
+  const pendingProposal = pendingProposalQuery.data?.proposal ?? null;
+  const usage = usageQuery.data;
   const intelligenceRecord = legacyIntelligenceQuery.data?.intelligence;
   const intelligenceWhatMatters = useMemo<IntelligenceWhatMattersNow | null>(() => {
     const topConcernFact =
@@ -454,6 +566,59 @@ export default function CaseDashboardPage() {
     return "Low";
   }, [intelligenceKeyDates]);
   const cirOrderStatus = getFactValue(cirFacts, "order_status");
+
+  useEffect(() => {
+    if (!pendingProposal) {
+      setSelectedProposalFields({});
+      setIncludeProposalActions(true);
+      return;
+    }
+
+    setSelectedProposalFields(
+      Object.fromEntries(pendingProposal.proposal_data.proposedChanges.map((change) => [change.field, true])),
+    );
+    setIncludeProposalActions(pendingProposal.proposal_data.newActions.length > 0);
+  }, [pendingProposal]);
+
+  const applyProposalMutation = useMutation({
+    mutationFn: async (payload: { acceptedFields: string[]; acceptedActions: boolean }) => {
+      const res = await apiRequestRaw("POST", `/api/cases/${caseId}/intelligence/apply-proposal`, {
+        proposalId: pendingProposal?.id,
+        acceptedFields: payload.acceptedFields,
+        acceptedActions: payload.acceptedActions,
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(typeof json.error === "string" ? json.error : "Failed to apply case intelligence updates.");
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/cases", caseId, "intelligence"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/cases", caseId, "dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/cases", caseId, "intelligence", "pending-proposals"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/cases", caseId, "intelligence", "history"] }),
+      ]);
+      navigate(`/cases/${caseId}/dashboard`);
+    },
+  });
+
+  const autoUpdateMutation = useMutation({
+    mutationFn: async (nextValue: boolean) => {
+      const res = await apiRequestRaw("PATCH", "/api/user-profile", {
+        auto_update_cir: nextValue,
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(typeof json.error === "string" ? json.error : "Failed to update preferences.");
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/user-profile"] });
+    },
+  });
 
   const alertActionMutation = useMutation({
     mutationFn: async (payload: { alertId: string; actionId: string; confirmSuggested?: boolean }) => {
@@ -605,6 +770,153 @@ export default function CaseDashboardPage() {
           </div>
         </div>
       </header>
+
+      {pendingProposal ? (
+        <Card className="border border-sky-200 bg-sky-50/80 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">
+              Atlas noticed some updates
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Based on your recent conversation, here&apos;s what may have changed.
+            </p>
+            {reviewProposalRequested ? (
+              <p className="text-xs text-sky-800 dark:text-sky-200">
+                Review these updates before they change your case summary.
+              </p>
+            ) : null}
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {pendingProposal.proposal_data.proposedChanges.map((change) => {
+              const accepted = selectedProposalFields[change.field] ?? false;
+              return (
+                <div key={change.field} className="rounded-md border border-sky-200/80 bg-background/70 p-3 dark:border-sky-900/50 dark:bg-slate-950/30">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {formatFactLabel(change.field)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Was: {change.currentValue?.trim() || "Not captured"}
+                      </p>
+                      <p className="text-sm font-medium">
+                        Now: {change.proposedValue}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className={accepted ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200" : "border-border bg-background text-muted-foreground"}>
+                      {accepted ? "Accepting" : "Skipping"}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Why: {change.reason}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={accepted ? "default" : "outline"}
+                      className="h-7"
+                      onClick={() => setSelectedProposalFields((prev) => ({ ...prev, [change.field]: true }))}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={!accepted ? "secondary" : "outline"}
+                      className="h-7"
+                      onClick={() => setSelectedProposalFields((prev) => ({ ...prev, [change.field]: false }))}
+                    >
+                      Skip
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {pendingProposal.proposal_data.newActions.length > 0 ? (
+              <div className="rounded-md border border-dashed border-sky-200/80 bg-background/60 p-3 dark:border-sky-900/50 dark:bg-slate-950/20">
+                <div className="flex items-start gap-2">
+                  <input
+                    id="include-proposal-actions"
+                    type="checkbox"
+                    checked={includeProposalActions}
+                    onChange={(event) => setIncludeProposalActions(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-border"
+                  />
+                  <label htmlFor="include-proposal-actions" className="space-y-1">
+                    <p className="font-medium">Include new Atlas actions</p>
+                    <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                      {pendingProposal.proposal_data.newActions.map((action, index) => (
+                        <li key={`${action.text}-${index}`}>
+                          <span className="text-foreground">{action.text}</span>
+                          {action.reason ? ` — ${action.reason}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </label>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="h-8"
+                disabled={applyProposalMutation.isPending}
+                onClick={() => applyProposalMutation.mutate({
+                  acceptedFields: pendingProposal.proposal_data.proposedChanges.map((change) => change.field),
+                  acceptedActions: pendingProposal.proposal_data.newActions.length > 0,
+                })}
+              >
+                Accept all
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8"
+                disabled={applyProposalMutation.isPending}
+                onClick={() => applyProposalMutation.mutate({
+                  acceptedFields: Object.entries(selectedProposalFields)
+                    .filter(([, accepted]) => accepted)
+                    .map(([field]) => field),
+                  acceptedActions: includeProposalActions,
+                })}
+              >
+                Apply selected
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8"
+                disabled={applyProposalMutation.isPending}
+                onClick={() => applyProposalMutation.mutate({
+                  acceptedFields: [],
+                  acceptedActions: false,
+                })}
+              >
+                Skip all
+              </Button>
+            </div>
+
+            <label className="flex items-start gap-2 rounded-md border border-border bg-background/70 px-3 py-2 text-sm dark:bg-slate-950/20">
+              <input
+                type="checkbox"
+                checked={Boolean(userProfile?.autoUpdateCir)}
+                disabled={autoUpdateMutation.isPending}
+                onChange={(event) => autoUpdateMutation.mutate(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-border"
+              />
+              <span>
+                Always update automatically
+                <span className="block text-xs text-muted-foreground">
+                  Saves you from reviewing each time.
+                </span>
+              </span>
+            </label>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="border border-[hsl(var(--semantic-blue)/0.35)] bg-gradient-to-br from-card via-card to-muted/60 shadow-lg shadow-[hsl(var(--semantic-blue)/0.1)]" data-testid="section-what-matters-now">
         <CardHeader className="pb-2">
@@ -1056,6 +1368,46 @@ export default function CaseDashboardPage() {
           </CardHeader>
           <CollapsibleContent>
             <CardContent className="space-y-3 text-sm">
+              {usage?.tier === "pro" ? (
+                <section>
+                  <p className="mb-2 font-semibold">Case History</p>
+                  {historyQuery.isLoading ? (
+                    <p className="text-muted-foreground">Loading case history…</p>
+                  ) : historyQuery.data?.history?.length ? (
+                    <div className="space-y-3">
+                      {historyQuery.data.history.map((entry) => (
+                        <div key={`${entry.version}-${entry.timestamp}`} className="rounded-md border border-border p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-medium">{formatTriggerLabel(entry.trigger)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(entry.timestamp).toLocaleString()}
+                            </p>
+                          </div>
+                          {entry.changes.length > 0 ? (
+                            <ul className="mt-2 space-y-1">
+                              {entry.changes.map((change, index) => (
+                                <li key={`${change.field}-${index}`} className="text-sm">
+                                  <span className="font-medium">{formatFactLabel(change.field)}:</span>{" "}
+                                  <span className="text-muted-foreground">{change.old_value || "Not captured"}</span>
+                                  {" → "}
+                                  <span>{change.new_value || "Not captured"}</span>
+                                  {change.source ? (
+                                    <span className="block text-xs text-muted-foreground">{change.source}</span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-2 text-muted-foreground">No fact changes were recorded in this update.</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No case history entries yet.</p>
+                  )}
+                </section>
+              ) : null}
               <section>
                 <p className="mb-1 font-semibold">Full Case Brief</p>
                 <p className="text-muted-foreground">{sentence(data.snapshot.fullCaseBrief, "No full brief available yet.")}</p>

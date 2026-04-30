@@ -81,6 +81,7 @@ export interface Conversation {
   title: string | null;
   threadType: string;
   guidedState: Record<string, unknown> | null;
+  cirAnalysisTriggered?: boolean;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
   documentId: string | null;
@@ -198,6 +199,7 @@ function mapConversation(r: any): Conversation {
     title: r.title ?? null,
     threadType: r.conversation_type ?? r.thread_type ?? "general",
     guidedState: r.guided_state ?? null,
+    cirAnalysisTriggered: r.cir_analysis_triggered ?? false,
     jurisdictionState: r.jurisdiction_state ?? null,
     jurisdictionCounty: r.jurisdiction_county ?? null,
     documentId: r.document_id ?? null,
@@ -508,7 +510,7 @@ export async function createConversation(
         conversation_type: opts.threadType ?? "general",
         guided_state: opts.guidedState ?? null,
       })
-      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
+      .select("id, case_id, title, conversation_type, guided_state, cir_analysis_triggered, last_message_at, created_at, updated_at")
       .single();
     if (error || !data) {
       console.error("[cases] createConversation error:", error?.message);
@@ -556,7 +558,7 @@ export async function listRecentUserConversations(
 
     const { data, error } = await supabaseAdmin
       .from("conversations")
-      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
+      .select("id, case_id, title, conversation_type, guided_state, cir_analysis_triggered, last_message_at, created_at, updated_at")
       .in("case_id", caseIds)
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -576,7 +578,7 @@ export async function getConversationById(
   try {
     const { data, error } = await supabaseAdmin
       .from("conversations")
-      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
+      .select("id, case_id, title, conversation_type, guided_state, cir_analysis_triggered, last_message_at, created_at, updated_at")
       .eq("id", conversationId)
       .single();
     if (error || !data) return null;
@@ -606,7 +608,7 @@ export async function getConversationByIdForCase(
 
     const { data, error } = await supabaseAdmin
       .from("conversations")
-      .select("id, case_id, title, conversation_type, guided_state, last_message_at, created_at, updated_at")
+      .select("id, case_id, title, conversation_type, guided_state, cir_analysis_triggered, last_message_at, created_at, updated_at")
       .eq("id", conversationId)
       .eq("case_id", caseId)
       .single();
@@ -743,6 +745,61 @@ export async function updateConversationGuidedState(
     return true;
   } catch (err) {
     console.error("[cases] updateConversationGuidedState exception:", err);
+    return false;
+  }
+}
+
+export async function countConversationMessages(
+  conversationId: string,
+  userId: string,
+): Promise<number> {
+  if (!supabaseAdmin) return 0;
+  try {
+    const ownerCheck = await getConversationById(conversationId, userId);
+    if (!ownerCheck) return 0;
+
+    const { count, error } = await supabaseAdmin
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("conversation_id", conversationId);
+
+    if (error) {
+      console.warn("[cases] countConversationMessages error:", error.message, error.code);
+      return 0;
+    }
+
+    return count ?? 0;
+  } catch (err) {
+    console.error("[cases] countConversationMessages exception:", err);
+    return 0;
+  }
+}
+
+export async function markConversationCirAnalysisTriggered(
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+  try {
+    const ownerCheck = await getConversationById(conversationId, userId);
+    if (!ownerCheck) return false;
+
+    const { data, error } = await supabaseAdmin
+      .from("conversations")
+      .update({ cir_analysis_triggered: true })
+      .eq("id", conversationId)
+      .eq("cir_analysis_triggered", false)
+      .select("id")
+      .limit(1);
+
+    if (error) {
+      console.warn("[cases] markConversationCirAnalysisTriggered error:", error.message, error.code);
+      return false;
+    }
+
+    return (data?.length ?? 0) > 0;
+  } catch (err) {
+    console.error("[cases] markConversationCirAnalysisTriggered exception:", err);
     return false;
   }
 }

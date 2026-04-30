@@ -41,6 +41,8 @@ import { getCaseById } from "./cases";
 import { getDocumentsByCase } from "./documents";
 import { getCaseActions, type CaseActionRow } from "./caseActions";
 import { getGuidedFlowBySituationType } from "../lib/guidedFlows";
+import { getRecentConversationMessages } from "./cases";
+import OpenAI from "openai";
 
 type FactSource = "conversation" | "document" | "user_edit";
 type FactConfidence = "high" | "medium" | "low";
@@ -102,6 +104,34 @@ export interface CaseIntelligenceRow {
   updated_at: string | null;
 }
 
+export interface CIRUpdateProposal {
+  conversationId: string;
+  caseId: string;
+  proposedChanges: Array<{
+    field: string;
+    currentValue: string | null;
+    proposedValue: string;
+    reason: string;
+    confidence: "high" | "medium" | "low";
+  }>;
+  newActions: Array<{
+    text: string;
+    reason: string;
+  }>;
+  createdAt: string;
+}
+
+export interface CIRUpdateProposalRow {
+  id: string;
+  case_id: string;
+  user_id: string;
+  conversation_id: string;
+  proposal_data: CIRUpdateProposal;
+  status: "pending" | "accepted" | "rejected" | "partially_accepted" | "auto_applied";
+  reviewed_at: string | null;
+  created_at: string;
+}
+
 const FACT_KEYS = [
   "hearing_date",
   "response_deadline",
@@ -131,8 +161,23 @@ const FACT_KEYS = [
 
 type FactKey = typeof FACT_KEYS[number];
 
+function getOpenAIClient(): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFactKey(value: string): value is FactKey {
+  return (FACT_KEYS as readonly string[]).includes(value);
+}
+
+function normalizeProposalConfidence(value: unknown): "high" | "medium" | "low" {
+  return value === "high" || value === "medium" || value === "low" ? value : "low";
 }
 
 function parseJsonRecord(raw: unknown): Record<string, unknown> | null {
@@ -303,6 +348,51 @@ function parseStoredIntelligenceRow(row: any): CaseIntelligenceRow | null {
   };
 }
 
+function parseStoredProposalRow(row: any): CIRUpdateProposalRow | null {
+  if (!row || typeof row.id !== "string" || typeof row.case_id !== "string" || typeof row.user_id !== "string" || typeof row.conversation_id !== "string") {
+    return null;
+  }
+  const proposal = parseJsonRecord(row.proposal_data);
+  if (!proposal) return null;
+
+  const proposedChanges = Array.isArray(proposal.proposedChanges)
+    ? proposal.proposedChanges.filter(isRecord).map((change) => ({
+        field: typeof change.field === "string" ? change.field : "",
+        currentValue: typeof change.currentValue === "string" ? change.currentValue : null,
+        proposedValue: typeof change.proposedValue === "string" ? change.proposedValue : "",
+        reason: typeof change.reason === "string" ? change.reason : "",
+        confidence: normalizeProposalConfidence(change.confidence),
+      })).filter((change) => change.field && change.proposedValue)
+    : [];
+
+  const newActions = Array.isArray(proposal.newActions)
+    ? proposal.newActions.filter(isRecord).map((action) => ({
+        text: typeof action.text === "string" ? action.text : "",
+        reason: typeof action.reason === "string" ? action.reason : "",
+      })).filter((action) => action.text)
+    : [];
+
+  return {
+    id: row.id,
+    case_id: row.case_id,
+    user_id: row.user_id,
+    conversation_id: row.conversation_id,
+    proposal_data: {
+      conversationId: typeof proposal.conversationId === "string" ? proposal.conversationId : row.conversation_id,
+      caseId: typeof proposal.caseId === "string" ? proposal.caseId : row.case_id,
+      proposedChanges,
+      newActions,
+      createdAt: typeof proposal.createdAt === "string" ? proposal.createdAt : row.created_at,
+    },
+    status:
+      row.status === "accepted" || row.status === "rejected" || row.status === "partially_accepted" || row.status === "auto_applied"
+        ? row.status
+        : "pending",
+    reviewed_at: typeof row.reviewed_at === "string" ? row.reviewed_at : null,
+    created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+  };
+}
+
 async function getStoredCaseIntelligence(caseId: string, userId: string): Promise<CaseIntelligenceRow | null> {
   if (!supabaseAdmin) return null;
   const { data, error } = await supabaseAdmin
@@ -314,6 +404,51 @@ async function getStoredCaseIntelligence(caseId: string, userId: string): Promis
 
   if (error || !data) return null;
   return parseStoredIntelligenceRow(data);
+}
+
+export async function getLatestPendingCIRProposal(
+  caseId: string,
+  userId: string,
+): Promise<CIRUpdateProposalRow | null> {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin
+    .from("cir_update_proposals")
+    .select("id, case_id, user_id, conversation_id, proposal_data, status, reviewed_at, created_at")
+    .eq("case_id", caseId)
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return parseStoredProposalRow(data);
+}
+
+export async function getLatestCIRProposalForConversation(
+  conversationId: string,
+  userId: string,
+): Promise<CIRUpdateProposalRow | null> {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin
+    .from("cir_update_proposals")
+    .select("id, case_id, user_id, conversation_id, proposal_data, status, reviewed_at, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return parseStoredProposalRow(data);
+}
+
+export async function listCIRHistory(
+  caseId: string,
+  userId: string,
+): Promise<CaseIntelligenceChangeLogEntry[]> {
+  const record = await getStoredCaseIntelligence(caseId, userId);
+  return [...(record?.change_log ?? [])].reverse();
 }
 
 async function buildCaseIntelligenceRecord(args: {
@@ -472,6 +607,286 @@ export async function populateCaseIntelligence(
   const existing = await getStoredCaseIntelligence(caseId, userId);
   if (existing) return existing;
   return refreshCaseIntelligence(caseId, userId, "snapshot_save");
+}
+
+export async function analyzeConversationForCIRUpdates(
+  conversationId: string,
+  caseId: string,
+  userId: string,
+): Promise<CIRUpdateProposal | null> {
+  const currentCIR = await populateCaseIntelligence(caseId, userId);
+  const recentMessages = await getRecentConversationMessages(conversationId, 20);
+
+  if (recentMessages.length === 0) return null;
+
+  const conversationMessages = recentMessages
+    .map((message) => `${message.role.toUpperCase()}: ${message.messageText}`)
+    .join("\n");
+
+  const completion = await getOpenAIClient().chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are analyzing a custody support conversation to identify new factual information the user shared that differs from or adds to their existing case record.\n\n" +
+          "Current case record (CIR):\n" +
+          `${JSON.stringify(currentCIR.intelligence_data.facts, null, 2)}\n\n` +
+          "Conversation messages:\n" +
+          `${conversationMessages}\n\n` +
+          "Return ONLY a JSON object with this structure:\n" +
+          "{\n" +
+          '  "has_changes": boolean,\n' +
+          '  "proposed_changes": [\n' +
+          "    {\n" +
+          '      "field": string,\n' +
+          '      "current_value": string | null,\n' +
+          '      "proposed_value": string,\n' +
+          '      "reason": string,\n' +
+          '      "confidence": "high" | "medium" | "low"\n' +
+          "    }\n" +
+          "  ],\n" +
+          '  "new_actions": [\n' +
+          "    {\n" +
+          '      "text": string,\n' +
+          '      "reason": string\n' +
+          "    }\n" +
+          "  ]\n" +
+          "}\n\n" +
+          "Only include fields where the user explicitly stated something new or different. Do not infer. Do not include fields where the user confirmed existing information. If nothing changed, return has_changes: false with empty arrays.",
+      },
+    ],
+    response_format: { type: "json_object" },
+    max_tokens: 900,
+    temperature: 0.2,
+  });
+
+  const raw = completion.choices[0]?.message?.content?.trim();
+  if (!raw) return null;
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const hasChanges = parsed.has_changes === true;
+  if (!hasChanges) return null;
+
+  const proposedChanges = Array.isArray(parsed.proposed_changes)
+    ? parsed.proposed_changes.filter(isRecord).map((change) => ({
+        field: typeof change.field === "string" ? change.field : "",
+        currentValue: typeof change.current_value === "string" ? change.current_value : null,
+        proposedValue: typeof change.proposed_value === "string" ? change.proposed_value.trim() : "",
+        reason: typeof change.reason === "string" ? change.reason.trim() : "",
+        confidence: normalizeProposalConfidence(change.confidence),
+      }))
+      .filter((change) => isFactKey(change.field) && change.proposedValue.length > 0 && change.reason.length > 0)
+    : [];
+
+  const newActions = Array.isArray(parsed.new_actions)
+    ? parsed.new_actions.filter(isRecord).map((action) => ({
+        text: typeof action.text === "string" ? action.text.trim() : "",
+        reason: typeof action.reason === "string" ? action.reason.trim() : "",
+      })).filter((action) => action.text.length > 0)
+    : [];
+
+  if (proposedChanges.length === 0 && newActions.length === 0) return null;
+
+  return {
+    conversationId,
+    caseId,
+    proposedChanges,
+    newActions,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function storeCIRProposal(
+  proposal: CIRUpdateProposal,
+  userId: string,
+  status: CIRUpdateProposalRow["status"] = "pending",
+): Promise<CIRUpdateProposalRow | null> {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin
+    .from("cir_update_proposals")
+    .insert({
+      case_id: proposal.caseId,
+      user_id: userId,
+      conversation_id: proposal.conversationId,
+      proposal_data: proposal,
+      status,
+      reviewed_at: status === "pending" ? null : new Date().toISOString(),
+    })
+    .select("id, case_id, user_id, conversation_id, proposal_data, status, reviewed_at, created_at")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to store CIR proposal.");
+  }
+
+  return parseStoredProposalRow(data);
+}
+
+export async function applyCIRProposal(
+  proposalId: string,
+  userId: string,
+  acceptedFields: string[],
+  acceptedActions: boolean,
+): Promise<CaseIntelligenceRow> {
+  if (!supabaseAdmin) {
+    throw new Error("Case intelligence storage is unavailable.");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("cir_update_proposals")
+    .select("id, case_id, user_id, conversation_id, proposal_data, status, reviewed_at, created_at")
+    .eq("id", proposalId)
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Proposal not found.");
+  }
+
+  const proposalRow = parseStoredProposalRow(data);
+  if (!proposalRow) {
+    throw new Error("Proposal is invalid.");
+  }
+
+  const current = await populateCaseIntelligence(proposalRow.case_id, userId);
+  const nextData: CaseIntelligenceDataRecord = JSON.parse(JSON.stringify(current.intelligence_data)) as CaseIntelligenceDataRecord;
+  const acceptedFieldSet = new Set(acceptedFields.filter(isFactKey));
+  const changes: CaseIntelligenceChangeLogEntry["changes"] = [];
+  const now = new Date().toISOString();
+
+  for (const change of proposalRow.proposal_data.proposedChanges) {
+    if (!acceptedFieldSet.has(change.field as FactKey)) continue;
+    const factKey = change.field as FactKey;
+    const currentFact = nextData.facts[factKey] ?? createEmptyFact(now);
+    const oldValue = currentFact.value;
+    nextData.facts[factKey] = {
+      value: change.proposedValue,
+      source: "conversation",
+      source_detail: `Conversation refresh: ${proposalRow.conversation_id}`,
+      confidence: change.confidence,
+      previous_value: oldValue,
+      updated_at: now,
+    };
+    changes.push({
+      field: factKey,
+      old_value: toSerializableValue(oldValue),
+      new_value: change.proposedValue,
+      source: `Conversation refresh: ${proposalRow.conversation_id}`,
+    });
+  }
+
+  if (acceptedActions) {
+    nextData.actions.push(
+      ...proposalRow.proposal_data.newActions.map((action) => ({
+        text: action.text,
+        source: "conversation" as const,
+        source_detail: `Conversation refresh: ${proposalRow.conversation_id}`,
+        created_at: now,
+      })),
+    );
+  }
+
+  const nextVersion = current.version + 1;
+  const nextChangeLog = [
+    ...current.change_log,
+    {
+      version: nextVersion,
+      timestamp: now,
+      trigger: "conversation_refresh" as const,
+      changes,
+    },
+  ];
+
+  const { data: updatedCir, error: cirError } = await supabaseAdmin
+    .from("case_intelligence")
+    .upsert({
+      case_id: current.case_id,
+      user_id: current.user_id,
+      intelligence_data: nextData,
+      version: nextVersion,
+      change_log: nextChangeLog,
+      last_refreshed_at: now,
+    }, { onConflict: "case_id" })
+    .select("id, case_id, user_id, intelligence_data, version, change_log, last_refreshed_at, created_at, updated_at")
+    .single();
+
+  if (cirError || !updatedCir) {
+    throw new Error(cirError?.message ?? "Failed to update case intelligence.");
+  }
+
+  const acceptedCount = changes.length;
+  const totalCount = proposalRow.proposal_data.proposedChanges.length;
+  const nextStatus: CIRUpdateProposalRow["status"] =
+    acceptedCount === 0 && !acceptedActions
+      ? "rejected"
+      : acceptedCount === totalCount
+        ? "accepted"
+        : "partially_accepted";
+
+  const { error: proposalError } = await supabaseAdmin
+    .from("cir_update_proposals")
+    .update({
+      status: nextStatus,
+      reviewed_at: now,
+    })
+    .eq("id", proposalId)
+    .eq("user_id", userId);
+
+  if (proposalError) {
+    throw new Error(proposalError.message);
+  }
+
+  return parseStoredIntelligenceRow(updatedCir) ?? current;
+}
+
+export async function runConversationCIRAnalysisWorkflow(args: {
+  conversationId: string;
+  caseId: string;
+  userId: string;
+  autoUpdateCir: boolean;
+}): Promise<{
+  hasChanges: boolean;
+  autoApplied: boolean;
+  proposal: CIRUpdateProposalRow | null;
+  updatedCIR?: CaseIntelligenceRow;
+}> {
+  const proposal = await analyzeConversationForCIRUpdates(args.conversationId, args.caseId, args.userId);
+  if (!proposal) {
+    return { hasChanges: false, autoApplied: false, proposal: null };
+  }
+
+  const stored = await storeCIRProposal(proposal, args.userId, args.autoUpdateCir ? "auto_applied" : "pending");
+  if (!stored) {
+    return { hasChanges: false, autoApplied: false, proposal: null };
+  }
+
+  if (!args.autoUpdateCir) {
+    return { hasChanges: true, autoApplied: false, proposal: stored };
+  }
+
+  const updatedCIR = await applyCIRProposal(
+    stored.id,
+    args.userId,
+    stored.proposal_data.proposedChanges.map((change) => change.field),
+    stored.proposal_data.newActions.length > 0,
+  );
+
+  if (supabaseAdmin) {
+    await supabaseAdmin
+      .from("cir_update_proposals")
+      .update({ status: "auto_applied", reviewed_at: new Date().toISOString() })
+      .eq("id", stored.id)
+      .eq("user_id", args.userId);
+  }
+
+  return { hasChanges: true, autoApplied: true, proposal: stored, updatedCIR };
 }
 
 export async function refreshCaseIntelligence(

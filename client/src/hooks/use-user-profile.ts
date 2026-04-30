@@ -25,6 +25,7 @@ export interface UserProfile {
   createdAt: string | null;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
+  autoUpdateCir: boolean;
 }
 
 export function firstNameFromDisplayName(input: string | null | undefined): string {
@@ -151,6 +152,8 @@ export function useUserProfile() {
         jurisdiction_state?: string | null;
         jurisdictionCounty?: string | null;
         jurisdiction_county?: string | null;
+        autoUpdateCir?: boolean | null;
+        auto_update_cir?: boolean | null;
       };
       return {
         id: json.id,
@@ -160,6 +163,7 @@ export function useUserProfile() {
         createdAt: json.createdAt ?? json.created_at ?? null,
         jurisdictionState: json.jurisdictionState ?? json.jurisdiction_state ?? null,
         jurisdictionCounty: json.jurisdictionCounty ?? json.jurisdiction_county ?? null,
+        autoUpdateCir: json.autoUpdateCir ?? json.auto_update_cir ?? false,
       };
     },
     staleTime: 30_000,

@@ -113,9 +113,19 @@ import {
   listCaseMemory,
   updateConversationGuidedState,
   upsertCaseMemory,
+  countConversationMessages,
+  markConversationCirAnalysisTriggered,
 } from "./services/cases";
 import { generateCaseIntelligence } from "./services/caseIntelligence";
-import { populateCaseIntelligence, refreshCaseIntelligence } from "./services/caseIntelligenceRecord";
+import {
+  populateCaseIntelligence,
+  refreshCaseIntelligence,
+  analyzeConversationForCIRUpdates,
+  applyCIRProposal,
+  getLatestPendingCIRProposal,
+  listCIRHistory,
+  runConversationCIRAnalysisWorkflow,
+} from "./services/caseIntelligenceRecord";
 import {
   createThread,
   appendMessage,
@@ -157,7 +167,7 @@ import {
   getRelatedQuestions,
   TOPIC_LABELS,
 } from "./services/publicQuestions";
-import { getUserProfile, setDisplayName, setWelcomeDismissed, resetOnboardingState, setProfileJurisdiction } from "./services/userProfile";
+import { getUserProfile, setDisplayName, setWelcomeDismissed, resetOnboardingState, setProfileJurisdiction, setAutoUpdateCIR } from "./services/userProfile";
 import {
   geocodeByCoordinatesSchema,
   geocodeByZipSchema,
@@ -1812,6 +1822,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.patch("/api/user-profile", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id as string;
+      const parsed = z.object({
+        auto_update_cir: z.boolean(),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid user profile payload." });
+      }
+
+      const result = await setAutoUpdateCIR(userId, parsed.data.auto_update_cir);
+      if (!result.ok) {
+        console.error("[user-profile] PATCH auto_update_cir save failed", {
+          reason: result.reason ?? "UNKNOWN",
+          supabaseCode: result.error?.code ?? null,
+          supabaseMessage: result.error?.message ?? null,
+          supabaseDetails: result.error?.details ?? null,
+          supabaseHint: result.error?.hint ?? null,
+          payload: { userId, auto_update_cir: parsed.data.auto_update_cir },
+        });
+        return res.status(500).json({
+          error: "We couldn't save your case intelligence preference right now. Please try again in a moment.",
+        });
+      }
+
+      const profile = await getUserProfile(userId);
+      return res.json(profile);
+    } catch (err) {
+      console.error("[user-profile] PATCH auto_update_cir error:", err);
+      return res.status(500).json({
+        error: "We couldn't save your case intelligence preference right now. Please try again in a moment.",
+      });
+    }
+  });
+
   app.get("/api/user/preferences", requireAuth, async (req, res) => {
     try {
       const userId = (req as any).user?.id as string;
@@ -2886,10 +2932,11 @@ GUEST DEMO RESPONSE GUIDANCE
         ...(jurisdictionMismatchPayload ?? {}),
       };
 
+      let proposalCreated = false;
+
       // ── Persist messages when using a case conversation ──────────────────────
       if (activeConversationId) {
-        // Fire-and-forget — do not let persistence failures block the response
-        Promise.all([
+        const [savedUserMessage, savedAssistantMessage] = await Promise.all([
           appendConversationMessage(activeConversationId, "user", userQuestion, {
             caseId: effectiveCaseId ?? null,
           }),
@@ -2905,7 +2952,14 @@ GUEST DEMO RESPONSE GUIDANCE
               structuredResponseJson: enrichedResponse as unknown as Record<string, unknown>,
             },
           ),
-        ]).catch((err) => console.error("[ask] Failed to persist case messages:", err));
+        ]);
+
+        if (!savedUserMessage || !savedAssistantMessage) {
+          console.error("[ask] Failed to persist case messages:", {
+            conversationId: activeConversationId,
+            caseId: effectiveCaseId ?? null,
+          });
+        }
 
         if (effectiveCaseId && userId && isGuidedConversationType(activeConversationType)) {
           refreshGuidedCaseMemory({
@@ -2916,6 +2970,37 @@ GUEST DEMO RESPONSE GUIDANCE
             assistantSummary: enrichedResponse.summary,
             existingMemories: resolvedCaseMemories,
           }).catch((err) => console.error("[guided] memory refresh failed:", err));
+        }
+
+        if (
+          effectiveCaseId &&
+          userId &&
+          activeConversationType === "general" &&
+          savedUserMessage &&
+          savedAssistantMessage
+        ) {
+          const messageCount = await countConversationMessages(activeConversationId, userId);
+          if (messageCount >= 3) {
+            const triggered = await markConversationCirAnalysisTriggered(activeConversationId, userId);
+            if (triggered) {
+              proposalCreated = true;
+              setImmediate(() => {
+                void (async () => {
+                  try {
+                    const profile = await getUserProfile(userId);
+                    await runConversationCIRAnalysisWorkflow({
+                      conversationId: activeConversationId!,
+                      caseId: effectiveCaseId,
+                      userId,
+                      autoUpdateCir: profile.autoUpdateCir,
+                    });
+                  } catch (err) {
+                    console.error("[case-intelligence] background conversation analysis error:", err);
+                  }
+                })();
+              });
+            }
+          }
         }
       }
 
@@ -2942,6 +3027,7 @@ GUEST DEMO RESPONSE GUIDANCE
       return res.json({
         ...enrichedResponse,
         intent,
+        ...(proposalCreated ? { proposal_created: true } : {}),
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       });
     } catch (err: any) {
@@ -6620,6 +6706,105 @@ Do not add facts not present in the provided evidence.`,
     } catch (err) {
       console.error("[case-intelligence] GET CIR error:", err);
       return res.status(500).json({ error: "Failed to load case intelligence." });
+    }
+  });
+
+  app.post("/api/cases/:caseId/intelligence/analyze-conversation", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const caseId = asString(req.params.caseId);
+    try {
+      const parsed = z.object({
+        conversationId: z.string().uuid(),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request body." });
+      }
+
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const profile = await getUserProfile(user.id);
+      const result = await runConversationCIRAnalysisWorkflow({
+        conversationId: parsed.data.conversationId,
+        caseId,
+        userId: user.id,
+        autoUpdateCir: profile.autoUpdateCir,
+      });
+
+      if (!result.hasChanges) {
+        return res.json({ hasChanges: false });
+      }
+
+      return res.json({
+        hasChanges: true,
+        autoApplied: result.autoApplied,
+        proposal: result.proposal?.proposal_data ?? null,
+      });
+    } catch (err) {
+      console.error("[case-intelligence] analyze conversation error:", err);
+      return res.status(500).json({ error: "Failed to analyze conversation for case updates." });
+    }
+  });
+
+  app.post("/api/cases/:caseId/intelligence/apply-proposal", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const caseId = asString(req.params.caseId);
+    try {
+      const parsed = z.object({
+        proposalId: z.string().uuid(),
+        acceptedFields: z.array(z.string()).default([]),
+        acceptedActions: z.boolean().default(false),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid proposal payload." });
+      }
+
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const intelligence = await applyCIRProposal(
+        parsed.data.proposalId,
+        user.id,
+        parsed.data.acceptedFields,
+        parsed.data.acceptedActions,
+      );
+
+      return res.json(intelligence);
+    } catch (err) {
+      console.error("[case-intelligence] apply proposal error:", err);
+      return res.status(500).json({ error: "Failed to apply case intelligence proposal." });
+    }
+  });
+
+  app.get("/api/cases/:caseId/intelligence/pending-proposals", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const caseId = asString(req.params.caseId);
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const proposal = await getLatestPendingCIRProposal(caseId, user.id);
+      return res.json({ proposal });
+    } catch (err) {
+      console.error("[case-intelligence] pending proposals error:", err);
+      return res.status(500).json({ error: "Failed to load pending CIR proposals." });
+    }
+  });
+
+  app.get("/api/cases/:caseId/intelligence/history", requireAuth, async (req, res) => {
+    const user = (req as any).user as { id: string };
+    const caseId = asString(req.params.caseId);
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const history = await listCIRHistory(caseId, user.id);
+      return res.json({ history });
+    } catch (err) {
+      console.error("[case-intelligence] history error:", err);
+      return res.status(500).json({ error: "Failed to load case intelligence history." });
     }
   });
 

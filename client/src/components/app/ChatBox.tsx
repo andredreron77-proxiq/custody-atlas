@@ -86,6 +86,7 @@ type AskAssistantResponse = AILegalResponse & {
   overageWarning?: boolean;
   questionsUsed?: number;
   questionsLimit?: number;
+  proposal_created?: boolean;
 } & JurisdictionMismatchInfo;
 
 type GuidedConversationMessageResponse = {
@@ -934,6 +935,7 @@ export function ChatBox({
   guidedProgressLabel,
   guidedMemoryChips = [],
 }: ChatBoxProps) {
+  const [, navigate] = useLocation();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -946,6 +948,7 @@ export function ChatBox({
     questionsUsed: number;
     questionsLimit: number;
   } | null>(null);
+  const [proposalCreated, setProposalCreated] = useState(false);
   const [savedToWorkspace, setSavedToWorkspace] = useState(!!initialThreadId || !!caseId);
   const [jurisdictionPreference, setJurisdictionPreference] = useState<"case" | "ask" | null>(null);
   const [dismissedMismatchMessageIds, setDismissedMismatchMessageIds] = useState<Set<string>>(new Set());
@@ -1209,6 +1212,10 @@ export function ChatBox({
             questionsUsed: data.questionsUsed,
             questionsLimit: data.questionsLimit,
           });
+        }
+
+        if (data.proposal_created && (forcedCaseId ?? caseId)) {
+          setProposalCreated(true);
         }
 
         setMessages((prev) => [...prev, {
@@ -1817,6 +1824,21 @@ export function ChatBox({
                 </p>
               </div>
             )}
+
+            {proposalCreated && caseId ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/cases/${caseId}/dashboard?review_proposal=true`)}
+                className="w-full rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-left transition-colors hover:bg-sky-100 dark:border-sky-800/50 dark:bg-sky-950/30 dark:hover:bg-sky-950/40"
+              >
+                <p className="text-sm font-medium text-sky-900 dark:text-sky-100">
+                  Atlas noticed something new in your conversation.
+                </p>
+                <p className="mt-1 text-sm text-sky-800 dark:text-sky-200">
+                  Review and update your case summary <span aria-hidden="true">→</span>
+                </p>
+              </button>
+            ) : null}
 
             <div className="text-xs text-muted-foreground" data-testid="label-answering-scope">
               {answeringScopeLabel ?? "Answering from: General workspace (no case selected)"}

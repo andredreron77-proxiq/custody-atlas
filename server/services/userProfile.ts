@@ -7,6 +7,7 @@ export interface UserProfile {
   createdAt: string | null;
   jurisdictionState: string | null;
   jurisdictionCounty: string | null;
+  autoUpdateCir: boolean;
 }
 
 export interface SetDisplayNameResult {
@@ -55,6 +56,17 @@ export interface ResetOnboardingStateResult {
   };
 }
 
+export interface SetAutoUpdateCIRResult {
+  ok: boolean;
+  reason?: "SUPABASE_NOT_CONFIGURED" | "SUPABASE_ERROR";
+  error?: {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+  };
+}
+
 export async function getUserProfile(userId: string): Promise<UserProfile> {
   if (!supabaseAdmin) {
     return {
@@ -64,13 +76,14 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
       createdAt: null,
       jurisdictionState: null,
       jurisdictionCounty: null,
+      autoUpdateCir: false,
     };
   }
 
   try {
     const { data } = await supabaseAdmin
       .from("user_profiles")
-      .select("id, display_name, welcome_dismissed_at, created_at, jurisdiction_state, jurisdiction_county")
+      .select("id, display_name, welcome_dismissed_at, created_at, jurisdiction_state, jurisdiction_county, auto_update_cir")
       .eq("id", userId)
       .maybeSingle();
 
@@ -81,6 +94,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
       createdAt: data?.created_at ?? null,
       jurisdictionState: data?.jurisdiction_state ?? null,
       jurisdictionCounty: data?.jurisdiction_county ?? null,
+      autoUpdateCir: data?.auto_update_cir ?? false,
     };
   } catch {
     return {
@@ -90,6 +104,51 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
       createdAt: null,
       jurisdictionState: null,
       jurisdictionCounty: null,
+      autoUpdateCir: false,
+    };
+  }
+}
+
+export async function setAutoUpdateCIR(userId: string, autoUpdateCir: boolean): Promise<SetAutoUpdateCIRResult> {
+  if (!supabaseAdmin) {
+    return { ok: false, reason: "SUPABASE_NOT_CONFIGURED" };
+  }
+
+  try {
+    const { error } = await supabaseAdmin
+      .from("user_profiles")
+      .upsert(
+        {
+          id: userId,
+          auto_update_cir: autoUpdateCir,
+        },
+        { onConflict: "id" },
+      );
+
+    if (error) {
+      return {
+        ok: false,
+        reason: "SUPABASE_ERROR",
+        error: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        },
+      };
+    }
+
+    return { ok: true };
+  } catch (error: any) {
+    return {
+      ok: false,
+      reason: "SUPABASE_ERROR",
+      error: {
+        code: error?.code,
+        message: error?.message ?? "Unexpected error while saving CIR preference.",
+        details: error?.details,
+        hint: error?.hint,
+      },
     };
   }
 }
