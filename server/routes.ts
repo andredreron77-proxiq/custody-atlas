@@ -6914,6 +6914,58 @@ Do not add facts not present in the provided evidence.`,
         })),
         { role: "user" as const, content: parsed.data.content },
       ];
+      const normalizeGuidedAssistantResponse = (response: string) => response.replace(/\r\n/g, "\n").trim();
+      const evaluateGuidedCIRTrigger = async (args: {
+        conversationId: string;
+        caseId: string;
+        userId: string;
+        postSnapshotTurn: number;
+      }): Promise<{ proposalCreated: boolean; proposalId?: string }> => {
+        console.log(`[CIR] Checking trigger for conversation ${args.conversationId}`);
+        const latestConversationRecord = await getConversationById(args.conversationId, args.userId);
+        const messageCount = await countConversationMessages(args.conversationId, args.userId);
+        const alreadyTriggered = Boolean(latestConversationRecord?.cirAnalysisTriggered);
+
+        console.log(`[CIR] Message count: ${messageCount}`);
+        console.log(`[CIR] Already triggered: ${alreadyTriggered}`);
+        console.log(`[CIR] CaseId present: ${Boolean(args.caseId)}`);
+        console.log("[CIR] Guided post-snapshot: true");
+        console.log(`[CIR] Post-snapshot turn: ${args.postSnapshotTurn}`);
+
+        if (args.postSnapshotTurn >= 3 && !alreadyTriggered) {
+          const triggered = await markConversationCirAnalysisTriggered(args.conversationId, args.userId);
+          console.log(`[CIR] Marked triggered: ${triggered}`);
+          if (triggered) {
+            console.log("[CIR] Triggering analysis...");
+            const profile = await getUserProfile(args.userId);
+            const result = await runConversationCIRAnalysisWorkflow({
+              conversationId: args.conversationId,
+              caseId: args.caseId,
+              userId: args.userId,
+              autoUpdateCir: profile.autoUpdateCir,
+            });
+            console.log(`[CIR] Analysis complete, has_changes: ${result.hasChanges}`);
+            if (result.proposal?.id) {
+              console.log(`[CIR] Proposal created: ${result.proposal.id}`);
+            }
+            return {
+              proposalCreated: result.hasChanges && !result.autoApplied,
+              proposalId: !result.autoApplied ? result.proposal?.id : undefined,
+            };
+          }
+        } else if (args.postSnapshotTurn >= 3) {
+          const pendingProposal = await getLatestPendingCIRProposal(args.caseId, args.userId);
+          if (pendingProposal?.id) {
+            console.log(`[CIR] Existing pending proposal surfaced: ${pendingProposal.id}`);
+          }
+          return {
+            proposalCreated: Boolean(pendingProposal),
+            proposalId: pendingProposal?.id,
+          };
+        }
+
+        return { proposalCreated: false };
+      };
 
       if (conversation.threadType === "guided_respond_filing") {
         const currentState = normalizeRespondToFilingState(conversation.guidedState);
@@ -6939,7 +6991,7 @@ Do not add facts not present in the provided evidence.`,
             return res.status(500).json({ error: "No response received from AI service." });
           }
 
-          const cleanedResponse = rawResponse;
+          const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
           const [savedUserMessage, savedAssistantMessage] = await Promise.all([
             appendConversationMessage(conversationId, "user", parsed.data.content, {
               caseId: caseRecord.id,
@@ -6961,6 +7013,12 @@ Do not add facts not present in the provided evidence.`,
             ...currentState,
             post_snapshot_turn: nextPostSnapshotTurn,
           } as unknown as Record<string, unknown>);
+          const cirTriggerResult = await evaluateGuidedCIRTrigger({
+            conversationId,
+            caseId: caseRecord.id,
+            userId: user.id,
+            postSnapshotTurn: nextPostSnapshotTurn,
+          });
 
           refreshGuidedCaseMemory({
             userId: user.id,
@@ -6989,6 +7047,8 @@ Do not add facts not present in the provided evidence.`,
               ...savedAssistantMessage,
               content: cleanedResponse,
             },
+            ...(cirTriggerResult.proposalCreated ? { proposal_created: true } : {}),
+            ...(cirTriggerResult.proposalId ? { proposal_id: cirTriggerResult.proposalId } : {}),
           });
         }
 
@@ -7005,7 +7065,7 @@ Do not add facts not present in the provided evidence.`,
           return res.status(500).json({ error: "No response received from AI service." });
         }
 
-        const cleanedResponse = rawResponse;
+        const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
         const nextState = normalizeRespondToFilingState(await extractRespondToFilingStateFromConversation([
           ...priorMessages.map((message) => ({
             role: message.role,
@@ -7117,7 +7177,7 @@ Do not add facts not present in the provided evidence.`,
             return res.status(500).json({ error: "No response received from AI service." });
           }
 
-          const cleanedResponse = rawResponse;
+          const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
           const [savedUserMessage, savedAssistantMessage] = await Promise.all([
             appendConversationMessage(conversationId, "user", parsed.data.content, {
               caseId: caseRecord.id,
@@ -7139,6 +7199,12 @@ Do not add facts not present in the provided evidence.`,
             ...currentState,
             post_snapshot_turn: nextPostSnapshotTurn,
           } as unknown as Record<string, unknown>);
+          const cirTriggerResult = await evaluateGuidedCIRTrigger({
+            conversationId,
+            caseId: caseRecord.id,
+            userId: user.id,
+            postSnapshotTurn: nextPostSnapshotTurn,
+          });
 
           refreshGuidedCaseMemory({
             userId: user.id,
@@ -7167,6 +7233,8 @@ Do not add facts not present in the provided evidence.`,
               ...savedAssistantMessage,
               content: cleanedResponse,
             },
+            ...(cirTriggerResult.proposalCreated ? { proposal_created: true } : {}),
+            ...(cirTriggerResult.proposalId ? { proposal_id: cirTriggerResult.proposalId } : {}),
           });
         }
 
@@ -7183,7 +7251,7 @@ Do not add facts not present in the provided evidence.`,
           return res.status(500).json({ error: "No response received from AI service." });
         }
 
-        const cleanedResponse = rawResponse;
+        const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
         const nextState = normalizeMoreTimeState(await extractMoreTimeStateFromConversation([
           ...priorMessages.map((message) => ({
             role: message.role,
@@ -7295,7 +7363,7 @@ Do not add facts not present in the provided evidence.`,
             return res.status(500).json({ error: "No response received from AI service." });
           }
 
-          const cleanedResponse = rawResponse;
+          const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
           const [savedUserMessage, savedAssistantMessage] = await Promise.all([
             appendConversationMessage(conversationId, "user", parsed.data.content, {
               caseId: caseRecord.id,
@@ -7317,6 +7385,12 @@ Do not add facts not present in the provided evidence.`,
             ...currentState,
             post_snapshot_turn: nextPostSnapshotTurn,
           } as unknown as Record<string, unknown>);
+          const cirTriggerResult = await evaluateGuidedCIRTrigger({
+            conversationId,
+            caseId: caseRecord.id,
+            userId: user.id,
+            postSnapshotTurn: nextPostSnapshotTurn,
+          });
 
           refreshGuidedCaseMemory({
             userId: user.id,
@@ -7345,6 +7419,8 @@ Do not add facts not present in the provided evidence.`,
               ...savedAssistantMessage,
               content: cleanedResponse,
             },
+            ...(cirTriggerResult.proposalCreated ? { proposal_created: true } : {}),
+            ...(cirTriggerResult.proposalId ? { proposal_id: cirTriggerResult.proposalId } : {}),
           });
         }
 
@@ -7361,7 +7437,7 @@ Do not add facts not present in the provided evidence.`,
           return res.status(500).json({ error: "No response received from AI service." });
         }
 
-        const cleanedResponse = rawResponse;
+        const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
         const nextState = normalizeFiguringItOutState(await extractFiguringItOutStateFromConversation([
           ...priorMessages.map((message) => ({
             role: message.role,
@@ -7484,7 +7560,7 @@ Do not add facts not present in the provided evidence.`,
           return res.status(500).json({ error: "No response received from AI service." });
         }
 
-        const cleanedResponse = rawResponse;
+        const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
         const [savedUserMessage, savedAssistantMessage] = await Promise.all([
           appendConversationMessage(conversationId, "user", parsed.data.content, {
             caseId: caseRecord.id,
@@ -7506,6 +7582,12 @@ Do not add facts not present in the provided evidence.`,
           ...currentState,
           post_snapshot_turn: nextPostSnapshotTurn,
         } as unknown as Record<string, unknown>);
+        const cirTriggerResult = await evaluateGuidedCIRTrigger({
+          conversationId,
+          caseId: caseRecord.id,
+          userId: user.id,
+          postSnapshotTurn: nextPostSnapshotTurn,
+        });
 
         refreshGuidedCaseMemory({
           userId: user.id,
@@ -7534,6 +7616,8 @@ Do not add facts not present in the provided evidence.`,
             ...savedAssistantMessage,
             content: cleanedResponse,
           },
+          ...(cirTriggerResult.proposalCreated ? { proposal_created: true } : {}),
+          ...(cirTriggerResult.proposalId ? { proposal_id: cirTriggerResult.proposalId } : {}),
         });
       }
 
@@ -7554,7 +7638,7 @@ Do not add facts not present in the provided evidence.`,
         return res.status(500).json({ error: "No response received from AI service." });
       }
 
-      const cleanedResponse = rawResponse;
+      const cleanedResponse = normalizeGuidedAssistantResponse(rawResponse);
       const nextState = normalizeHearingPrepState(await extractWaypointStateFromConversation([
         ...priorMessages.map((message) => ({
           role: message.role,

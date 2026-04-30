@@ -105,6 +105,8 @@ type GuidedConversationMessageResponse = {
   triggerSnapshot?: boolean;
   snapshotState?: Record<string, unknown>;
   actions?: string[];
+  proposal_created?: boolean;
+  proposal_id?: string;
 };
 
 type GuidedMessageMetadata = {
@@ -1186,6 +1188,9 @@ export function ChatBox({
 
       if (isGuidedMessageRoute) {
         const data = rawData as GuidedConversationMessageResponse;
+        if (data.proposal_created && (forcedCaseId ?? caseId)) {
+          setProposalCreated(true);
+        }
         setMessages((prev) => [...prev, {
           role: "assistant",
           content: data.message.content ?? data.message.messageText ?? "",
