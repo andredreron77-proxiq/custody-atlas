@@ -2975,19 +2975,38 @@ GUEST DEMO RESPONSE GUIDANCE
         if (
           effectiveCaseId &&
           userId &&
-          activeConversationType === "general" &&
           savedUserMessage &&
           savedAssistantMessage
         ) {
           console.log(`[CIR] Checking trigger for conversation ${activeConversationId}`);
-          const messageCount = await countConversationMessages(activeConversationId, userId);
           const latestConversationRecord = await getConversationById(activeConversationId, userId);
+          const messageCount = await countConversationMessages(activeConversationId, userId);
           const alreadyTriggered = Boolean(latestConversationRecord?.cirAnalysisTriggered);
+          const guidedState = latestConversationRecord?.guidedState;
+          const isPostSnapshotGuidedConversation = Boolean(
+            activeConversationType?.startsWith("guided_")
+            && guidedState
+            && typeof guidedState === "object"
+            && guidedState.snapshot_complete === true,
+          );
+          const postSnapshotTurn = isPostSnapshotGuidedConversation
+            && typeof guidedState?.post_snapshot_turn === "number"
+            && Number.isFinite(guidedState.post_snapshot_turn)
+            ? guidedState.post_snapshot_turn
+            : 0;
+          const shouldEvaluateCirTrigger =
+            activeConversationType === "general" || isPostSnapshotGuidedConversation;
+          const hasReachedTriggerThreshold = activeConversationType === "general"
+            ? messageCount >= 3
+            : postSnapshotTurn >= 3;
+
           console.log(`[CIR] Message count: ${messageCount}`);
           console.log(`[CIR] Already triggered: ${alreadyTriggered}`);
           console.log(`[CIR] CaseId present: ${Boolean(effectiveCaseId)}`);
+          console.log(`[CIR] Guided post-snapshot: ${isPostSnapshotGuidedConversation}`);
+          console.log(`[CIR] Post-snapshot turn: ${postSnapshotTurn}`);
 
-          if (messageCount >= 3 && !alreadyTriggered) {
+          if (shouldEvaluateCirTrigger && hasReachedTriggerThreshold && !alreadyTriggered) {
             const triggered = await markConversationCirAnalysisTriggered(activeConversationId, userId);
             console.log(`[CIR] Marked triggered: ${triggered}`);
             if (triggered) {
@@ -3006,7 +3025,7 @@ GUEST DEMO RESPONSE GUIDANCE
               proposalCreated = result.hasChanges && !result.autoApplied;
               proposalId = !result.autoApplied ? result.proposal?.id : undefined;
             }
-          } else if (messageCount >= 3) {
+          } else if (shouldEvaluateCirTrigger && hasReachedTriggerThreshold) {
             const pendingProposal = await getLatestPendingCIRProposal(effectiveCaseId, userId);
             proposalCreated = Boolean(pendingProposal);
             proposalId = pendingProposal?.id;
