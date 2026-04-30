@@ -614,7 +614,9 @@ export async function analyzeConversationForCIRUpdates(
   caseId: string,
   userId: string,
 ): Promise<CIRUpdateProposal | null> {
+  console.log(`[CIR] Loading current CIR for case ${caseId}`);
   const currentCIR = await populateCaseIntelligence(caseId, userId);
+  console.log(`[CIR] Loading messages for conversation ${conversationId}`);
   const recentMessages = await getRecentConversationMessages(conversationId, 20);
 
   if (recentMessages.length === 0) return null;
@@ -623,6 +625,7 @@ export async function analyzeConversationForCIRUpdates(
     .map((message) => `${message.role.toUpperCase()}: ${message.messageText}`)
     .join("\n");
 
+  console.log("[CIR] Calling gpt-4o-mini for analysis...");
   const completion = await getOpenAIClient().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -662,6 +665,7 @@ export async function analyzeConversationForCIRUpdates(
   });
 
   const raw = completion.choices[0]?.message?.content?.trim();
+  console.log("[CIR] Raw response:", raw ?? null);
   if (!raw) return null;
 
   let parsed: Record<string, unknown>;
@@ -672,6 +676,7 @@ export async function analyzeConversationForCIRUpdates(
   }
 
   const hasChanges = parsed.has_changes === true;
+  console.log("[CIR] has_changes:", hasChanges);
   if (!hasChanges) return null;
 
   const proposedChanges = Array.isArray(parsed.proposed_changes)
@@ -692,6 +697,7 @@ export async function analyzeConversationForCIRUpdates(
       })).filter((action) => action.text.length > 0)
     : [];
 
+  console.log("[CIR] proposed_changes count:", proposedChanges.length);
   if (proposedChanges.length === 0 && newActions.length === 0) return null;
 
   return {
@@ -723,6 +729,7 @@ export async function storeCIRProposal(
     .single();
 
   if (error || !data) {
+    console.error("[CIR] Failed to insert cir_update_proposals row:", error);
     throw new Error(error?.message ?? "Failed to store CIR proposal.");
   }
 

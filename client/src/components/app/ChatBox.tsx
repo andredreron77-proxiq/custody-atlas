@@ -87,6 +87,7 @@ type AskAssistantResponse = AILegalResponse & {
   questionsUsed?: number;
   questionsLimit?: number;
   proposal_created?: boolean;
+  proposal_id?: string;
 } & JurisdictionMismatchInfo;
 
 type GuidedConversationMessageResponse = {

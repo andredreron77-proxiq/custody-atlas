@@ -448,9 +448,12 @@ export default function CaseDashboardPage() {
     queryKey: ["/api/cases", caseId, "intelligence", "pending-proposals"],
     enabled: Boolean(caseId),
     queryFn: async () => {
+      console.log("[CIR] Fetching pending proposals for case dashboard", { caseId });
       const res = await apiRequestRaw("GET", `/api/cases/${caseId}/intelligence/pending-proposals`);
       if (!res.ok) throw new Error("Failed to load pending case intelligence updates.");
-      return res.json();
+      const json = await res.json();
+      console.log("[CIR] Pending proposals response", json);
+      return json;
     },
   });
   const historyQuery = useQuery<HistoryResponse>({

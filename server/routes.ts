@@ -120,7 +120,6 @@ import { generateCaseIntelligence } from "./services/caseIntelligence";
 import {
   populateCaseIntelligence,
   refreshCaseIntelligence,
-  analyzeConversationForCIRUpdates,
   applyCIRProposal,
   getLatestPendingCIRProposal,
   listCIRHistory,
@@ -2933,6 +2932,7 @@ GUEST DEMO RESPONSE GUIDANCE
       };
 
       let proposalCreated = false;
+      let proposalId: string | undefined;
 
       // ── Persist messages when using a case conversation ──────────────────────
       if (activeConversationId) {
@@ -2979,26 +2979,39 @@ GUEST DEMO RESPONSE GUIDANCE
           savedUserMessage &&
           savedAssistantMessage
         ) {
+          console.log(`[CIR] Checking trigger for conversation ${activeConversationId}`);
           const messageCount = await countConversationMessages(activeConversationId, userId);
-          if (messageCount >= 3) {
+          const latestConversationRecord = await getConversationById(activeConversationId, userId);
+          const alreadyTriggered = Boolean(latestConversationRecord?.cirAnalysisTriggered);
+          console.log(`[CIR] Message count: ${messageCount}`);
+          console.log(`[CIR] Already triggered: ${alreadyTriggered}`);
+          console.log(`[CIR] CaseId present: ${Boolean(effectiveCaseId)}`);
+
+          if (messageCount >= 3 && !alreadyTriggered) {
             const triggered = await markConversationCirAnalysisTriggered(activeConversationId, userId);
+            console.log(`[CIR] Marked triggered: ${triggered}`);
             if (triggered) {
-              proposalCreated = true;
-              setImmediate(() => {
-                void (async () => {
-                  try {
-                    const profile = await getUserProfile(userId);
-                    await runConversationCIRAnalysisWorkflow({
-                      conversationId: activeConversationId!,
-                      caseId: effectiveCaseId,
-                      userId,
-                      autoUpdateCir: profile.autoUpdateCir,
-                    });
-                  } catch (err) {
-                    console.error("[case-intelligence] background conversation analysis error:", err);
-                  }
-                })();
+              console.log("[CIR] Triggering analysis...");
+              const profile = await getUserProfile(userId);
+              const result = await runConversationCIRAnalysisWorkflow({
+                conversationId: activeConversationId,
+                caseId: effectiveCaseId,
+                userId,
+                autoUpdateCir: profile.autoUpdateCir,
               });
+              console.log(`[CIR] Analysis complete, has_changes: ${result.hasChanges}`);
+              if (result.proposal?.id) {
+                console.log(`[CIR] Proposal created: ${result.proposal.id}`);
+              }
+              proposalCreated = result.hasChanges && !result.autoApplied;
+              proposalId = !result.autoApplied ? result.proposal?.id : undefined;
+            }
+          } else if (messageCount >= 3) {
+            const pendingProposal = await getLatestPendingCIRProposal(effectiveCaseId, userId);
+            proposalCreated = Boolean(pendingProposal);
+            proposalId = pendingProposal?.id;
+            if (pendingProposal?.id) {
+              console.log(`[CIR] Existing pending proposal surfaced: ${pendingProposal.id}`);
             }
           }
         }
@@ -3028,6 +3041,7 @@ GUEST DEMO RESPONSE GUIDANCE
         ...enrichedResponse,
         intent,
         ...(proposalCreated ? { proposal_created: true } : {}),
+        ...(proposalId ? { proposal_id: proposalId } : {}),
         ...(activeConversationId ? { conversationId: activeConversationId } : {}),
       });
     } catch (err: any) {
