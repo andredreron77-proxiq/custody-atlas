@@ -3827,11 +3827,22 @@ CRITICAL RULES:
 
       if (documentId) {
         ownedDocument = await getDocumentById(documentId, user.id);
+        console.log("[ask-document] loaded document usage", JSON.stringify({
+          documentId,
+          userId: user.id,
+          tier: user?.tier ?? "free",
+          docQuestionsUsed: ownedDocument?.docQuestionsUsed ?? null,
+        }));
         if (!ownedDocument) {
           return res.status(404).json({ error: "Document not found." });
         }
 
         if (!isProTier && ownedDocument.docQuestionsUsed >= 3) {
+          console.log("[ask-document] blocking due to free-tier document question limit", JSON.stringify({
+            documentId,
+            userId: user.id,
+            docQuestionsUsed: ownedDocument.docQuestionsUsed,
+          }));
           return res.status(429).json({
             error: "You've used your 3 free questions for this document. Upgrade to Pro to keep asking — 200 questions/month, unlimited documents.",
             code: "DOCUMENT_QUESTION_LIMIT_REACHED",
@@ -3857,11 +3868,14 @@ Write at an 8th-to-10th grade level. Use short sentences and plain everyday word
 
 ROLE:
 - You are NOT a lawyer. Do not give specific legal advice.
-- Answer the user's question using the document summary and extracted text as your primary source.
+- Answer the user's question using the document text, extracted facts, and document summary as your primary source.
 - If the answer is not clearly supported by the document, say so directly ("The document does not specifically address this").
 - Use the user's jurisdiction if provided, but focus primarily on the document's content.
 - Be concise, accurate, and compassionate.
 - Always end with a short disclaimer encouraging verification with a licensed attorney.
+- Never answer from general custody knowledge when the uploaded document provides relevant facts.
+- If the answer is in the document, explicitly say "The document says..." and then cite the exact clause, sentence, or fact that supports your answer.
+- Prefer exact wording from the document over paraphrase whenever the wording matters.
 ${docFactQuestion ? `
 FACT QUESTION RULES (this user is asking for a specific value):
 - Check the KNOWN FACTS section first. If the value is listed there, state it directly and exactly at the start of your answer.
@@ -3888,7 +3902,7 @@ POSSIBLE IMPLICATIONS: ${documentAnalysis.possible_implications.join(" | ")}
 ${extractedFactsBlock ? `\n${extractedFactsBlock}` : ""}`;
 
       const rawTextContext = extractedText
-        ? `\n\nEXTRACTED DOCUMENT TEXT (first 6000 characters):\n${extractedText.slice(0, 6000)}`
+        ? `\n\nEXTRACTED DOCUMENT TEXT (first 12000 characters):\n${extractedText.slice(0, 12000)}`
         : "";
 
       const userPrompt = `${jurisdictionLine}
@@ -3937,7 +3951,17 @@ ${userQuestion}`;
 
       let nextDocumentQuestionsUsed = ownedDocument?.docQuestionsUsed ?? null;
       if (documentId) {
+        console.log("[ask-document] incrementing document question usage", JSON.stringify({
+          documentId,
+          userId: user.id,
+          priorCount: ownedDocument?.docQuestionsUsed ?? null,
+        }));
         nextDocumentQuestionsUsed = await incrementDocumentQuestionUsage(documentId, user.id);
+        console.log("[ask-document] incremented document question usage", JSON.stringify({
+          documentId,
+          userId: user.id,
+          nextDocumentQuestionsUsed,
+        }));
       }
 
       return res.json({

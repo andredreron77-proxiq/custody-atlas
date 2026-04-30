@@ -326,6 +326,7 @@ function DocumentQASection({ documentId, result, jurisdiction }: DocumentQASecti
   const lastAssistantDocRef = useRef<HTMLDivElement>(null);
   const docJustSubmitted = useRef(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: usage } = useQuery<UsageState>({
     queryKey: [...USAGE_QUERY_KEY, "document", documentId ?? "none"],
     enabled: !!documentId,
@@ -427,6 +428,9 @@ function DocumentQASection({ documentId, result, jurisdiction }: DocumentQASecti
         if (typeof data?.error === "string") {
           setQaError(data.error);
         }
+        if (documentId) {
+          queryClient.invalidateQueries({ queryKey: [...USAGE_QUERY_KEY, "document", documentId] });
+        }
         setQaMessages((prev) => prev.slice(0, -1));
         return;
       }
@@ -435,10 +439,22 @@ function DocumentQASection({ documentId, result, jurisdiction }: DocumentQASecti
       }
 
       const responseData = data as DocumentQAResponse;
+      const reachedLimitFromResponse =
+        usage?.tier === "free" &&
+        responseData.documentQuestionsLimit !== null &&
+        typeof responseData.documentQuestionsUsed === "number" &&
+        responseData.documentQuestionsLimit !== undefined &&
+        responseData.documentQuestionsUsed >= responseData.documentQuestionsLimit;
       setQaMessages((prev) => [
         ...prev,
         { role: "assistant", content: responseData.answer, response: responseData },
       ]);
+      if (documentId) {
+        queryClient.invalidateQueries({ queryKey: [...USAGE_QUERY_KEY, "document", documentId] });
+      }
+      if (reachedLimitFromResponse) {
+        setQaLimitReached(true);
+      }
     } catch (err: any) {
       const message = err?.message || "Failed to get an answer. Please try again.";
       setQaError(message);

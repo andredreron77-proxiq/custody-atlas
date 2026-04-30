@@ -214,6 +214,14 @@ export function isCanonicalDocument(
 }
 
 function mapRow(r: any): SavedDocument {
+  const analysisJson = (r.analysis_json ?? {}) as Record<string, unknown>;
+  const analysisJsonDocQuestionsUsed =
+    typeof analysisJson.doc_questions_used === "number"
+      ? analysisJson.doc_questions_used
+      : typeof analysisJson.document_questions_used === "number"
+        ? analysisJson.document_questions_used
+        : 0;
+
   return {
     id:            r.id,
     userId:        r.user_id,
@@ -248,9 +256,12 @@ function mapRow(r: any): SavedDocument {
     storagePath:   r.storage_path ?? null,
     mimeType:      r.mime_type ?? "application/octet-stream",
     pageCount:     r.page_count ?? 1,
-    docQuestionsUsed: typeof r.doc_questions_used === "number" ? r.doc_questions_used : 0,
+    docQuestionsUsed:
+      typeof r.doc_questions_used === "number"
+        ? r.doc_questions_used
+        : analysisJsonDocQuestionsUsed,
     docType:       (r.doc_type ?? "other") as DocumentType,
-    analysisJson:  r.analysis_json ?? {},
+    analysisJson,
     extractedText: r.extracted_text ?? "",
     createdAt:     r.created_at,
   };
@@ -1021,21 +1032,73 @@ export async function incrementDocumentQuestionUsage(
   try {
     const { data: existing, error: readError } = await supabaseAdmin
       .from("documents")
-      .select("doc_questions_used")
+      .select("doc_questions_used, analysis_json")
       .eq("id", documentId)
       .eq("user_id", userId)
       .single();
 
     if (readError || !existing) return null;
 
-    const nextCount = (typeof existing.doc_questions_used === "number" ? existing.doc_questions_used : 0) + 1;
+    const analysisJson = ((existing.analysis_json ?? {}) as Record<string, unknown>);
+    const currentCount =
+      typeof existing.doc_questions_used === "number"
+        ? existing.doc_questions_used
+        : typeof analysisJson.doc_questions_used === "number"
+          ? analysisJson.doc_questions_used
+          : typeof analysisJson.document_questions_used === "number"
+            ? analysisJson.document_questions_used
+            : 0;
+    const nextCount = currentCount + 1;
+    console.log("[documents] incrementDocumentQuestionUsage read", JSON.stringify({
+      documentId,
+      userId,
+      currentCount,
+      hasColumnValue: typeof existing.doc_questions_used === "number",
+    }));
+
+    const nextAnalysisJson = {
+      ...analysisJson,
+      doc_questions_used: nextCount,
+      document_questions_used: nextCount,
+    };
+
     const { error: updateError } = await supabaseAdmin
       .from("documents")
-      .update({ doc_questions_used: nextCount })
+      .update({
+        doc_questions_used: nextCount,
+        analysis_json: nextAnalysisJson,
+      })
       .eq("id", documentId)
       .eq("user_id", userId);
 
-    if (updateError) return null;
+    if (updateError) {
+      const normalized = String(updateError.message ?? "").toLowerCase();
+      if (normalized.includes("doc_questions_used") && normalized.includes("does not exist")) {
+        console.warn("[documents] incrementDocumentQuestionUsage column missing, falling back to analysis_json", JSON.stringify({
+          documentId,
+          userId,
+          nextCount,
+        }));
+        const { error: fallbackError } = await supabaseAdmin
+          .from("documents")
+          .update({ analysis_json: nextAnalysisJson })
+          .eq("id", documentId)
+          .eq("user_id", userId);
+        if (fallbackError) return null;
+        console.log("[documents] incrementDocumentQuestionUsage wrote fallback", JSON.stringify({
+          documentId,
+          userId,
+          nextCount,
+        }));
+        return nextCount;
+      }
+      return null;
+    }
+    console.log("[documents] incrementDocumentQuestionUsage wrote", JSON.stringify({
+      documentId,
+      userId,
+      nextCount,
+    }));
     return nextCount;
   } catch (err) {
     console.error("[documents] incrementDocumentQuestionUsage exception:", err);
