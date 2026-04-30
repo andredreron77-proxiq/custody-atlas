@@ -87,19 +87,61 @@ type CaseDashboardPayload = {
 type IntelligenceSeverity = "low" | "medium" | "high";
 type IntelligenceDateKind = "hearing" | "deadline" | "filing" | "service" | "appointment" | "child_birthdate" | "other";
 
-type CaseIntelligencePayload = {
-  intelligence: {
-    what_matters_now_json?: unknown;
-    risks_json?: unknown;
-    actions_json?: unknown;
-    key_dates_json?: unknown;
-  } | null;
+type CirFactSource = "conversation" | "document" | "user_edit";
+
+type CaseIntelligenceFact = {
+  value: string | boolean | null;
+  source: CirFactSource;
+  source_detail: string;
+  confidence: "high" | "medium" | "low";
+  previous_value: string | boolean | null;
+  updated_at: string;
+};
+
+type CaseIntelligenceActionRecord = {
+  text: string;
+  source: "conversation" | "document";
+  source_detail: string;
+  created_at: string;
+};
+
+type CaseIntelligenceRecordPayload = {
+  case_id: string;
+  user_id: string;
+  intelligence_data: {
+    facts: Record<string, CaseIntelligenceFact>;
+    actions: CaseIntelligenceActionRecord[];
+    flow_type: string | null;
+    snapshot_saved_at: string | null;
+    documents_applied: Array<{
+      document_id: string;
+      file_name: string;
+      applied_at: string;
+      facts_extracted: string[];
+    }>;
+  };
+  version: number;
+  change_log: Array<{
+    version: number;
+    timestamp: string;
+    trigger: "snapshot_save" | "document_upload" | "conversation_refresh" | "user_edit";
+    changes: Array<{
+      field: string;
+      old_value: string | null;
+      new_value: string | null;
+      source: string;
+    }>;
+  }>;
+  last_refreshed_at: string;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
 type IntelligenceWhatMattersNow = {
   top_priority: string;
   reason: string;
   urgency: string;
+  sourceLabel: string;
 };
 
 type IntelligenceRisk = {
@@ -118,6 +160,12 @@ type IntelligenceKeyDate = {
   raw: string;
   parsedDate: string | null;
   kind: IntelligenceDateKind;
+};
+
+type CirKeyDate = IntelligenceKeyDate & {
+  label: string;
+  sourceLabel: string;
+  subLabel?: string;
 };
 
 function sentence(input: string, fallback: string): string {
@@ -246,6 +294,23 @@ function formatSnapshotHearingType(value?: string | null): string {
   return labels[value] ?? value.replace(/_/g, " ");
 }
 
+function cirSourceLabel(source: CirFactSource | "document" | "conversation"): string {
+  if (source === "document") return "Based on your court document";
+  if (source === "conversation") return "Based on your conversation with Atlas";
+  return "Based on your saved case details";
+}
+
+function getFactValue(
+  facts: Record<string, CaseIntelligenceFact> | undefined,
+  key: string,
+): CaseIntelligenceFact | null {
+  if (!facts) return null;
+  const fact = facts[key];
+  return fact && (typeof fact.value === "string" ? fact.value.trim().length > 0 : fact.value !== null)
+    ? fact
+    : null;
+}
+
 export default function CaseDashboardPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const [, navigate] = useLocation();
@@ -269,50 +334,55 @@ export default function CaseDashboardPage() {
       return res.json();
     },
   });
-  const intelligenceQuery = useQuery<CaseIntelligencePayload>({
+  const intelligenceQuery = useQuery<CaseIntelligenceRecordPayload>({
     queryKey: ["/api/cases", caseId, "intelligence"],
     enabled: Boolean(caseId),
     queryFn: async () => {
-      const res = await apiRequestRaw("POST", `/api/cases/${caseId}/intelligence`);
+      const res = await apiRequestRaw("GET", `/api/cases/${caseId}/intelligence`);
       if (!res.ok) throw new Error("Failed to load case intelligence.");
+      return res.json();
+    },
+  });
+  const legacyIntelligenceQuery = useQuery<{ intelligence: { risks_json?: unknown } | null }>({
+    queryKey: ["/api/cases", caseId, "intelligence-legacy"],
+    enabled: Boolean(caseId),
+    queryFn: async () => {
+      const res = await apiRequestRaw("POST", `/api/cases/${caseId}/intelligence`);
+      if (!res.ok) throw new Error("Failed to load legacy case intelligence.");
       return res.json();
     },
   });
 
   const data = dashboardQuery.data;
-  const intelligenceRecord = intelligenceQuery.data?.intelligence;
+  const cirRecord = intelligenceQuery.data;
+  const cirFacts = cirRecord?.intelligence_data?.facts;
+  const intelligenceRecord = legacyIntelligenceQuery.data?.intelligence;
   const intelligenceWhatMatters = useMemo<IntelligenceWhatMattersNow | null>(() => {
-    if (!intelligenceRecord || !isRecord(intelligenceRecord.what_matters_now_json)) return null;
-    const source = intelligenceRecord.what_matters_now_json;
-    return {
-      top_priority: typeof source.top_priority === "string" ? source.top_priority.trim() : "",
-      reason: typeof source.reason === "string" ? source.reason.trim() : "",
-      urgency: typeof source.urgency === "string" ? source.urgency.trim() : "Medium",
-    };
-  }, [intelligenceRecord]);
-  const snapshotConcernFallback = useMemo(() => {
-    const topConcern =
-      (typeof data?.snapshotMemory?.top_concern === "string" ? data.snapshotMemory.top_concern.trim() : "")
-      || (typeof data?.snapshotMemory?.reason_for_more_time === "string" ? data.snapshotMemory.reason_for_more_time.trim() : "")
-      || (typeof data?.snapshotMemory?.primary_concern === "string" ? data.snapshotMemory.primary_concern.trim() : "")
-      || (typeof data?.snapshotMemory?.opposing_request === "string" ? data.snapshotMemory.opposing_request.trim() : "");
-    if (!topConcern) return null;
-    const category = typeof data?.snapshotMemory?.concern_category === "string"
-      ? data.snapshotMemory.concern_category
-      : null;
-    const urgency = category === "safety"
+    const topConcernFact =
+      getFactValue(cirFacts, "top_concern")
+      ?? getFactValue(cirFacts, "reason_for_change")
+      ?? getFactValue(cirFacts, "opposing_request")
+      ?? getFactValue(cirFacts, "situation_summary");
+    if (!topConcernFact || typeof topConcernFact.value !== "string") return null;
+
+    const category = getFactValue(cirFacts, "concern_category");
+    const categoryValue = typeof category?.value === "string" ? category.value : null;
+    const urgency = categoryValue === "safety"
       ? "High"
-      : category === "fairness_fear" || category === "resource_gap"
+      : categoryValue === "fairness_fear" || categoryValue === "resource_gap"
         ? "Medium"
         : "Low";
+
     return {
-      top_priority: topConcern,
-      reason: "Based on your conversation with Atlas.",
+      top_priority: topConcernFact.value,
+      reason: topConcernFact.source === "document"
+        ? "This is the strongest issue surfaced in your uploaded court record right now."
+        : "This is the main issue Atlas captured from your conversation so far.",
       urgency,
+      sourceLabel: cirSourceLabel(topConcernFact.source),
     };
-  }, [data?.snapshotMemory]);
-  const resolvedWhatMatters = snapshotConcernFallback
-    ?? ((intelligenceWhatMatters && intelligenceWhatMatters.top_priority) ? intelligenceWhatMatters : null);
+  }, [cirFacts]);
+  const resolvedWhatMatters = intelligenceWhatMatters;
   const intelligenceRisks = useMemo<IntelligenceRisk[]>(() => {
     if (!intelligenceRecord || !Array.isArray(intelligenceRecord.risks_json)) return [];
     return intelligenceRecord.risks_json
@@ -330,64 +400,60 @@ export default function CaseDashboardPage() {
       .filter((risk) => risk.title)
       .slice(0, 3);
   }, [intelligenceRecord]);
-  const intelligenceActions = useMemo<IntelligenceAction[]>(() => {
-    if (!intelligenceRecord || !Array.isArray(intelligenceRecord.actions_json)) return [];
-    return intelligenceRecord.actions_json
-      .filter(isRecord)
-      .map((action, index) => ({
-        risk_id: typeof action.risk_id === "string" ? action.risk_id : `action-${index}`,
-        action: typeof action.action === "string" ? action.action.trim() : "",
-      }))
-      .filter((action) => action.action)
-      .slice(0, 4);
-  }, [intelligenceRecord]);
-  const snapshotActions = useMemo(() => (
-    Array.isArray(data?.snapshotMemory?.actions)
-      ? data.snapshotMemory.actions.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 3)
-      : []
-  ), [data?.snapshotMemory]);
-  const intelligenceKeyDates = useMemo<IntelligenceKeyDate[]>(() => {
-    if (!intelligenceRecord || !Array.isArray(intelligenceRecord.key_dates_json)) return [];
-    const kindPriority: IntelligenceDateKind[] = ["hearing", "deadline", "filing", "service", "appointment"];
-    const acceptedKinds = new Set(kindPriority);
-    const filtered = intelligenceRecord.key_dates_json
-      .filter(isRecord)
-      .map((entry) => {
-        const kindValue = typeof entry.kind === "string" ? entry.kind.trim().toLowerCase() : "other";
-        const kind: IntelligenceDateKind = kindValue === "hearing"
-          || kindValue === "deadline"
-          || kindValue === "filing"
-          || kindValue === "service"
-          || kindValue === "appointment"
-          || kindValue === "child_birthdate"
-          ? kindValue
-          : "other";
-        return {
-          raw: typeof entry.raw === "string" ? entry.raw.trim() : "",
-          parsedDate: typeof entry.parsedDate === "string" ? entry.parsedDate : null,
-          kind,
-        };
-      })
-      .filter((entry) => entry.raw && acceptedKinds.has(entry.kind));
-
-    return filtered
-      .sort((a, b) => {
-        const kindRank = kindPriority.indexOf(a.kind) - kindPriority.indexOf(b.kind);
-        if (kindRank !== 0) return kindRank;
-        return (Date.parse(a.parsedDate ?? "") || Number.MAX_SAFE_INTEGER) - (Date.parse(b.parsedDate ?? "") || Number.MAX_SAFE_INTEGER);
-      })
-      .slice(0, 5);
-  }, [intelligenceRecord]);
-  const snapshotKeyDate = useMemo(() => {
-    const raw = typeof data?.snapshotMemory?.hearing_date === "string" ? data.snapshotMemory.hearing_date : "";
-    if (!raw) return null;
+  const groupedCirActions = useMemo(() => {
+    const actions = Array.isArray(cirRecord?.intelligence_data?.actions)
+      ? cirRecord.intelligence_data.actions.filter((action) => typeof action.text === "string" && action.text.trim().length > 0)
+      : [];
     return {
-      raw,
-      kindLabel: "Hearing Date",
-      subLabel: formatSnapshotHearingType(typeof data?.snapshotMemory?.hearing_type === "string" ? data.snapshotMemory.hearing_type : null),
-      parsedDate: raw,
+      conversation: actions.filter((action) => action.source === "conversation").slice(0, 3),
+      document: actions.filter((action) => action.source === "document").slice(0, 4),
     };
-  }, [data?.snapshotMemory]);
+  }, [cirRecord]);
+  const intelligenceKeyDates = useMemo<CirKeyDate[]>(() => {
+    const dateMappings: Array<{ key: string; label: string; kind: IntelligenceDateKind; subLabel?: string }> = [
+      { key: "hearing_date", label: "Hearing Date", kind: "hearing", subLabel: formatSnapshotHearingType(typeof getFactValue(cirFacts, "hearing_type")?.value === "string" ? String(getFactValue(cirFacts, "hearing_type")?.value) : null) },
+      { key: "response_deadline", label: "Response Deadline", kind: "deadline" },
+      { key: "filing_date", label: "Filing Date", kind: "filing" },
+      { key: "effective_date", label: "Effective Date", kind: "other" },
+    ];
+
+    return dateMappings
+      .flatMap((mapping): CirKeyDate[] => {
+        const fact = getFactValue(cirFacts, mapping.key);
+        if (!fact || typeof fact.value !== "string") return [];
+        return [{
+          raw: fact.value,
+          parsedDate: fact.value,
+          kind: mapping.kind,
+          label: mapping.label,
+          subLabel: mapping.subLabel,
+          sourceLabel: cirSourceLabel(fact.source),
+        }];
+      })
+      .sort((a, b) => {
+        const left = parseDateWithAnnualProjection(a.parsedDate ?? a.raw)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const right = parseDateWithAnnualProjection(b.parsedDate ?? b.raw)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return left - right;
+      });
+  }, [cirFacts]);
+  const cirCaseHealthUrgency = useMemo<"Low" | "Medium" | "High">(() => {
+    const statuses = intelligenceKeyDates.map((date) => ({
+      kind: date.kind,
+      status: classifyDetailedDateStatus(date.parsedDate ?? date.raw),
+      parsed: parseDateWithAnnualProjection(date.parsedDate ?? date.raw),
+    }));
+    if (statuses.some((entry) => (entry.kind === "hearing" || entry.kind === "deadline") && entry.status === "past_due")) {
+      return "High";
+    }
+    const daysAway = statuses
+      .filter((entry) => (entry.kind === "hearing" || entry.kind === "deadline") && entry.parsed && (entry.status === "next" || entry.status === "today"))
+      .map((entry) => Math.ceil((entry.parsed!.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    const closest = daysAway.length > 0 ? Math.min(...daysAway) : null;
+    if (closest !== null && closest <= 7) return "High";
+    if (closest !== null && closest <= 21) return "Medium";
+    return "Low";
+  }, [intelligenceKeyDates]);
+  const cirOrderStatus = getFactValue(cirFacts, "order_status");
 
   const alertActionMutation = useMutation({
     mutationFn: async (payload: { alertId: string; actionId: string; confirmSuggested?: boolean }) => {
@@ -550,11 +616,17 @@ export default function CaseDashboardPage() {
               <p className="text-sm text-muted-foreground">Loading case intelligence…</p>
             ) : resolvedWhatMatters ? (
               <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-base font-semibold">{resolvedWhatMatters.top_priority}</p>
-                  <Badge variant="outline" className={intelligenceUrgencyBadgeClass(resolvedWhatMatters.urgency)}>
-                    {resolvedWhatMatters.urgency || "Medium"} urgency
-                  </Badge>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Situation Priority</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-base font-semibold">{resolvedWhatMatters.top_priority}</p>
+                    <Badge variant="outline" className={intelligenceUrgencyBadgeClass(resolvedWhatMatters.urgency)}>
+                      {resolvedWhatMatters.urgency || "Medium"} urgency
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {resolvedWhatMatters.sourceLabel}
+                  </p>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {sentence(resolvedWhatMatters.reason, resolvedWhatMatters.top_priority)}
@@ -609,27 +681,27 @@ export default function CaseDashboardPage() {
         <Card data-testid="section-recommended-actions" className="md:col-start-2 md:row-start-1">
           <CardHeader className="pb-2"><CardTitle className="text-base">Recommended Actions</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {intelligenceActions.length > 0 || snapshotActions.length > 0 ? (
+            {groupedCirActions.conversation.length > 0 || groupedCirActions.document.length > 0 ? (
               <>
-                {snapshotActions.length > 0 ? (
+                {groupedCirActions.conversation.length > 0 ? (
                   <div className="space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">From your conversation with Atlas</p>
                     <ul className="space-y-1.5">
-                      {snapshotActions.map((action, index) => (
-                        <li key={`snapshot-${index}`} className="rounded border border-border bg-muted/40 px-2 py-1.5">
-                          {action}
+                      {groupedCirActions.conversation.map((action, index) => (
+                        <li key={`cir-conversation-${index}`} className="rounded border border-border bg-muted/40 px-2 py-1.5">
+                          {action.text}
                         </li>
                       ))}
                     </ul>
                   </div>
                 ) : null}
-                {intelligenceActions.length > 0 ? (
+                {groupedCirActions.document.length > 0 ? (
                   <div className="space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">Based on your court document</p>
                     <ul className="space-y-1.5">
-                      {intelligenceActions.map((action) => (
-                        <li key={action.risk_id} className="rounded border border-border bg-muted/40 px-2 py-1.5">
-                          {action.action}
+                      {groupedCirActions.document.map((action, index) => (
+                        <li key={`cir-document-${index}`} className="rounded border border-border bg-muted/40 px-2 py-1.5">
+                          {action.text}
                         </li>
                       ))}
                     </ul>
@@ -645,9 +717,9 @@ export default function CaseDashboardPage() {
         <Card data-testid="section-key-dates" className="md:col-start-1 md:row-start-2">
           <CardHeader className="pb-2"><CardTitle className="text-base">Key Dates</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {intelligenceKeyDates.length > 0 || snapshotKeyDate ? (
+            {intelligenceKeyDates.length > 0 ? (
               <ul className="space-y-1.5">
-                {(intelligenceKeyDates.length > 0 ? intelligenceKeyDates : [snapshotKeyDate!]).map((date, index) => {
+                {intelligenceKeyDates.map((date, index) => {
                   const status = classifyDetailedDateStatus(date.parsedDate ?? date.raw);
                   const badge = dateStatusLabel(status);
                   const helper = dateStatusMessage(status);
@@ -664,9 +736,10 @@ export default function CaseDashboardPage() {
                           ) : null}
                         </div>
                         <p className="text-xs capitalize text-muted-foreground">
-                          {"kind" in date ? date.kind : date.kindLabel}
+                          {date.label}
                           {"subLabel" in date && date.subLabel ? ` • ${date.subLabel}` : ""}
                         </p>
+                        <p className="text-xs text-muted-foreground">{date.sourceLabel}</p>
                         {helper ? <p className="mt-1 text-xs text-muted-foreground">{helper}</p> : null}
                       </div>
                       <p className="shrink-0 text-xs text-muted-foreground">
@@ -781,11 +854,21 @@ export default function CaseDashboardPage() {
               <p>{sentence(data.caseHealth.currentPosture, "Case posture is still being assessed.")}</p>
             </section>
             <section>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Urgency</p>
-              <Badge variant="outline" className={urgencyBadgeClass(data.caseHealth.urgency)}>
-                {data.caseHealth.urgency}
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deadline Urgency</p>
+              <Badge variant="outline" className={urgencyBadgeClass(cirCaseHealthUrgency)}>
+                {cirCaseHealthUrgency}
               </Badge>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Based on upcoming court dates and filing deadlines
+              </p>
             </section>
+            {cirOrderStatus && typeof cirOrderStatus.value === "string" ? (
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order status</p>
+                <p>{cirOrderStatus.value}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{cirSourceLabel(cirOrderStatus.source)}</p>
+              </section>
+            ) : null}
             <section>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Risk level</p>
               <div className="space-y-2">

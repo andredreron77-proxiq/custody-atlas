@@ -115,6 +115,7 @@ import {
   upsertCaseMemory,
 } from "./services/cases";
 import { generateCaseIntelligence } from "./services/caseIntelligence";
+import { populateCaseIntelligence, refreshCaseIntelligence } from "./services/caseIntelligenceRecord";
 import {
   createThread,
   appendMessage,
@@ -5738,6 +5739,12 @@ Do not add facts not present in the provided evidence.`,
         return res.status(500).json({ error: "Failed to save snapshot." });
       }
 
+      try {
+        await refreshCaseIntelligence(caseId, user.id, "snapshot_save");
+      } catch (cirError) {
+        console.error("[case-intelligence] snapshot refresh error:", cirError);
+      }
+
       return res.json({ success: true });
     } catch (err) {
       console.error("[Atlas] snapshot save error:", err);
@@ -6594,6 +6601,25 @@ Do not add facts not present in the provided evidence.`,
     } catch (err) {
       console.error("[case-intelligence] POST generate error:", err);
       return res.status(500).json({ error: "Failed to generate case intelligence." });
+    }
+  });
+
+  /**
+   * GET /api/cases/:caseId/intelligence
+   * Returns the unified Case Intelligence Record (CIR) for this case.
+   */
+  app.get("/api/cases/:caseId/intelligence", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const caseId = asString(req.params.caseId);
+    try {
+      const caseRecord = await getCaseById(caseId, user.id);
+      if (!caseRecord) return res.status(404).json({ error: "Case not found." });
+
+      const intelligence = await populateCaseIntelligence(caseId, user.id);
+      return res.json(intelligence);
+    } catch (err) {
+      console.error("[case-intelligence] GET CIR error:", err);
+      return res.status(500).json({ error: "Failed to load case intelligence." });
     }
   });
 
