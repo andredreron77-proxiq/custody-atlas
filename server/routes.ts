@@ -116,7 +116,10 @@ import {
   countConversationMessages,
   markConversationCirAnalysisTriggered,
 } from "./services/cases";
-import { generateCaseIntelligence } from "./services/caseIntelligence";
+import {
+  generateCaseIntelligence,
+  refreshCaseIntelligenceFromDocument,
+} from "./services/caseIntelligence";
 import {
   populateCaseIntelligence,
   refreshCaseIntelligence,
@@ -3808,6 +3811,15 @@ CRITICAL RULES:
                 caseId: docCaseId,
                 error: signalError,
               });
+            }
+          }
+
+          if (docCaseId && savedDocumentId) {
+            try {
+              await refreshCaseIntelligenceFromDocument(docCaseId, savedDocumentId);
+            } catch (cirErr) {
+              console.error("[analyze-document] CIR refresh failed", cirErr);
+              // non-blocking — do not fail the upload response
             }
           }
         }

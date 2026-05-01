@@ -1,3 +1,4 @@
+import OpenAI from "openai";
 import type { RawSignal, SignalType } from "../lib/signals";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
 import { generateActionsForRisks } from "./actionGenerator";
@@ -26,6 +27,51 @@ export interface CaseIntelligenceRecord {
   updated_at: string;
 }
 
+interface CaseIntelligenceRefreshRow extends CaseIntelligenceRecord {
+  user_id: string;
+  change_log: unknown;
+  last_refreshed_at: string;
+  version: number | null;
+}
+
+interface DocumentFactRow {
+  fact_type: string;
+  fact_value: string;
+}
+
+const CIR_REFRESH_FIELDS = [
+  "key_dates_json",
+  "risks_json",
+  "obligations_json",
+  "active_issues_json",
+  "what_matters_now_json",
+  "actions_json",
+] as const;
+
+type CIRRefreshField = typeof CIR_REFRESH_FIELDS[number];
+
+interface CIRRefreshUpdate {
+  field: CIRRefreshField;
+  value: unknown;
+  reason: string;
+}
+
+interface CIRRefreshConflict {
+  field: string;
+  current_value: string | null;
+  document_value: string;
+  target_column: CIRRefreshField;
+  proposed_value: unknown;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+}
+
+interface CIRRefreshLLMResult {
+  updates: CIRRefreshUpdate[];
+  conflicts: CIRRefreshConflict[];
+  confidence_score: number | null;
+}
+
 interface NormalizedContext {
   normalized: NormalizedIntelligenceData;
   sourceDocumentIds: string[];
@@ -46,6 +92,250 @@ interface SignalRow {
   detail: string;
   due_date: string | null;
   dismissed: boolean | null;
+}
+
+function getOpenAIClient(): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isRefreshField(value: unknown): value is CIRRefreshField {
+  return typeof value === "string" && (CIR_REFRESH_FIELDS as readonly string[]).includes(value);
+}
+
+function normalizeConfidence(value: unknown): "high" | "medium" | "low" {
+  return value === "high" || value === "medium" || value === "low" ? value : "medium";
+}
+
+function parseChangeLog(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function serializeScalar(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function buildDocumentFactMap(rows: DocumentFactRow[]): Record<string, string> {
+  const facts: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.fact_type.trim();
+    const value = row.fact_value.trim();
+    if (key && value) facts[key] = value;
+  }
+  return facts;
+}
+
+function normalizeRefreshResult(raw: unknown): CIRRefreshLLMResult {
+  const parsed = isRecord(raw) ? raw : {};
+  const updates = Array.isArray(parsed.updates)
+    ? parsed.updates
+        .filter(isRecord)
+        .map((entry) => ({
+          field: entry.field,
+          value: entry.value,
+          reason: typeof entry.reason === "string" ? entry.reason.trim() : "",
+        }))
+        .filter((entry): entry is CIRRefreshUpdate => isRefreshField(entry.field) && entry.reason.length > 0)
+    : [];
+
+  const conflicts = Array.isArray(parsed.conflicts)
+    ? parsed.conflicts
+        .filter(isRecord)
+        .map((entry) => ({
+          field: typeof entry.field === "string" ? entry.field.trim() : "",
+          current_value: typeof entry.current_value === "string" ? entry.current_value : null,
+          document_value: typeof entry.document_value === "string" ? entry.document_value.trim() : "",
+          target_column: entry.target_column,
+          proposed_value: entry.proposed_value,
+          reason: typeof entry.reason === "string" ? entry.reason.trim() : "",
+          confidence: normalizeConfidence(entry.confidence),
+        }))
+        .filter(
+          (entry): entry is CIRRefreshConflict =>
+            entry.field.length > 0 &&
+            entry.document_value.length > 0 &&
+            entry.reason.length > 0 &&
+            isRefreshField(entry.target_column),
+        )
+    : [];
+
+  const confidence_score =
+    typeof parsed.confidence_score === "number" && Number.isFinite(parsed.confidence_score)
+      ? Math.max(0, Math.min(1, parsed.confidence_score))
+      : null;
+
+  return { updates, conflicts, confidence_score };
+}
+
+async function fetchCurrentCaseIntelligence(caseId: string): Promise<CaseIntelligenceRefreshRow | null> {
+  if (!supabaseAdmin) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("case_intelligence")
+    .select(`
+      id,
+      case_id,
+      user_id,
+      summary,
+      active_issues_json,
+      key_dates_json,
+      obligations_json,
+      risks_json,
+      actions_json,
+      what_matters_now_json,
+      missing_information_json,
+      source_document_ids_json,
+      confidence_score,
+      change_log,
+      last_refreshed_at,
+      version,
+      updated_at
+    `)
+    .eq("case_id", caseId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data as CaseIntelligenceRefreshRow | null) ?? null;
+}
+
+async function fetchDocumentFactsForRefresh(
+  caseId: string,
+  documentId: string,
+  userId: string,
+): Promise<Record<string, string>> {
+  if (!supabaseAdmin) return {};
+
+  const { data, error } = await supabaseAdmin
+    .from("document_facts")
+    .select("fact_type,fact_value")
+    .eq("case_id", caseId)
+    .eq("document_id", documentId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return buildDocumentFactMap((data ?? []) as DocumentFactRow[]);
+}
+
+async function getLatestCaseConversationId(caseId: string, userId: string): Promise<string | null> {
+  if (!supabaseAdmin) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("conversations")
+    .select("id")
+    .eq("case_id", caseId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return typeof data?.id === "string" ? data.id : null;
+}
+
+async function analyzeDocumentRefresh(args: {
+  current: CaseIntelligenceRefreshRow;
+  documentFacts: Record<string, string>;
+}): Promise<CIRRefreshLLMResult> {
+  const snapshot = {
+    key_dates_json: args.current.key_dates_json,
+    risks_json: args.current.risks_json,
+    obligations_json: args.current.obligations_json,
+    active_issues_json: args.current.active_issues_json,
+    what_matters_now_json: args.current.what_matters_now_json,
+    actions_json: args.current.actions_json,
+  };
+
+  const completion = await getOpenAIClient().chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You reconcile a custody case intelligence snapshot after a newly processed document.\n" +
+          "Document facts are the source of truth when they directly conflict with the existing snapshot.\n" +
+          "Only consider these updatable case_intelligence columns: key_dates_json, risks_json, obligations_json, active_issues_json, what_matters_now_json, actions_json.\n" +
+          "Return only JSON with this structure:\n" +
+          "{\n" +
+          '  "updates": [\n' +
+          "    {\n" +
+          '      "field": "key_dates_json" | "risks_json" | "obligations_json" | "active_issues_json" | "what_matters_now_json" | "actions_json",\n' +
+          '      "value": any,\n' +
+          '      "reason": string\n' +
+          "    }\n" +
+          "  ],\n" +
+          '  "conflicts": [\n' +
+          "    {\n" +
+          '      "field": string,\n' +
+          '      "current_value": string | null,\n' +
+          '      "document_value": string,\n' +
+          '      "target_column": "key_dates_json" | "risks_json" | "obligations_json" | "active_issues_json" | "what_matters_now_json" | "actions_json",\n' +
+          '      "proposed_value": any,\n' +
+          '      "reason": string,\n' +
+          '      "confidence": "high" | "medium" | "low"\n' +
+          "    }\n" +
+          "  ],\n" +
+          '  "confidence_score": number | null\n' +
+          "}\n" +
+          "Rules:\n" +
+          "- Include an update only when the new document should change a snapshot column.\n" +
+          "- Include a conflict when a document fact contradicts an existing snapshot fact.\n" +
+          "- For conflicts, proposed_value must already reflect the document-backed winning state for target_column.\n" +
+          "- Do not invent facts not grounded in the provided document facts.\n" +
+          "- Do not emit markdown.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify(
+          {
+            current_snapshot: snapshot,
+            new_document_facts: args.documentFacts,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+    response_format: { type: "json_object" },
+    max_tokens: 1200,
+    temperature: 0.1,
+  });
+
+  const raw = completion.choices[0]?.message?.content?.trim();
+  if (!raw) {
+    throw new Error("No CIR refresh response received.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("CIR refresh response was not valid JSON.");
+  }
+
+  return normalizeRefreshResult(parsed);
 }
 
 function toStringArray(value: unknown): string[] {
@@ -359,4 +649,123 @@ export async function generateCaseIntelligence(caseId: string): Promise<CaseInte
   }
 
   return (saved as CaseIntelligenceRecord) ?? null;
+}
+
+export async function refreshCaseIntelligenceFromDocument(
+  caseId: string,
+  documentId: string,
+): Promise<void> {
+  if (!supabaseAdmin) {
+    throw new Error("Case intelligence storage is unavailable.");
+  }
+
+  let current = await fetchCurrentCaseIntelligence(caseId);
+  if (!current) {
+    const seeded = await generateCaseIntelligence(caseId);
+    if (!seeded) return;
+    current = await fetchCurrentCaseIntelligence(caseId);
+    if (!current) return;
+  }
+
+  const documentFacts = await fetchDocumentFactsForRefresh(caseId, documentId, current.user_id);
+  if (Object.keys(documentFacts).length === 0) {
+    return;
+  }
+
+  const refresh = await analyzeDocumentRefresh({
+    current,
+    documentFacts,
+  });
+
+  const now = new Date().toISOString();
+  const nextVersion = (typeof current.version === "number" ? current.version : 1) + 1;
+  const updatesByColumn: Partial<Record<CIRRefreshField, unknown>> = {};
+
+  for (const update of refresh.updates) {
+    updatesByColumn[update.field] = update.value;
+  }
+
+  for (const conflict of refresh.conflicts) {
+    updatesByColumn[conflict.target_column] = conflict.proposed_value;
+  }
+
+  const changeLog = parseChangeLog(current.change_log);
+  const changes = Object.entries(updatesByColumn).map(([field, value]) => ({
+    field,
+    old_value: serializeScalar((current as Record<string, unknown>)[field]),
+    new_value: serializeScalar(value),
+    source: "document_upload",
+    document_id: documentId,
+  }));
+
+  if (refresh.conflicts.length > 0) {
+    const conversationId = await getLatestCaseConversationId(caseId, current.user_id);
+    if (!conversationId) {
+      throw new Error("Cannot create CIR conflict proposals for document upload because no case conversation exists.");
+    }
+
+    const proposalRows = refresh.conflicts.map((conflict) => ({
+      case_id: caseId,
+      user_id: current.user_id,
+      conversation_id: conversationId,
+      proposal_data: {
+        conversationId,
+        caseId,
+        proposedChanges: [
+          {
+            field: conflict.field,
+            currentValue: conflict.current_value,
+            proposedValue: conflict.document_value,
+            reason: conflict.reason,
+            confidence: conflict.confidence,
+          },
+        ],
+        newActions: [],
+        createdAt: now,
+        source: "document_upload",
+        documentId,
+      },
+      status: "pending" as const,
+      reviewed_at: null,
+    }));
+
+    const { error: proposalError } = await supabaseAdmin
+      .from("cir_update_proposals")
+      .insert(proposalRows);
+
+    if (proposalError) {
+      throw new Error(proposalError.message);
+    }
+  }
+
+  const nextChangeLog = [
+    ...changeLog,
+    {
+      version: nextVersion,
+      timestamp: now,
+      trigger: "document_upload",
+      source: "document_upload",
+      document_id: documentId,
+      changes,
+    },
+  ];
+
+  const updatePayload: Record<string, unknown> = {
+    ...updatesByColumn,
+    confidence_score: refresh.confidence_score ?? current.confidence_score,
+    last_refreshed_at: now,
+    updated_at: now,
+    version: nextVersion,
+    change_log: nextChangeLog,
+  };
+
+  const { error: updateError } = await supabaseAdmin
+    .from("case_intelligence")
+    .update(updatePayload)
+    .eq("case_id", caseId)
+    .eq("user_id", current.user_id);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
 }
