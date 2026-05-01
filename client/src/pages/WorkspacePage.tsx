@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import {
   MapPin, MessageSquare, FileSearch,
@@ -112,6 +112,63 @@ interface WorkspaceData {
   timelineEvents: WorkspaceTimelineEvent[];
 }
 
+type CirFactSource = "conversation" | "document" | "user_edit";
+
+type CaseIntelligenceFact = {
+  value: string | boolean | null;
+  source: CirFactSource;
+  source_detail: string;
+  confidence: "high" | "medium" | "low";
+  previous_value: string | boolean | null;
+  updated_at: string;
+};
+
+type CaseIntelligenceActionRecord = {
+  text: string;
+  source: "conversation" | "document";
+  source_detail: string;
+  created_at: string;
+};
+
+type CaseIntelligenceRecordPayload = {
+  case_id: string;
+  user_id: string;
+  intelligence_data: {
+    facts: Record<string, CaseIntelligenceFact>;
+    actions: CaseIntelligenceActionRecord[];
+    flow_type: string | null;
+    snapshot_saved_at: string | null;
+    documents_applied: Array<{
+      document_id: string;
+      file_name: string;
+      applied_at: string;
+      facts_extracted: string[];
+    }>;
+  };
+  version: number;
+  change_log: Array<{
+    version: number;
+    timestamp: string;
+    trigger: "snapshot_save" | "document_upload" | "conversation_refresh" | "user_edit";
+    changes: Array<{
+      field: string;
+      old_value: string | null;
+      new_value: string | null;
+      source: string;
+    }>;
+  }>;
+  last_refreshed_at: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type IntelligenceWhatMattersNow = {
+  top_priority: string;
+  reason: string;
+  urgency: string;
+  sourceLabel: string;
+};
+
 interface CaseBrief {
   title: string;
   scope: {
@@ -207,6 +264,36 @@ function formatLongDate(dateStr: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function sentence(input: string, fallback: string): string {
+  const normalized = (input || "").trim();
+  if (!normalized) return fallback;
+  return normalized;
+}
+
+function intelligenceUrgencyBadgeClass(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "high") return "bg-[hsl(var(--semantic-red)/0.16)] text-[hsl(var(--semantic-red))] border-[hsl(var(--semantic-red)/0.5)]";
+  if (normalized === "medium") return "bg-[hsl(var(--semantic-amber)/0.16)] text-[hsl(var(--semantic-amber))] border-[hsl(var(--semantic-amber)/0.5)]";
+  return "bg-[hsl(var(--semantic-blue)/0.16)] text-[hsl(var(--semantic-blue))] border-[hsl(var(--semantic-blue)/0.5)]";
+}
+
+function cirSourceLabel(source: CirFactSource | "document" | "conversation"): string {
+  if (source === "document") return "Based on your court document";
+  if (source === "conversation") return "Based on your conversation with Atlas";
+  return "Based on your saved case details";
+}
+
+function getFactValue(
+  facts: Record<string, CaseIntelligenceFact> | undefined,
+  key: string,
+): CaseIntelligenceFact | null {
+  if (!facts) return null;
+  const fact = facts[key];
+  return fact && (typeof fact.value === "string" ? fact.value.trim().length > 0 : fact.value !== null)
+    ? fact
+    : null;
 }
 
 function getDaysUntil(dateStr: string): number | null {
@@ -1499,6 +1586,15 @@ export default function WorkspacePage() {
       return res.json() as Promise<SignalsResponse>;
     },
   });
+  const intelligenceQuery = useQuery<CaseIntelligenceRecordPayload>({
+    queryKey: ["/api/cases", caseIdParam, "intelligence"],
+    enabled: Boolean(caseIdParam),
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${caseIdParam}/intelligence`);
+      if (!res.ok) throw new Error("Failed to load case intelligence.");
+      return res.json();
+    },
+  });
   const memoryCaseId = (() => {
     if (caseIdParam) return caseIdParam;
     const latest = [...(casesData?.cases ?? [])].sort((a, b) => {
@@ -1524,6 +1620,34 @@ export default function WorkspacePage() {
   const documents: WorkspaceDocument[] = (workspaceData?.documents ?? []).filter(
     (doc) => !(doc.duplicateOfDocumentId ?? doc.duplicate_of_document_id),
   );
+  const cirRecord = intelligenceQuery.data;
+  const cirFacts = cirRecord?.intelligence_data?.facts;
+  const intelligenceWhatMatters = useMemo<IntelligenceWhatMattersNow | null>(() => {
+    const topConcernFact =
+      getFactValue(cirFacts, "top_concern")
+      ?? getFactValue(cirFacts, "reason_for_change")
+      ?? getFactValue(cirFacts, "opposing_request")
+      ?? getFactValue(cirFacts, "situation_summary");
+    if (!topConcernFact || typeof topConcernFact.value !== "string") return null;
+
+    const category = getFactValue(cirFacts, "concern_category");
+    const categoryValue = typeof category?.value === "string" ? category.value : null;
+    const urgency = categoryValue === "safety"
+      ? "High"
+      : categoryValue === "fairness_fear" || categoryValue === "resource_gap"
+        ? "Medium"
+        : "Low";
+
+    return {
+      top_priority: topConcernFact.value,
+      reason: topConcernFact.source === "document"
+        ? "This is the strongest issue surfaced in your uploaded court record right now."
+        : "This is the main issue Atlas captured from your conversation so far.",
+      urgency,
+      sourceLabel: cirSourceLabel(topConcernFact.source),
+    };
+  }, [cirFacts]);
+  const resolvedWhatMatters = intelligenceWhatMatters;
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
   const cases = casesData?.cases ?? [];
   const firstCaseId = cases[0]?.id ?? null;
@@ -1931,13 +2055,35 @@ export default function WorkspacePage() {
           <Panel>
             <PanelHeader icon={Activity} label="What Matters Now" />
             <PanelContent className="p-3">
-              <DismissibleWhatMattersNow
-                rawSignals={caseSignalsData?.signals ?? []}
-                tier={signalTier}
-                totalDocuments={caseScopedDocuments.length || documents.length}
-                lastActivityDaysAgo={lastActivityDaysAgo}
-                loading={isLoadingCaseSignals}
-              />
+              {intelligenceQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading case intelligence…</p>
+              ) : resolvedWhatMatters ? (
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Situation Priority</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold">{resolvedWhatMatters.top_priority}</p>
+                      <Badge variant="outline" className={intelligenceUrgencyBadgeClass(resolvedWhatMatters.urgency)}>
+                        {resolvedWhatMatters.urgency || "Medium"} urgency
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {resolvedWhatMatters.sourceLabel}
+                    </p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {sentence(resolvedWhatMatters.reason, resolvedWhatMatters.top_priority)}
+                  </p>
+                </div>
+              ) : (
+                <DismissibleWhatMattersNow
+                  rawSignals={caseSignalsData?.signals ?? []}
+                  tier={signalTier}
+                  totalDocuments={caseScopedDocuments.length || documents.length}
+                  lastActivityDaysAgo={lastActivityDaysAgo}
+                  loading={isLoadingCaseSignals}
+                />
+              )}
             </PanelContent>
           </Panel>
 
