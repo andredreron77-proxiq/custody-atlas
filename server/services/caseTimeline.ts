@@ -170,6 +170,13 @@ export async function deriveCaseTimeline(
     getCaseFacts(caseId, userId, "filing_date"),
   ]);
 
+  console.log("[caseTimeline] getCaseFacts results", {
+    caseId,
+    userId,
+    hearingFacts,
+    filingFacts,
+  });
+
   const events: CaseTimelineEvent[] = [];
 
   // ── Track seen date+type pairs for deduplication ──────────────────────────
