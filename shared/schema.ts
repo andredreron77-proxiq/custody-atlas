@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, serial, text, boolean, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, jsonb, timestamp, integer, uuid, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export const jurisdictionSchema = z.object({
@@ -440,14 +440,17 @@ export const intelligenceAuditLogs = pgTable("intelligence_audit_logs", {
  * confidence values: high (verbatim from doc) | medium (inferred) | low (from memory)
  */
 export const caseFacts = pgTable("case_facts", {
-  id:           serial("id").primaryKey(),
-  caseId:       text("case_id").notNull(),
+  id:           uuid("id").defaultRandom().primaryKey(),
+  caseId:       uuid("case_id").notNull(),
   userId:       text("user_id").notNull(),
   factType:     text("fact_type").notNull(),
+  factKey:      text("fact_key").notNull(),
   value:        text("value").notNull(),
+  factValueJson: jsonb("fact_value_json"),
   source:       text("source").notNull(),       // document_id | "memory" | "user_confirmed"
   sourceName:   text("source_name"),            // human-readable label (file name, etc.)
-  confidence:   text("confidence").notNull().default("medium"),
+  confidence:   numeric("confidence").default(0.8),
+  isActive:     boolean("is_active").default(true),
   createdAt:    timestamp("created_at").defaultNow(),
   updatedAt:    timestamp("updated_at").defaultNow(),
 });
