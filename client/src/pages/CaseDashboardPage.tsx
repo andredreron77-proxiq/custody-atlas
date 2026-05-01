@@ -603,7 +603,7 @@ export default function CaseDashboardPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/cases", caseId, "intelligence", "pending-proposals"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/cases", caseId, "intelligence", "history"] }),
       ]);
-      navigate(`/cases/${caseId}/dashboard`);
+      navigate(`/case/${caseId}`);
     },
   });
 

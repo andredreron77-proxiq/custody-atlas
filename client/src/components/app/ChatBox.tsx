@@ -1834,7 +1834,7 @@ export function ChatBox({
             {proposalCreated && caseId ? (
               <button
                 type="button"
-                onClick={() => navigate(`/cases/${caseId}/dashboard?review_proposal=true`)}
+                onClick={() => navigate(`/case/${caseId}?review_proposal=true`)}
                 className="w-full rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-left transition-colors hover:bg-sky-100 dark:border-sky-800/50 dark:bg-sky-950/30 dark:hover:bg-sky-950/40"
               >
                 <p className="text-sm font-medium text-sky-900 dark:text-sky-100">
