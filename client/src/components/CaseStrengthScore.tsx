@@ -35,9 +35,9 @@ function ringColor(score: CaseStrength): string {
 }
 
 function textColor(score: CaseStrength): string {
-  if (score === "weak") return "text-red-300";
-  if (score === "moderate") return "text-amber-300";
-  return "text-emerald-300";
+  if (score === "weak") return "text-red-700 dark:text-red-300";
+  if (score === "moderate") return "text-amber-700 dark:text-amber-300";
+  return "text-emerald-700 dark:text-emerald-300";
 }
 
 function confirmKey(caseId: string): string {
@@ -46,16 +46,16 @@ function confirmKey(caseId: string): string {
 
 function LoadingSkeleton() {
   return (
-    <Card className="border-white/10 bg-slate-950/80">
+    <Card className="border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-slate-950/80">
       <CardHeader className="pb-3">
-        <div className="h-5 w-40 animate-pulse rounded bg-white/10" />
-        <div className="h-4 w-64 animate-pulse rounded bg-white/10" />
+        <div className="h-5 w-40 animate-pulse rounded bg-slate-300/60 dark:bg-white/10" />
+        <div className="h-4 w-64 animate-pulse rounded bg-slate-300/60 dark:bg-white/10" />
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="mx-auto h-40 w-40 animate-pulse rounded-full border border-white/10 bg-white/[0.04]" />
+        <div className="mx-auto h-40 w-40 animate-pulse rounded-full border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.04]" />
         <div className="space-y-2">
-          <div className="h-4 w-3/4 animate-pulse rounded bg-white/10" />
-          <div className="h-4 w-5/6 animate-pulse rounded bg-white/10" />
+          <div className="h-4 w-3/4 animate-pulse rounded bg-slate-300/60 dark:bg-white/10" />
+          <div className="h-4 w-5/6 animate-pulse rounded bg-slate-300/60 dark:bg-white/10" />
         </div>
       </CardContent>
     </Card>
@@ -124,15 +124,15 @@ export function CaseStrengthScore({ caseId }: CaseStrengthScoreProps) {
 
   if (query.isError || !query.data) {
     return (
-      <Card className="border-white/10 bg-slate-950/80">
+      <Card className="border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-slate-950/80">
         <CardHeader className="pb-3">
-          <CardTitle className="text-slate-50">Case Strength</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-slate-900 dark:text-slate-50">Case Strength</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">
             We could not analyze your current case position yet.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline" onClick={() => query.refetch()} className="border-white/15 text-slate-100 hover:bg-white/10">
+          <Button variant="outline" onClick={() => query.refetch()} className="border-slate-300 text-slate-900 hover:bg-slate-200 dark:border-white/15 dark:text-slate-100 dark:hover:bg-white/10">
             Try again
           </Button>
         </CardContent>
@@ -144,19 +144,20 @@ export function CaseStrengthScore({ caseId }: CaseStrengthScoreProps) {
 
   if (!isConfirmed) {
     return (
-      <Card className="border-white/10 bg-slate-950/85">
+      <Card className="border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-slate-950/85">
         <CardHeader className="pb-3">
-          <CardTitle className="text-slate-50">Case Strength</CardTitle>
-          <CardDescription className="text-slate-400">
+          <CardTitle className="text-slate-900 dark:text-slate-50">Case Strength</CardTitle>
+          <CardDescription className="text-slate-600 dark:text-slate-400">
             This score is based on your uploaded documents. Does it reflect your current situation?
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.03]">
             <p className={`text-sm font-semibold uppercase tracking-[0.18em] ${textColor(report.score)}`}>
-              Current score: {report.score}
+              Case readiness: {report.score}
             </p>
-            <p className="mt-2 text-sm text-slate-300">{report.summary}</p>
+            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{report.summary}</p>
+            <p className="mt-2 text-xs text-muted-foreground">Based on documents uploaded to this case</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
@@ -175,7 +176,7 @@ export function CaseStrengthScore({ caseId }: CaseStrengthScoreProps) {
               type="button"
               variant="outline"
               onClick={() => navigate(`/upload-document?case=${encodeURIComponent(caseId)}`)}
-              className="border-white/15 text-slate-100 hover:bg-white/10"
+              className="border-slate-300 text-slate-900 hover:bg-slate-200 dark:border-white/15 dark:text-slate-100 dark:hover:bg-white/10"
             >
               No, I need to add documents
             </Button>
@@ -186,12 +187,12 @@ export function CaseStrengthScore({ caseId }: CaseStrengthScoreProps) {
   }
 
   return (
-    <Card className="border-white/10 bg-slate-950/85">
+    <Card className="border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-slate-950/85">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-slate-50">Case Strength</CardTitle>
-            <CardDescription className="mt-1 text-slate-400">
+            <CardTitle className="text-slate-900 dark:text-slate-50">Case Strength</CardTitle>
+            <CardDescription className="mt-1 text-slate-600 dark:text-slate-400">
               A document-based read on how strong your current case position looks.
             </CardDescription>
           </div>
@@ -201,7 +202,7 @@ export function CaseStrengthScore({ caseId }: CaseStrengthScoreProps) {
             variant="outline"
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            className="border-white/15 text-slate-100 hover:bg-white/10"
+            className="border-slate-300 text-slate-900 hover:bg-slate-200 dark:border-white/15 dark:text-slate-100 dark:hover:bg-white/10"
           >
             {refreshMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
             Refresh score
@@ -227,7 +228,7 @@ export function CaseStrengthScore({ caseId }: CaseStrengthScoreProps) {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <p className="text-3xl font-semibold text-slate-50">{report.percentage}%</p>
+              <p className="text-3xl font-semibold text-slate-900 dark:text-slate-50">{report.percentage}%</p>
               <p className={`mt-1 text-sm font-bold uppercase tracking-[0.24em] ${textColor(report.score)}`}>
                 {report.score}
               </p>
@@ -238,36 +239,37 @@ export function CaseStrengthScore({ caseId }: CaseStrengthScoreProps) {
             <Badge variant="outline" className={`border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] ${textColor(report.score)} ${report.score === "weak" ? "border-red-400/40 bg-red-500/10" : report.score === "moderate" ? "border-amber-400/40 bg-amber-500/10" : "border-emerald-400/40 bg-emerald-500/10"}`}>
               {report.score}
             </Badge>
-            <p className="mx-auto max-w-md text-sm leading-relaxed text-slate-300">{report.summary}</p>
+            <p className="mx-auto max-w-md text-sm leading-relaxed text-slate-700 dark:text-slate-300">{report.summary}</p>
+            <p className="text-xs text-muted-foreground">Based on documents uploaded to this case</p>
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/[0.03]">
+        <div className="rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.03]">
           <button
             type="button"
             onClick={() => setExpanded((current) => !current)}
             className="flex w-full items-center justify-between px-4 py-3 text-left"
           >
             <div>
-              <p className="text-sm font-medium text-slate-100">What this score is reacting to</p>
-              <p className="mt-1 text-xs text-slate-400">{report.factors.length} factor{report.factors.length === 1 ? "" : "s"} assessed</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-100">What this score is reacting to</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{report.factors.length} factor{report.factors.length === 1 ? "" : "s"} assessed</p>
             </div>
-            {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            {expanded ? <ChevronUp className="h-4 w-4 text-slate-500 dark:text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-500 dark:text-slate-400" />}
           </button>
           {expanded ? (
-            <div className="space-y-3 border-t border-white/10 px-4 py-4">
+            <div className="space-y-3 border-t border-slate-200 px-4 py-4 dark:border-white/10">
               {report.factors.map((factor, index) => (
-                <div key={`${factor.factor}-${index}`} className="flex items-start gap-3 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-3">
+                <div key={`${factor.factor}-${index}`} className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-white/10 dark:bg-slate-950/60">
                   {factor.impact === "positive" ? (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" />
                   ) : factor.impact === "negative" ? (
-                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-700 dark:text-red-300" />
                   ) : (
-                    <MinusCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                    <MinusCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
                   )}
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-slate-100">{factor.factor}</p>
-                    <p className="text-sm leading-relaxed text-slate-400">{factor.detail}</p>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{factor.factor}</p>
+                    <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{factor.detail}</p>
                   </div>
                 </div>
               ))}

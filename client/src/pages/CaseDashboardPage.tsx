@@ -396,6 +396,7 @@ export default function CaseDashboardPage() {
   const [location, navigate] = useLocation();
   const [expanded, setExpanded] = useState(false);
   const [showFullTimeline, setShowFullTimeline] = useState(false);
+  const [showSignalLegend, setShowSignalLegend] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
@@ -1358,6 +1359,35 @@ export default function CaseDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Collapsible open={showSignalLegend} onOpenChange={setShowSignalLegend}>
+        <Card>
+          <CardHeader className="pb-2">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="h-8 justify-between px-0 text-base font-semibold">
+                <span>Understanding your signals</span>
+                {showSignalLegend ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CollapsibleContent>
+            <CardContent className="space-y-4 text-sm">
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Situation Priority</p>
+                <p>How urgent your situation feels based on what you told Atlas about your case.</p>
+              </section>
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deadline Urgency</p>
+                <p>How time-sensitive your case is based on upcoming court dates and filing deadlines.</p>
+              </section>
+              <section>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Case Readiness</p>
+                <p>How complete your case picture is based on the documents uploaded to this case.</p>
+              </section>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <Card>
