@@ -380,6 +380,17 @@ function formatTriggerLabel(trigger: CIRHistoryTrigger): string {
   return "User edit";
 }
 
+function formatOrderStatus(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const labels: Record<string, string> = {
+    court_order: "Court Order",
+    written_agreement: "Written Agreement",
+    informal: "Informal Agreement",
+    none: "No Formal Order",
+  };
+  return labels[value] ?? value.replace(/_/g, " ");
+}
+
 function getFactValue(
   facts: Record<string, CaseIntelligenceFact> | undefined,
   key: string,
@@ -1178,10 +1189,10 @@ export default function CaseDashboardPage() {
                 Based on upcoming court dates and filing deadlines
               </p>
             </section>
-            {cirOrderStatus && typeof cirOrderStatus.value === "string" ? (
+            {cirOrderStatus && typeof cirOrderStatus.value === "string" && formatOrderStatus(cirOrderStatus.value) ? (
               <section>
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Order status</p>
-                <p>{cirOrderStatus.value}</p>
+                <p>{formatOrderStatus(cirOrderStatus.value)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{cirSourceLabel(cirOrderStatus.source)}</p>
               </section>
             ) : null}

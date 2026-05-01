@@ -244,6 +244,11 @@ function MarkdownAssistantMessage({
   );
 }
 
+function shouldAnimateAssistantText(content: string): boolean {
+  const cleaned = stripAtlasHiddenBlocks(content);
+  return !/(^|\n)\s*[-*+]\s+|(^|\n)\s*\d+\.\s+|[*_`#>|[\]]/.test(cleaned);
+}
+
 function CautionsList({ cautions }: { cautions: string[] }) {
   if (!cautions || cautions.length === 0) return null;
   return (
@@ -760,22 +765,23 @@ function AnimatedAssistantText({
   animate: boolean;
   onComplete?: () => void;
 }) {
+  const allowAnimation = animate && shouldAnimateAssistantText(content);
   const wordsRef = useRef<string[]>([]);
   const indexRef = useRef(0);
   const intervalRef = useRef<number | null>(null);
   const onCompleteRef = useRef(onComplete);
-  const [displayedText, setDisplayedText] = useState(animate ? "" : content);
+  const [displayedText, setDisplayedText] = useState(allowAnimation ? "" : content);
   onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    console.log("[guided reveal] effect start", { animate, contentLength: content.length });
+    console.log("[guided reveal] effect start", { animate: allowAnimation, contentLength: content.length });
 
     if (intervalRef.current !== null) {
       window.clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
 
-    if (!animate) {
+    if (!allowAnimation) {
       setDisplayedText(content);
       onCompleteRef.current?.();
       return;
@@ -820,7 +826,7 @@ function AnimatedAssistantText({
         intervalRef.current = null;
       }
     };
-  }, [animate, content]);
+  }, [allowAnimation, content]);
 
   return <MarkdownAssistantMessage content={displayedText} />;
 }
