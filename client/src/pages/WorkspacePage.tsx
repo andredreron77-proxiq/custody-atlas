@@ -1586,15 +1586,6 @@ export default function WorkspacePage() {
       return res.json() as Promise<SignalsResponse>;
     },
   });
-  const intelligenceQuery = useQuery<CaseIntelligenceRecordPayload>({
-    queryKey: ["/api/cases", caseIdParam, "intelligence"],
-    enabled: Boolean(caseIdParam),
-    queryFn: async () => {
-      const res = await apiRequestRaw("GET", `/api/cases/${caseIdParam}/intelligence`);
-      if (!res.ok) throw new Error("Failed to load case intelligence.");
-      return res.json();
-    },
-  });
   const memoryCaseId = (() => {
     if (caseIdParam) return caseIdParam;
     const latest = [...(casesData?.cases ?? [])].sort((a, b) => {
@@ -1604,6 +1595,15 @@ export default function WorkspacePage() {
     })[0];
     return latest?.id ?? null;
   })();
+  const intelligenceQuery = useQuery<CaseIntelligenceRecordPayload>({
+    queryKey: ["/api/cases", memoryCaseId, "intelligence"],
+    enabled: Boolean(memoryCaseId),
+    queryFn: async () => {
+      const res = await apiRequestRaw("GET", `/api/cases/${memoryCaseId}/intelligence`);
+      if (!res.ok) throw new Error("Failed to load case intelligence.");
+      return res.json();
+    },
+  });
   const { data: memoryCaseActions } = useQuery<{ actions: Array<unknown>; hearingDate: string | null }>({
     queryKey: ["/api/cases", "memory-strip", memoryCaseId, "actions"],
     enabled: !!user && !!memoryCaseId,
@@ -1648,6 +1648,13 @@ export default function WorkspacePage() {
     };
   }, [cirFacts]);
   const resolvedWhatMatters = intelligenceWhatMatters;
+  console.log("[WMN debug]", {
+    caseIdParam,
+    intelligenceQueryStatus: intelligenceQuery.status,
+    intelligenceData: intelligenceQuery.data,
+    cirFacts,
+    resolvedWhatMatters,
+  });
   const timelineEvents: WorkspaceTimelineEvent[] = workspaceData?.timelineEvents ?? [];
   const cases = casesData?.cases ?? [];
   const firstCaseId = cases[0]?.id ?? null;
