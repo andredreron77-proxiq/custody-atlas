@@ -338,6 +338,18 @@ export function WelcomeFlow({ onNavigatingAway }: WelcomeFlowProps) {
     setCaseError(null);
     setCaseCreationFailed(false);
     try {
+      let resolvedUser = user;
+      if (!resolvedUser) {
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
+          resolvedUser = user;
+          if (resolvedUser) break;
+        }
+      }
+      if (!resolvedUser) {
+        throw new Error("Please try again — your session is still loading.");
+      }
+
       const res = await apiRequestRaw("POST", "/api/cases", {
         name: trimmed,
         caseType: "custody",
