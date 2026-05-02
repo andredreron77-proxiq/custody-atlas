@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
 import UpgradeModal from "@/components/app/UpgradeModal";
+import { useUsage } from "@/hooks/use-usage";
 
 export interface GuidedSnapshotState {
   situation_summary?: string | null;
@@ -184,6 +185,8 @@ export function SnapshotCard({
     initiallySaved ? "saved" : "idle",
   );
   const [, navigate] = useLocation();
+  const { usage } = useUsage();
+  const isProUser = usage?.tier === "pro";
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const isMoreTimeSnapshot = Boolean(
     snapshot.current_arrangement
@@ -450,9 +453,11 @@ export function SnapshotCard({
                 ? "Save failed — try again"
                 : "Save Snapshot"}
         </Button>
-        <Button type="button" className="min-h-11 w-full" onClick={() => setUpgradeOpen(true)}>
-          Keep preparing with Pro — $19.99/mo
-        </Button>
+        {!isProUser && (
+          <Button type="button" className="min-h-11 w-full" onClick={() => setUpgradeOpen(true)}>
+            Keep preparing with Pro — $19.99/mo
+          </Button>
+        )}
       </div>
 
       {saveState === "saved" ? (
