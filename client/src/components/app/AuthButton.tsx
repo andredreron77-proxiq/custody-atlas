@@ -296,7 +296,7 @@ export function AuthButton() {
               <p className="text-[11px] text-muted-foreground/70">Signed in as</p>
               <p className="text-xs font-medium truncate mt-0.5">{user.email}</p>
             </div>
-            {isProUser && (
+            {!!user && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
