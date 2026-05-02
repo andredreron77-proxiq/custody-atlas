@@ -576,8 +576,8 @@ export default function CaseDashboardPage() {
       .filter((entry) => (entry.kind === "hearing" || entry.kind === "deadline") && entry.parsed && (entry.status === "next" || entry.status === "today"))
       .map((entry) => Math.ceil((entry.parsed!.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
     const closest = daysAway.length > 0 ? Math.min(...daysAway) : null;
-    if (closest !== null && closest <= 7) return "High";
-    if (closest !== null && closest <= 21) return "Medium";
+    if (closest !== null && closest <= 14) return "High";
+    if (closest !== null && closest <= 30) return "Medium";
     return "Low";
   }, [intelligenceKeyDates]);
   const cirOrderStatus = getFactValue(cirFacts, "order_status");
