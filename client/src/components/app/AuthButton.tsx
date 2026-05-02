@@ -15,7 +15,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
-  LogOut, Mail, Loader2, ArrowLeft, Send,
+  LogOut, Mail, Loader2, ArrowLeft, Send, LifeBuoy,
   ShieldCheck, BrainCircuit, BookmarkCheck, SlidersHorizontal,
 } from "lucide-react";
 import { LogoMark } from "./LogoMark";
@@ -312,6 +312,17 @@ export function AuthButton() {
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                window.location.href = "mailto:support@custodyatlas.com";
+              }}
+              className="gap-2 text-sm cursor-pointer"
+              data-testid="button-help-support"
+            >
+              <LifeBuoy className="w-3.5 h-3.5" />
+              Help & Support
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleSignOut}

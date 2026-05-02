@@ -481,6 +481,17 @@ export default function ResourcesPage() {
             </div>
           </CardContent>
         </Card>
+        <div className="mt-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Still need help?{" "}
+            <a
+              href="mailto:support@custodyatlas.com"
+              className="underline text-foreground hover:text-primary"
+            >
+              Contact our support team
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );
