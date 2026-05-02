@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Calendar, MapPin, Scale, ShieldCheck, Target } from "lucide-react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
 import UpgradeModal from "@/components/app/UpgradeModal";
@@ -182,6 +183,7 @@ export function SnapshotCard({
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
     initiallySaved ? "saved" : "idle",
   );
+  const [, navigate] = useLocation();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const isMoreTimeSnapshot = Boolean(
     snapshot.current_arrangement
@@ -228,6 +230,15 @@ export function SnapshotCard({
       setSaveState("saved");
     } catch {
       setSaveState("error");
+    }
+  };
+
+  const handleAskAtlasQuestion = () => {
+    if (typeof window === "undefined") return;
+    const input = document.querySelector("textarea");
+    if (input instanceof HTMLTextAreaElement) {
+      input.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => input.focus({ preventScroll: true }), 150);
     }
   };
 
@@ -443,6 +454,43 @@ export function SnapshotCard({
           Keep preparing with Pro — $19.99/mo
         </Button>
       </div>
+
+      {saveState === "saved" ? (
+        <div className="mt-4 rounded-xl border border-border/70 bg-card/70 p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#b5922f]">
+            What's Next
+          </p>
+          <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">
+            Your case snapshot is saved. Here's what to do next.
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            <Button
+              type="button"
+              className="min-h-11 w-full"
+              onClick={() => caseId && navigate(`/case/${caseId}`)}
+              disabled={!caseId}
+            >
+              View My Case Dashboard
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 w-full"
+              onClick={() => caseId ? navigate(`/case/${caseId}?upload=true`) : navigate("/workspace")}
+            >
+              Upload a Document
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 w-full"
+              onClick={handleAskAtlasQuestion}
+            >
+              Ask Atlas a Question
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <p className="mt-4 text-xs text-muted-foreground">
         Situational guidance, not legal advice.
