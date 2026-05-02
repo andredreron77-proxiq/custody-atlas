@@ -72,7 +72,6 @@ export async function getCaseFacts(
   factType?: string,
 ): Promise<CaseFactRow[]> {
   try {
-    console.log("[caseFacts] getCaseFacts query", { caseId, userId, factType });
     const conditions = [eq(caseFacts.caseId, caseId), eq(caseFacts.userId, userId)];
     if (factType) conditions.push(eq(caseFacts.factType, factType));
 
@@ -82,10 +81,8 @@ export async function getCaseFacts(
       .where(and(...conditions))
       .orderBy(desc(caseFacts.updatedAt));
 
-    console.log("[caseFacts] getCaseFacts raw rows", rows);
     return rows.map(mapRow);
   } catch (err) {
-    console.error("[caseFacts] getCaseFacts caught error", { caseId, userId, factType, err });
     console.error("[caseFacts] getCaseFacts error:", err);
     return [];
   }
