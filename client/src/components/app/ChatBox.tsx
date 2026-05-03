@@ -478,6 +478,12 @@ function StructuredResponse({
         </div>
       )}
 
+      <p className="mt-2 text-[10px] text-muted-foreground/60 leading-relaxed">
+        General information only — not legal advice. No attorney-client
+        relationship is created. Consult a licensed attorney for your
+        specific situation.
+      </p>
+
       {proactiveInsights.length > 0 && (
         <div className="space-y-2.5 border-t border-border pt-2.5">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1691,6 +1697,11 @@ export function ChatBox({
                                 }}
                               />
                             </div>
+                            <p className="mt-2 text-[10px] text-muted-foreground/60 leading-relaxed">
+                              General information only — not legal advice. No attorney-client
+                              relationship is created. Consult a licensed attorney for your
+                              specific situation.
+                            </p>
                           </CardContent>
                         </Card>
                         {shouldShowGuidedAffordances ? (

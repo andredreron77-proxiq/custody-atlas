@@ -550,7 +550,9 @@ export function AuthButton() {
                         <Link href="/privacy" className="text-primary hover:underline">
                           Privacy Policy
                         </Link>{" "}
-                        and understand that Custody Atlas does not provide legal advice.
+                        . I understand that Custody Atlas provides general legal information only — not
+                        legal advice — and does not create an attorney-client relationship. For legal
+                        decisions, I will consult a licensed attorney.
                       </Label>
                     </div>
                   </div>
