@@ -31,6 +31,7 @@ import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import RedeemCodePage from "@/pages/RedeemCodePage";
 import BillingSuccessPage from "@/pages/BillingSuccessPage";
 import BillingCancelPage from "@/pages/BillingCancelPage";
+import AccountPage from "@/pages/AccountPage";
 import AdminPage from "@/pages/admin/AdminPage";
 import CaseDashboardPage from "@/pages/CaseDashboardPage";
 import DocumentDetailPage from "@/pages/DocumentDetailPage";
@@ -259,6 +260,12 @@ function Router() {
       </Route>
       <Route path="/workspace">
         {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
+      </Route>
+      <Route path="/account">
+        {() => <ProtectedRoute component={AccountPage} feature="workspace" />}
+      </Route>
+      <Route path="/settings">
+        {() => <ProtectedRoute component={AccountPage} feature="workspace" />}
       </Route>
       <Route path="/case/:caseId">
         {() => <ProtectedRoute component={CaseDashboardPage} feature="workspace" />}

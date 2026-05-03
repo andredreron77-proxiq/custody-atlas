@@ -13,9 +13,9 @@
  */
 
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
-  LogOut, Mail, Loader2, ArrowLeft, Send, LifeBuoy,
+  LogOut, Mail, Loader2, ArrowLeft, Send, LifeBuoy, User,
   ShieldCheck, BrainCircuit, BookmarkCheck, SlidersHorizontal,
 } from "lucide-react";
 import { LogoMark } from "./LogoMark";
@@ -113,6 +113,7 @@ function DialogBrand({ subtitle }: { subtitle: string }) {
 }
 
 export function AuthButton() {
+  const [, navigate] = useLocation();
   const { user, isLoading } = useCurrentUser();
   const { data: profile } = useUserProfile();
   const { usage } = useUsage();
@@ -313,6 +314,17 @@ export function AuthButton() {
               </>
             )}
             <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                navigate("/account");
+              }}
+              className="gap-2 text-sm cursor-pointer"
+              data-testid="button-account-settings"
+            >
+              <User className="w-3.5 h-3.5" />
+              Account Settings
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
                 window.location.href = "mailto:support@custodyatlas.com";
