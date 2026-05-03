@@ -83,12 +83,14 @@ export default function AccountPage() {
     setDisplayName(profile?.displayName ?? "");
   }, [profile?.displayName]);
 
-  const isProUser = usage?.tier === "pro" && usage?.isAuthenticated === true;
+  const isProUser =
+    (profile?.tier === "pro" || usage?.tier === "pro") &&
+    (usage?.isAuthenticated === true || !!user);
   const memberSince = formatMemberSince(profile?.createdAt);
   const email = user?.email ?? "Not available";
   const stateLabel = profile?.jurisdictionState ?? "Not set";
   const countyLabel = profile?.jurisdictionCounty ?? "Not set";
-  const currentPlan = useMemo(() => formatPlan(usage?.tier), [usage?.tier]);
+  const currentPlan = useMemo(() => formatPlan(profile?.tier ?? usage?.tier), [profile?.tier, usage?.tier]);
   const trimmedDisplayName = displayName.trim();
   const canSaveDisplayName =
     trimmedDisplayName.length > 0 &&

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "../lib/supabaseAdmin";
 export interface UserProfile {
   id: string;
   displayName: string | null;
+  tier: string | null;
   welcomeDismissedAt: string | null;
   createdAt: string | null;
   jurisdictionState: string | null;
@@ -72,6 +73,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
     return {
       id: userId,
       displayName: null,
+      tier: "free",
       welcomeDismissedAt: null,
       createdAt: null,
       jurisdictionState: null,
@@ -83,13 +85,14 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
   try {
     const { data } = await supabaseAdmin
       .from("user_profiles")
-      .select("id, display_name, welcome_dismissed_at, created_at, jurisdiction_state, jurisdiction_county, auto_update_cir")
+      .select("id, display_name, tier, welcome_dismissed_at, created_at, jurisdiction_state, jurisdiction_county, auto_update_cir")
       .eq("id", userId)
       .maybeSingle();
 
     return {
       id: userId,
       displayName: data?.display_name ?? null,
+      tier: data?.tier ?? "free",
       welcomeDismissedAt: data?.welcome_dismissed_at ?? null,
       createdAt: data?.created_at ?? null,
       jurisdictionState: data?.jurisdiction_state ?? null,
@@ -100,6 +103,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
     return {
       id: userId,
       displayName: null,
+      tier: "free",
       welcomeDismissedAt: null,
       createdAt: null,
       jurisdictionState: null,

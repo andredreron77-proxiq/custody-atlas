@@ -20,6 +20,7 @@ function displayNameSkipUntilKey(userId?: string | null): string {
 export interface UserProfile {
   id: string;
   displayName: string | null;
+  tier: string | null;
   fullName: string | null;
   welcomeDismissedAt: string | null;
   createdAt: string | null;
@@ -142,6 +143,7 @@ export function useUserProfile() {
         id: string;
         displayName?: string | null;
         display_name?: string | null;
+        tier?: string | null;
         fullName?: string | null;
         full_name?: string | null;
         welcomeDismissedAt?: string | null;
@@ -158,6 +160,7 @@ export function useUserProfile() {
       return {
         id: json.id,
         displayName: json.displayName ?? json.display_name ?? null,
+        tier: json.tier ?? null,
         fullName: json.fullName ?? json.full_name ?? null,
         welcomeDismissedAt: json.welcomeDismissedAt ?? json.welcome_dismissed_at ?? null,
         createdAt: json.createdAt ?? json.created_at ?? null,
