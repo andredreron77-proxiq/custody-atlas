@@ -513,6 +513,14 @@ export function WelcomeFlow({ onNavigatingAway }: WelcomeFlowProps) {
                 </button>
               ))}
             </div>
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-800/40 dark:bg-amber-950/20">
+              <p className="text-xs leading-relaxed text-amber-900 dark:text-amber-200">
+                <strong>Important:</strong> Custody Atlas provides general legal
+                information only — not legal advice. Nothing here creates an
+                attorney-client relationship. For decisions that affect your case,
+                please consult a licensed attorney.
+              </p>
+            </div>
             <div className="mt-6 flex justify-end">
               <Button
                 className="w-full sm:w-auto"
