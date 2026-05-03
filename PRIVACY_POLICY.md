@@ -56,14 +56,14 @@ We recommend you do not upload documents containing Social Security numbers, fin
 
 We share your information only in the following circumstances:
 
-- **Service providers**: We share data with Supabase (database), Stripe (payments), OpenAI (AI processing), and Google (document analysis) solely to operate the Service
+- **Service providers**: We share data with Supabase (database), Stripe (payments), OpenAI (AI processing), Google (document analysis), and PostHog (analytics) solely to operate the Service
 - **Legal requirements**: If required by law, court order, or government authority
 - **Business transfer**: In the event of a merger, acquisition, or sale of assets, your information may be transferred as part of that transaction
 - **With your consent**: For any other purpose with your explicit consent
 
 ## 7. Data Retention
 
-We retain your account information and conversation history for as long as your account is active. Uploaded documents are retained to enable ongoing case analysis. You may request deletion of your data at any time by contacting us.
+We retain your account information and conversation history for as long as your account is active. Uploaded documents are retained to enable ongoing case analysis. You may request deletion of your data at any time by contacting us. When you request deletion, your data is permanently removed within 30 days.
 
 ## 8. Your Rights
 
@@ -75,7 +75,7 @@ Depending on your location, you may have rights to:
 - Object to certain processing of your information
 - Export your data in a portable format
 
-To exercise these rights, contact us at andre@custodyatlas.com.
+To exercise these rights, contact us at support@custodyatlas.com.
 
 ## 9. Children's Privacy
 
@@ -90,6 +90,6 @@ We may update this Privacy Policy from time to time. We will notify you of mater
 For privacy-related questions or requests, contact us at:
 
 **Custody Atlas**
-Email: andre@custodyatlas.com
+Email: support@custodyatlas.com
 Phone: (404) 692-2006
 Website: custodyatlas.com
