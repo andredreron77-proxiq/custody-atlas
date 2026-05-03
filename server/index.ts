@@ -1,5 +1,6 @@
 import "./env";
 import express, { type Request, Response, NextFunction } from "express";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -24,6 +25,52 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+const isLocalRequest = (req: Request): boolean => {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const forwardedValue = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+  const forwardedIp = typeof forwardedValue === "string" ? forwardedValue.split(",")[0]?.trim() : "";
+  const candidateIp = forwardedIp || req.ip || req.socket.remoteAddress || "";
+
+  return (
+    process.env.NODE_ENV !== "production"
+    || candidateIp === "127.0.0.1"
+    || candidateIp === "::1"
+    || candidateIp === "::ffff:127.0.0.1"
+    || candidateIp === "localhost"
+  );
+};
+
+const buildRateLimiter = (options: { windowMs: number; max: number }) =>
+  rateLimit({
+    windowMs: options.windowMs,
+    max: options.max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => isLocalRequest(req),
+    message: { message: "Too many requests. Please slow down." },
+  });
+
+const generalApiLimiter = buildRateLimiter({
+  windowMs: 60 * 1000,
+  max: 100,
+});
+
+const aiQueryLimiter = buildRateLimiter({
+  windowMs: 60 * 1000,
+  max: 20,
+});
+
+const authLimiter = buildRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+});
+
+app.use("/api", generalApiLimiter);
+app.use("/api/ask", aiQueryLimiter);
+app.use("/api/conversations/:conversationId/messages", aiQueryLimiter);
+app.use("/api/user-profile", authLimiter);
+app.use("/api/user/preferences", authLimiter);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
