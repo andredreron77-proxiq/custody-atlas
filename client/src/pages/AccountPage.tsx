@@ -31,6 +31,7 @@ import { useUsage } from "@/hooks/use-usage";
 import { useUserProfile } from "@/hooks/use-user-profile";
 import { supabase } from "@/lib/supabaseClient";
 import { apiRequestRaw } from "@/lib/queryClient";
+import { USAGE_QUERY_KEY } from "@/services/usageService";
 import { signOut } from "@/services/authService";
 
 function formatMemberSince(value: string | null | undefined): string {
@@ -173,6 +174,7 @@ export default function AccountPage() {
     setIsDeletingAccount(true);
     try {
       await signOut();
+      queryClient.removeQueries({ queryKey: USAGE_QUERY_KEY });
       toast({
         title: "Account deletion request",
         description: "Contact support@custodyatlas.com to complete account deletion",

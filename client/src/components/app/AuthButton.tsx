@@ -43,6 +43,7 @@ import { SiGoogle } from "react-icons/si";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { initialsFromPreferredName, resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
 import { useUsage } from "@/hooks/use-usage";
+import { USAGE_QUERY_KEY } from "@/services/usageService";
 import {
   signInWithEmail,
   signUpWithEmail,
@@ -236,7 +237,7 @@ export function AuthButton() {
 
   async function handleSignOut() {
     await signOut();
-    qc.invalidateQueries({ queryKey: ["/api/usage"] });
+    qc.removeQueries({ queryKey: USAGE_QUERY_KEY });
   }
 
   if (isLoading) {
