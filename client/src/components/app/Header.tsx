@@ -143,6 +143,24 @@ export function Header() {
           <div className="hidden md:flex items-center gap-2 ml-auto">
             <ThemeToggle />
             <UsageIndicator />
+            {!user ? (
+              <Link
+                href="/contact"
+                className={`
+                  relative flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors
+                  ${isActive("/contact")
+                    ? "text-white bg-white/10"
+                    : "text-slate-400 hover:text-white hover:bg-white/8"
+                  }
+                `}
+                data-testid="nav-contact"
+              >
+                <span>Contact</span>
+                {isActive("/contact") && (
+                  <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-white/40 rounded-full" />
+                )}
+              </Link>
+            ) : null}
             <AuthButton />
           </div>
 

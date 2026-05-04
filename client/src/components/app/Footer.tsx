@@ -45,6 +45,9 @@ export function MinimalFooter() {
         <Link href="/privacy" className="transition-colors hover:text-slate-100">
           Privacy Policy
         </Link>
+        <Link href="/contact" className="transition-colors hover:text-slate-100">
+          Contact
+        </Link>
         <span>Not legal advice</span>
       </div>
     </footer>

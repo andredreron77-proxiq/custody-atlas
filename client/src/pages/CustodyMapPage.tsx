@@ -1930,6 +1930,12 @@ export default function CustodyMapPage() {
           </CardContent>
         </Card>
       </div>
+      <p className="mt-3 text-xs text-muted-foreground leading-relaxed px-1">
+        Questions or partnerships?{" "}
+        <Link href="/contact" className="transition-colors hover:text-foreground">
+          Contact us →
+        </Link>
+      </p>
       </DevReveal>
 
     </div>

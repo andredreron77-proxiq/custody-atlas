@@ -277,6 +277,12 @@ function HeroSection() {
                 </Button>
               </Link>
             </div>
+            <p className="text-sm text-slate-400">
+              Have questions?{" "}
+              <Link href="/contact" className="transition-colors hover:text-slate-600">
+                Contact us →
+              </Link>
+            </p>
           </Reveal>
 
           <Reveal delay={400}>
