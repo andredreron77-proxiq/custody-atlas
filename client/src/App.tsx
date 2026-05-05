@@ -124,8 +124,10 @@ function ProtectedRoute({
     },
   });
   const welcomeDismissedAt = profile?.welcomeDismissedAt ?? profile?.welcome_dismissed_at ?? null;
+  const isAttorneyFirmUser = profile?.tier === "attorney_firm";
   const shouldRedirectToWelcome =
     Boolean(user) &&
+    !isAttorneyFirmUser &&
     !welcomeDismissedAt &&
     Array.isArray(casesData?.cases) &&
     casesData.cases.length === 0 &&
@@ -190,8 +192,10 @@ function ProtectedWelcomeRoute() {
     },
   });
   const welcomeDismissedAt = profile?.welcomeDismissedAt ?? profile?.welcome_dismissed_at ?? null;
+  const isAttorneyFirmUser = profile?.tier === "attorney_firm";
   const shouldShowWelcome =
     Boolean(user) &&
+    !isAttorneyFirmUser &&
     !welcomeDismissedAt &&
     Array.isArray(casesData?.cases) &&
     (casesData.cases.length === 0 || welcomeFlowActive);
@@ -355,9 +359,11 @@ function HomeRoute() {
     if (isAuthLoading || !user || isWorkspaceLoading || isProfileLoading || isCasesLoading) return;
     const welcomeDismissedAt = profile?.welcomeDismissedAt ?? profile?.welcome_dismissed_at ?? null;
     const hasNoCases = Array.isArray(casesData?.cases) && casesData.cases.length === 0;
-    const destination = !welcomeDismissedAt && hasNoCases
-      ? "/welcome"
-      : hasDocuments ? "/workspace" : "/analyze";
+    const destination = profile?.tier === "attorney_firm"
+      ? "/attorney"
+      : !welcomeDismissedAt && hasNoCases
+        ? "/welcome"
+        : hasDocuments ? "/workspace" : "/analyze";
     if (location !== destination) {
       window.location.replace(destination);
     }
