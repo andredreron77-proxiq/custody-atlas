@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { AttorneyShell } from "@/components/attorney/AttorneyShell";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useUserProfile } from "@/hooks/use-user-profile";
+import { initialsFromPreferredName, resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
 import { useUsage } from "@/hooks/use-usage";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
@@ -43,6 +42,13 @@ type TaskItem = {
   text: string;
   done: boolean;
 };
+
+const ATTORNEY_NAV_ITEMS = [
+  { label: "Clients", href: "/attorney", activeMatch: (pathname: string) => pathname === "/attorney" || pathname.startsWith("/attorney/") },
+  { label: "Calendar" },
+  { label: "Messages" },
+  { label: "Profile" },
+] as const;
 
 function readString(record: Record<string, unknown> | null | undefined, keys: string[]): string | null {
   if (!record) return null;
@@ -103,6 +109,74 @@ function buildNotesKey(attorneyUserId: string, clientUserId: string): string {
 
 function buildTasksKey(attorneyUserId: string, clientUserId: string): string {
   return `attorney_${attorneyUserId}_client_${clientUserId}_tasks`;
+}
+
+function AttorneyClientTopNav({
+  displayName,
+  initials,
+}: {
+  displayName: string;
+  initials: string;
+}) {
+  const [location] = useLocation();
+
+  return (
+    <div className="border-b border-black/8 bg-[#f7f3ed]/95 backdrop-blur">
+      <div className="mx-auto flex max-w-[1220px] items-center justify-between gap-4 px-6 py-4">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-[oklch(0.66_0.13_154)] shadow-[0_0_0_4px_rgba(63,161,106,0.12)]" />
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-600">
+              Custody Atlas · Attorney Portal
+            </p>
+          </div>
+          <Link href="/attorney" className="hidden text-sm font-medium text-slate-500 hover:text-slate-900 sm:inline-flex">
+            ‹ All clients
+          </Link>
+        </div>
+
+        <nav className="hidden items-center gap-1 md:flex">
+          {ATTORNEY_NAV_ITEMS.map((item) => {
+            if (!item.href) {
+              return (
+                <span key={item.label} className="rounded-full px-3 py-1.5 text-sm text-slate-400">
+                  {item.label}
+                </span>
+              );
+            }
+
+            const isActive = item.activeMatch(location);
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-sm transition-colors",
+                  isActive
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:bg-black/[0.04] hover:text-slate-900",
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="hidden min-w-0 text-right sm:block">
+            <p className="truncate text-sm font-medium text-slate-900">{displayName}</p>
+            <p className="text-xs text-slate-500">Attorney account</p>
+          </div>
+          <Avatar className="h-10 w-10 border border-black/8 bg-white">
+            <AvatarFallback className="bg-[oklch(0.97_0.02_154)] text-sm font-semibold text-[oklch(0.48_0.12_154)]">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AttorneyClientPage() {
@@ -252,6 +326,21 @@ export default function AttorneyClientPage() {
     { label: caseStage, tone: "slate" as const },
   ].filter((item): item is { label: string; tone: "red" | "amber" | "slate" } => item !== null);
 
+  const attorneyDisplayName = resolvePreferredDisplayName({
+    profileDisplayName: profile?.displayName,
+    profileFullName: profile?.fullName,
+    authMetadataName: user?.authMetadataName,
+    authDisplayName: user?.displayName,
+    email: user?.email,
+  }) ?? "Attorney";
+  const attorneyInitials = initialsFromPreferredName({
+    profileDisplayName: profile?.displayName,
+    profileFullName: profile?.fullName,
+    authMetadataName: user?.authMetadataName,
+    authDisplayName: user?.displayName,
+    email: user?.email,
+  });
+
   function scrollTo(ref: React.RefObject<HTMLElement | HTMLTextAreaElement | HTMLDivElement>) {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -268,39 +357,42 @@ export default function AttorneyClientPage() {
 
   if (authLoading || profileLoading || usageLoading || !isAttorneyUser) {
     return (
-      <AttorneyShell>
+      <div className="min-h-screen bg-[#f7f3ed]">
+        <AttorneyClientTopNav displayName={attorneyDisplayName} initials={attorneyInitials} />
         <div className="flex items-center justify-center py-24">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[oklch(0.66_0.13_154)] border-t-transparent" />
         </div>
-      </AttorneyShell>
+      </div>
     );
   }
 
   return (
-    <AttorneyShell backHref="/attorney" backLabel="‹ All clients">
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_220px]">
+    <div className="min-h-screen bg-[#f7f3ed] text-slate-900 dark:bg-[#101418] dark:text-slate-100">
+      <AttorneyClientTopNav displayName={attorneyDisplayName} initials={attorneyInitials} />
+
+      <div className="mx-auto grid max-w-[1220px] gap-6 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_220px]">
         <div className="space-y-6">
           {caseBriefQuery.isLoading || clientsQuery.isLoading ? (
-            <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+            <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
               <CardContent className="flex items-center gap-3 p-6 text-sm text-slate-600 dark:text-slate-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading client workspace…
               </CardContent>
             </Card>
           ) : caseBriefQuery.error ? (
-            <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+            <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
               <CardContent className="p-6 text-sm text-red-700 dark:text-red-300">
                 {caseBriefQuery.error instanceof Error ? caseBriefQuery.error.message : "Could not load client workspace."}
               </CardContent>
             </Card>
           ) : (
             <>
-              <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardContent className="p-6">
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start gap-4">
-                      <Avatar className="h-14 w-14">
-                        <AvatarFallback className="bg-emerald-100 text-base font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      <Avatar className="h-14 w-14 border border-black/6 bg-white">
+                        <AvatarFallback className="bg-[oklch(0.97_0.02_154)] text-base font-semibold text-[oklch(0.48_0.12_154)]">
                           {getInitials(clientName)}
                         </AvatarFallback>
                       </Avatar>
@@ -317,12 +409,12 @@ export default function AttorneyClientPage() {
                             <Badge
                               key={pill.label}
                               className={cn(
-                                "border-0 px-2.5 py-1 text-[11px] font-medium",
+                                "border-0 px-2.5 py-1 text-[11px] font-medium shadow-none",
                                 pill.tone === "red"
-                                  ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                                  ? "bg-[oklch(0.97_0.02_25)] text-[oklch(0.58_0.21_27)]"
                                   : pill.tone === "amber"
-                                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                                    : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+                                    ? "bg-[oklch(0.98_0.02_86)] text-[oklch(0.63_0.14_79)]"
+                                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
                               )}
                             >
                               {pill.label}
@@ -350,7 +442,7 @@ export default function AttorneyClientPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardHeader>
                   <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Atlas Case Brief</CardTitle>
                 </CardHeader>
@@ -359,7 +451,7 @@ export default function AttorneyClientPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardHeader>
                   <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Case Readiness</CardTitle>
                 </CardHeader>
@@ -380,7 +472,7 @@ export default function AttorneyClientPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardHeader>
                   <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Legal Timeline</CardTitle>
                 </CardHeader>
@@ -389,7 +481,7 @@ export default function AttorneyClientPage() {
                     <p className="text-sm text-slate-600 dark:text-slate-400">No timeline events are available yet.</p>
                   ) : (
                     timeline.map((event, index) => (
-                      <div key={`${event.id ?? index}`} className="rounded-xl border border-black/5 bg-black/[0.015] px-4 py-3 dark:border-white/10 dark:bg-white/[0.02]">
+                      <div key={`${event.id ?? index}`} className="rounded-xl border border-black/6 bg-[#faf8f4] px-4 py-3 dark:border-white/10 dark:bg-white/[0.02]">
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-50">
                           {readString(event as Record<string, unknown>, ["label", "title", "event_type"]) ?? "Event"}
                         </p>
@@ -402,7 +494,7 @@ export default function AttorneyClientPage() {
                 </CardContent>
               </Card>
 
-              <Card ref={documentsRef} className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card ref={documentsRef} className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardHeader>
                   <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Documents</CardTitle>
                 </CardHeader>
@@ -415,7 +507,7 @@ export default function AttorneyClientPage() {
                       const title = readString(documentRecord, ["file_name", "title", "name"]) ?? `Document ${index + 1}`;
                       const documentId = readString(documentRecord, ["id"]);
                       return (
-                        <div key={documentId ?? `${title}-${index}`} className="flex flex-col gap-3 rounded-xl border border-black/5 bg-black/[0.015] px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/10 dark:bg-white/[0.02]">
+                        <div key={documentId ?? `${title}-${index}`} className="flex flex-col gap-3 rounded-xl border border-black/6 bg-[#faf8f4] px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/10 dark:bg-white/[0.02]">
                           <div>
                             <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{title}</p>
                             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
@@ -439,7 +531,7 @@ export default function AttorneyClientPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardHeader>
                   <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Attorney Notes</CardTitle>
                 </CardHeader>
@@ -449,13 +541,13 @@ export default function AttorneyClientPage() {
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
                     placeholder="Private notes for this client. Saved locally on this device for now."
-                    className="min-h-[180px]"
+                    className="min-h-[180px] border-black/8 bg-[#faf8f4]"
                   />
                   <p className="text-xs text-slate-500 dark:text-slate-400">Saved locally on this device.</p>
                 </CardContent>
               </Card>
 
-              <Card ref={tasksRef} className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card ref={tasksRef} className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardHeader>
                   <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Tasks</CardTitle>
                 </CardHeader>
@@ -471,6 +563,7 @@ export default function AttorneyClientPage() {
                         }
                       }}
                       placeholder="Add a task for this client"
+                      className="border-black/8 bg-[#faf8f4]"
                     />
                     <Button type="button" onClick={() => addTask(taskDraft)}>Add task</Button>
                   </div>
@@ -479,7 +572,7 @@ export default function AttorneyClientPage() {
                       <p className="text-sm text-slate-600 dark:text-slate-400">No tasks yet.</p>
                     ) : (
                       tasks.map((task) => (
-                        <label key={task.id} className="flex items-center gap-3 rounded-xl border border-black/5 px-3 py-2 text-sm dark:border-white/10">
+                        <label key={task.id} className="flex items-center gap-3 rounded-xl border border-black/6 px-3 py-2 text-sm dark:border-white/10">
                           <input
                             type="checkbox"
                             checked={task.done}
@@ -499,7 +592,7 @@ export default function AttorneyClientPage() {
                 </CardContent>
               </Card>
 
-              <Card ref={messagesRef} className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+              <Card ref={messagesRef} className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
                 <CardHeader>
                   <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Messages</CardTitle>
                 </CardHeader>
@@ -512,7 +605,7 @@ export default function AttorneyClientPage() {
         </div>
 
         <aside className="space-y-4">
-          <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+          <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Client Info</CardTitle>
             </CardHeader>
@@ -536,7 +629,7 @@ export default function AttorneyClientPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+          <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Child</CardTitle>
             </CardHeader>
@@ -552,7 +645,7 @@ export default function AttorneyClientPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+          <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Opposing Party</CardTitle>
             </CardHeader>
@@ -568,7 +661,7 @@ export default function AttorneyClientPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-black/5 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-900/85">
+          <Card className="border-black/6 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/85">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm uppercase tracking-[0.16em] text-slate-500">Case Details</CardTitle>
             </CardHeader>
@@ -593,6 +686,6 @@ export default function AttorneyClientPage() {
           </Card>
         </aside>
       </div>
-    </AttorneyShell>
+    </div>
   );
 }
