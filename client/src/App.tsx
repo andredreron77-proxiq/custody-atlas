@@ -33,6 +33,8 @@ import RedeemCodePage from "@/pages/RedeemCodePage";
 import BillingSuccessPage from "@/pages/BillingSuccessPage";
 import BillingCancelPage from "@/pages/BillingCancelPage";
 import AccountPage from "@/pages/AccountPage";
+import AttorneyDashboardPage from "@/pages/attorney/AttorneyDashboardPage";
+import AttorneyClientPage from "@/pages/attorney/AttorneyClientPage";
 import AdminPage from "@/pages/admin/AdminPage";
 import CaseDashboardPage from "@/pages/CaseDashboardPage";
 import DocumentDetailPage from "@/pages/DocumentDetailPage";
@@ -265,6 +267,12 @@ function Router() {
       <Route path="/workspace">
         {() => <ProtectedRoute component={WorkspacePage} feature="workspace" />}
       </Route>
+      <Route path="/attorney/client/:clientUserId">
+        {() => <ProtectedRoute component={AttorneyClientPage} feature="workspace" />}
+      </Route>
+      <Route path="/attorney">
+        {() => <ProtectedRoute component={AttorneyDashboardPage} feature="workspace" />}
+      </Route>
       <Route path="/account">
         {() => <ProtectedRoute component={AccountPage} feature="workspace" />}
       </Route>
@@ -368,6 +376,7 @@ function HomeRoute() {
 
 function App() {
   const { user, isLoading } = useCurrentUser();
+  const [location] = useLocation();
   const { data: usage } = useQuery({
     queryKey: USAGE_QUERY_KEY,
     enabled: Boolean(user),
@@ -376,6 +385,7 @@ function App() {
     queryFn: fetchUsageState,
   });
   const authKey = isLoading ? "loading" : user ? user.id : "unauthenticated";
+  const isAttorneyRoute = location === "/attorney" || location.startsWith("/attorney/");
 
   useEffect(() => {
     if (!user) return;
@@ -390,13 +400,13 @@ function App() {
       <TooltipProvider>
         <ScrollToTop />
         <div className="min-h-screen flex flex-col">
-          <Header />
+          {!isAttorneyRoute ? <Header /> : null}
           <main className="flex-1 flex flex-col min-h-0">
             <div key={authKey} className="flex-1 flex flex-col min-h-0">
               <Router />
             </div>
           </main>
-          <AppFooter />
+          {!isAttorneyRoute ? <AppFooter /> : null}
         </div>
         <Toaster />
       </TooltipProvider>
