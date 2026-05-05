@@ -24,6 +24,7 @@ import WorkspacePage from "@/pages/WorkspacePage";
 import WelcomeFlow from "@/components/onboarding/WelcomeFlow";
 import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsOfServicePage from "@/pages/TermsOfServicePage";
+import ContactPage from "@/pages/ContactPage";
 import CustodyLawsStatePage from "@/pages/CustodyLawsStatePage";
 import CustodyQuestionsPage from "@/pages/CustodyQuestionsPage";
 import PublicQAPage from "@/pages/PublicQAPage";
@@ -236,6 +237,9 @@ function Router() {
       <Route path="/q/:stateSlug/:topic/:slug" component={PublicQAPage} />
       <Route path="/privacy" component={PrivacyPolicyPage} />
       <Route path="/terms" component={TermsOfServicePage} />
+      <Route path="/contact">
+        {() => <ContactPage />}
+      </Route>
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/redeem" component={RedeemCodePage} />
       <Route path="/billing/success" component={BillingSuccessPage} />
