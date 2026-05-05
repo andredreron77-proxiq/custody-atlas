@@ -8,6 +8,8 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -47,6 +49,7 @@ const buildRateLimiter = (options: { windowMs: number; max: number }) =>
     max: options.max,
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { xForwardedForHeader: false },
     skip: (req) => isLocalRequest(req),
     message: { message: "Too many requests. Please slow down." },
   });
