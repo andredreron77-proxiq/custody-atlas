@@ -66,13 +66,12 @@ const aiQueryLimiter = buildRateLimiter({
 
 const authLimiter = buildRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 30,
 });
 
 app.use("/api", generalApiLimiter);
 app.use("/api/ask", aiQueryLimiter);
 app.use("/api/conversations/:conversationId/messages", aiQueryLimiter);
-app.use("/api/user-profile", authLimiter);
 app.use("/api/user/preferences", authLimiter);
 
 export function log(message: string, source = "express") {
