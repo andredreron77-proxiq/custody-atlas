@@ -127,6 +127,7 @@ function ProtectedRoute({
   const isAttorneyFirmUser = profile?.tier === "attorney_firm";
   const shouldRedirectToWelcome =
     Boolean(user) &&
+    !isProfileLoading &&
     !isAttorneyFirmUser &&
     !welcomeDismissedAt &&
     Array.isArray(casesData?.cases) &&
