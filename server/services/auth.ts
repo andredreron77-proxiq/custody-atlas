@@ -8,7 +8,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
 
-export type UserTier = "free" | "pro";
+export type UserTier = "free" | "pro" | "attorney_firm";
 
 export interface AuthUser {
   id: string;
