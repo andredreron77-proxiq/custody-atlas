@@ -61,6 +61,7 @@ import { generateProactiveInsights } from "./lib/proactiveIntelligence";
 import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
 import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRiskScoring";
 import { requireAuth, requireAdmin } from "./services/auth";
+import { requireAttorneyAuth } from "./middleware/requireAttorneyAuth";
 import {
   listAdminUsers,
   findAdminUserByEmail,
@@ -71,6 +72,15 @@ import {
   deactivateInviteCode,
   redeemInviteCode,
 } from "./services/adminService";
+import {
+  acceptConnection,
+  getAttorneyClients,
+  getAttorneyProfile,
+  getClientCaseData,
+  inviteClient,
+  revokeConnection,
+  upsertAttorneyProfile,
+} from "./services/attorneyService";
 import {
   getUsageState,
   checkQuestionLimit,
@@ -2231,6 +2241,195 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
     } catch (error) {
       console.error("[attorney-waitlist] error:", JSON.stringify(error, null, 2));
       return res.status(500).json({ error: "Failed to join attorney waitlist." });
+    }
+  });
+
+  app.get("/api/attorney/profile", requireAttorneyAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated attorney is required." });
+      }
+
+      const profile = await getAttorneyProfile(user.id);
+      return res.json(profile ?? {});
+    } catch (error) {
+      console.error("[attorney] GET profile error:", error);
+      return res.status(500).json({ error: "Failed to load attorney profile." });
+    }
+  });
+
+  app.patch("/api/attorney/profile", requireAttorneyAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated attorney is required." });
+      }
+
+      const parsed = z.object({
+        firmName: z.string().min(1).max(200).optional(),
+        barNumber: z.string().min(1).max(120).optional(),
+        barState: z.string().min(1).max(64).optional(),
+        practiceStates: z.array(z.string().min(1).max(64)).optional(),
+        bio: z.string().max(4000).optional(),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid attorney profile payload." });
+      }
+
+      const profile = await upsertAttorneyProfile(user.id, parsed.data);
+      if (!profile) {
+        return res.status(500).json({ error: "Failed to save attorney profile." });
+      }
+
+      return res.json(profile);
+    } catch (error) {
+      console.error("[attorney] PATCH profile error:", error);
+      return res.status(500).json({ error: "Failed to save attorney profile." });
+    }
+  });
+
+  app.get("/api/attorney/clients", requireAttorneyAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated attorney is required." });
+      }
+
+      const clients = await getAttorneyClients(user.id);
+      return res.json({ clients });
+    } catch (error) {
+      console.error("[attorney] GET clients error:", error);
+      return res.status(500).json({ error: "Failed to load attorney clients." });
+    }
+  });
+
+  app.post("/api/attorney/clients/invite", requireAttorneyAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated attorney is required." });
+      }
+
+      const parsed = z.object({
+        email: z.string().email(),
+        caseId: z.string().uuid().optional(),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "A valid email is required." });
+      }
+
+      const connection = await inviteClient(user.id, parsed.data.email, parsed.data.caseId);
+      if (!connection) {
+        return res.status(500).json({ error: "Failed to create attorney connection invite." });
+      }
+
+      return res.json({ connection });
+    } catch (error) {
+      console.error("[attorney] POST invite client error:", error);
+      return res.status(500).json({ error: "Failed to create attorney connection invite." });
+    }
+  });
+
+  app.get("/api/attorney/clients/:clientUserId", requireAttorneyAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      const clientUserId = typeof req.params.clientUserId === "string" ? req.params.clientUserId.trim() : "";
+
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated attorney is required." });
+      }
+
+      if (!clientUserId) {
+        return res.status(400).json({ error: "clientUserId is required." });
+      }
+
+      const caseBrief = await getClientCaseData(user.id, clientUserId);
+      if (!caseBrief) {
+        return res.status(404).json({ error: "Client case data not found." });
+      }
+
+      return res.json(caseBrief);
+    } catch (error) {
+      console.error("[attorney] GET client case data error:", error);
+      return res.status(500).json({ error: "Failed to load client case data." });
+    }
+  });
+
+  app.post("/api/attorney/connections/:connectionId/revoke", requireAttorneyAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      const connectionId = typeof req.params.connectionId === "string" ? req.params.connectionId.trim() : "";
+
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated attorney is required." });
+      }
+
+      if (!connectionId) {
+        return res.status(400).json({ error: "connectionId is required." });
+      }
+
+      const connection = await revokeConnection(connectionId, user.id);
+      if (!connection) {
+        return res.status(404).json({ error: "Connection not found." });
+      }
+
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error("[attorney] POST revoke connection error:", error);
+      return res.status(500).json({ error: "Failed to revoke connection." });
+    }
+  });
+
+  app.post("/api/connections/:connectionId/accept", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      const connectionId = typeof req.params.connectionId === "string" ? req.params.connectionId.trim() : "";
+
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated user is required." });
+      }
+
+      if (!connectionId) {
+        return res.status(400).json({ error: "connectionId is required." });
+      }
+
+      const connection = await acceptConnection(connectionId, user.id);
+      if (!connection) {
+        return res.status(404).json({ error: "Connection not found." });
+      }
+
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error("[connections] POST accept error:", error);
+      return res.status(500).json({ error: "Failed to accept connection." });
+    }
+  });
+
+  app.post("/api/connections/:connectionId/revoke", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user as { id: string };
+      const connectionId = typeof req.params.connectionId === "string" ? req.params.connectionId.trim() : "";
+
+      if (!user?.id) {
+        return res.status(401).json({ error: "Authenticated user is required." });
+      }
+
+      if (!connectionId) {
+        return res.status(400).json({ error: "connectionId is required." });
+      }
+
+      const connection = await revokeConnection(connectionId, user.id);
+      if (!connection) {
+        return res.status(404).json({ error: "Connection not found." });
+      }
+
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error("[connections] POST revoke error:", error);
+      return res.status(500).json({ error: "Failed to revoke connection." });
     }
   });
 
