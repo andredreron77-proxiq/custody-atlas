@@ -199,12 +199,13 @@ export default function AttorneyDashboardPage() {
     (profile?.tier === "attorney_firm" || usage?.tier === "attorney_firm") &&
     !!user;
 
-  useEffect(() => {
-    if (authLoading || profileLoading || usageLoading) return;
-    if (!isAttorneyUser) {
-      navigate("/", { replace: true });
-    }
-  }, [authLoading, isAttorneyUser, navigate, profileLoading, usageLoading]);
+  // TEMP: tier gate disabled for testing
+  // useEffect(() => {
+  //   if (authLoading || profileLoading || usageLoading) return;
+  //   if (!isAttorneyUser) {
+  //     navigate("/", { replace: true });
+  //   }
+  // }, [authLoading, isAttorneyUser, navigate, profileLoading, usageLoading]);
 
   const clientsQuery = useQuery<{ clients: AttorneyClientConnection[] }>({
     queryKey: ["/api/attorney/clients"],
