@@ -19,6 +19,7 @@ import {
   UserPlus,
   Ticket,
   BarChart3,
+  Building2,
   Shield,
   Search,
   Loader2,
@@ -165,35 +166,121 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function AnalyticsCard({
-  label,
-  value,
+function InsightBadge({
+  text,
+  type,
 }: {
-  label: string;
+  text: string;
+  type: "warning" | "danger" | "success" | "info";
+}) {
+  const toneClasses = {
+    warning: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200",
+    danger: "border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200",
+    info: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200",
+  } as const;
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${toneClasses[type]}`}>
+      {text}
+    </div>
+  );
+}
+
+function MetricCard({
+  value,
+  label,
+  sublabel,
+  large = false,
+}: {
   value: string;
+  label: string;
+  sublabel?: string;
+  large?: boolean;
 }) {
   return (
-    <Card className="border-slate-800 bg-slate-950 text-slate-50 shadow-sm">
+    <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a] dark:text-slate-50">
       <CardContent className="p-5">
-        <div className="text-3xl font-bold tracking-tight">{value}</div>
-        <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
+        <div className={large ? "text-3xl font-bold tracking-tight" : "text-2xl font-bold tracking-tight"}>
+          {value}
+        </div>
+        <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+        {sublabel ? (
+          <p className="mt-1 text-xs text-muted-foreground">{sublabel}</p>
+        ) : null}
       </CardContent>
     </Card>
   );
 }
 
-function AnalyticsLoadingGrid({ cards = 4 }: { cards?: number }) {
+function FunnelBar({
+  label,
+  value,
+  max,
+  color,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  color: string;
+}) {
+  const width = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      {Array.from({ length: cards }).map((_, index) => (
-        <Card key={index} className="border-slate-800 bg-slate-950">
-          <CardContent className="p-5">
-            <div className="h-8 w-24 animate-pulse rounded bg-slate-800" />
-            <div className="mt-3 h-3 w-28 animate-pulse rounded bg-slate-800/80" />
-          </CardContent>
-        </Card>
-      ))}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-foreground">{label}</p>
+        <p className="text-sm text-muted-foreground">{formatKpiNumber(value)}</p>
+      </div>
+      <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-800">
+        <div
+          className="h-2 rounded-full transition-[width]"
+          style={{ width: `${width}%`, backgroundColor: color }}
+        />
+      </div>
     </div>
+  );
+}
+
+function PipelineStage({
+  label,
+  value,
+  color,
+  isLast = false,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  isLast?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className="min-w-[120px] rounded-xl border bg-white px-4 py-4 text-center shadow-sm dark:bg-[#0f172a]"
+        style={{ borderColor: color }}
+      >
+        <div className="text-2xl font-bold tracking-tight text-foreground">{formatKpiNumber(value)}</div>
+        <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {label}
+        </p>
+      </div>
+      {!isLast ? <span className="text-xl text-muted-foreground">→</span> : null}
+    </div>
+  );
+}
+
+function AnalyticsLoadingPanel({ rows = 3 }: { rows?: number }) {
+  return (
+    <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+      <CardContent className="space-y-4 p-6">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={index} className="space-y-2">
+            <div className="h-3 w-28 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="h-2 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -696,17 +783,20 @@ function AnalyticsTab({ enabled }: { enabled: boolean }) {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <AnalyticsSection title="Users">
-          <AnalyticsLoadingGrid cards={5} />
+        <AnalyticsSection title="Conversion Funnel">
+          <AnalyticsLoadingPanel rows={4} />
         </AnalyticsSection>
-        <AnalyticsSection title="Revenue">
-          <AnalyticsLoadingGrid cards={1} />
+        <AnalyticsSection title="Revenue Health">
+          <AnalyticsLoadingPanel rows={3} />
         </AnalyticsSection>
         <AnalyticsSection title="Engagement">
-          <AnalyticsLoadingGrid cards={7} />
+          <AnalyticsLoadingPanel rows={5} />
         </AnalyticsSection>
-        <AnalyticsSection title="Attorney Portal">
-          <AnalyticsLoadingGrid cards={4} />
+        <AnalyticsSection title="Attorney Pipeline">
+          <AnalyticsLoadingPanel rows={2} />
+        </AnalyticsSection>
+        <AnalyticsSection title="Organizations">
+          <AnalyticsLoadingPanel rows={2} />
         </AnalyticsSection>
       </div>
     );
@@ -732,44 +822,150 @@ function AnalyticsTab({ enabled }: { enabled: boolean }) {
     documents: { total: 0 },
   };
 
+  const totalUsers = analytics.users.total;
+  const freeUsers = analytics.users.free;
+  const proUsers = analytics.users.pro;
+  const activeSubscriptions = analytics.users.activeSubscriptions;
+  const attorneyUsers = analytics.users.attorney;
+  const churnGap = Math.max(0, proUsers - activeSubscriptions);
+  const conversionRate = totalUsers > 0 ? (proUsers / totalUsers) * 100 : 0;
+  const potentialRecoveredRevenue = churnGap * 19.99;
+  const projectedArr = analytics.revenue.mrr * 12;
+  const revenuePerUser = totalUsers > 0 ? analytics.revenue.mrr / totalUsers : 0;
+  const usersFor1kMrr = conversionRate > 0 ? Math.ceil(1000 / (19.99 * (proUsers / totalUsers))) : 0;
+  const messagesPerCase = analytics.cases.total > 0 ? analytics.usage.totalMessages / analytics.cases.total : 0;
+  const hearingPrepStarted = analytics.guidedFlows.hearingPrepStarted;
+  const hearingPrepCompleted = analytics.guidedFlows.hearingPrepCompleted;
+  const hearingPrepDropoff = Math.max(0, hearingPrepStarted - hearingPrepCompleted);
+  const hearingPrepCompletionRate = hearingPrepStarted > 0 ? (hearingPrepCompleted / hearingPrepStarted) * 100 : 0;
+
   return (
     <div className="space-y-6">
-      <AnalyticsSection title="Users">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <AnalyticsCard label="Total Users" value={formatKpiNumber(analytics.users.total)} />
-          <AnalyticsCard label="Free" value={formatKpiNumber(analytics.users.free)} />
-          <AnalyticsCard label="Pro" value={formatKpiNumber(analytics.users.pro)} />
-          <AnalyticsCard label="Attorney Firm" value={formatKpiNumber(analytics.users.attorney)} />
-          <AnalyticsCard label="Active Subscriptions" value={formatKpiNumber(analytics.users.activeSubscriptions)} />
-        </div>
+      <AnalyticsSection title="Conversion Funnel">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+          <CardContent className="space-y-5 p-6">
+            <FunnelBar label="Total Users" value={totalUsers} max={Math.max(totalUsers, 1)} color="#3b82f6" />
+            <FunnelBar label="Free Tier" value={freeUsers} max={Math.max(totalUsers, 1)} color="#64748b" />
+            <FunnelBar label="Pro Tier" value={proUsers} max={Math.max(totalUsers, 1)} color="#8b5cf6" />
+            <FunnelBar label="Active Subscriptions" value={activeSubscriptions} max={Math.max(totalUsers, 1)} color="#10b981" />
+
+            <div className="flex flex-wrap gap-2">
+              <Badge className="border border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-200">
+                Conversion Rate: {conversionRate.toFixed(1)}%
+              </Badge>
+              <Badge className="border border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                Pro but not subscribed: {formatKpiNumber(churnGap)}
+              </Badge>
+            </div>
+
+            <InsightBadge
+              type="danger"
+              text={`${formatKpiNumber(churnGap)} users have Pro tier but no active subscription. These are churned or admin-granted - investigate which, because ${formatKpiNumber(churnGap)} x $19.99 = ${formatCurrency(potentialRecoveredRevenue)}/mo in potential recovered revenue.`}
+            />
+          </CardContent>
+        </Card>
       </AnalyticsSection>
 
-      <AnalyticsSection title="Revenue">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <AnalyticsCard label="MRR" value={formatCurrency(analytics.revenue.mrr)} />
-        </div>
+      <AnalyticsSection title="Revenue Health">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+          <CardContent className="space-y-5 p-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <MetricCard value={formatCurrency(analytics.revenue.mrr)} label="MRR" large />
+              <MetricCard value={formatCurrency(projectedArr)} label="Projected ARR" sublabel="MRR × 12" large />
+              <MetricCard value={formatCurrency(revenuePerUser)} label="Revenue / User" sublabel="MRR ÷ total users" large />
+            </div>
+            <InsightBadge
+              type="info"
+              text={`At current conversion (${conversionRate.toFixed(1)}%), reaching $1K MRR requires ~${formatKpiNumber(usersFor1kMrr)} total users. Focus: reduce churn gap first (fastest path), then grow top-of-funnel.`}
+            />
+          </CardContent>
+        </Card>
       </AnalyticsSection>
 
       <AnalyticsSection title="Engagement">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <AnalyticsCard label="Total Cases" value={formatKpiNumber(analytics.cases.total)} />
-          <AnalyticsCard label="Total Messages" value={formatKpiNumber(analytics.usage.totalMessages)} />
-          <AnalyticsCard label="Questions Used" value={formatKpiNumber(analytics.usage.totalQuestionsUsed)} />
-          <AnalyticsCard label="Hearing Prep Started" value={formatKpiNumber(analytics.guidedFlows.hearingPrepStarted)} />
-          <AnalyticsCard label="Hearing Prep Completed" value={formatKpiNumber(analytics.guidedFlows.hearingPrepCompleted)} />
-          <AnalyticsCard label="Snapshots Saved" value={formatKpiNumber(analytics.snapshots.total)} />
-          <AnalyticsCard label="Documents Uploaded" value={formatKpiNumber(analytics.documents.total)} />
-        </div>
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+          <CardContent className="space-y-6 p-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard value={formatKpiNumber(analytics.cases.total)} label="Cases" />
+              <MetricCard value={formatKpiNumber(analytics.usage.totalMessages)} label="Messages" />
+              <MetricCard value={formatKpiNumber(analytics.usage.totalQuestionsUsed)} label="Questions Used" />
+              <MetricCard value={messagesPerCase.toFixed(1)} label="Msgs / Case" />
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 dark:border-slate-800 dark:bg-slate-950/30">
+              <div className="space-y-4">
+                <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Hearing Prep Funnel
+                </h4>
+                <FunnelBar label="Started" value={hearingPrepStarted} max={Math.max(hearingPrepStarted, 1)} color="#3b82f6" />
+                <FunnelBar label="Completed" value={hearingPrepCompleted} max={Math.max(hearingPrepStarted, 1)} color="#10b981" />
+
+                <div className="flex flex-wrap gap-2">
+                  <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    Completion Rate: {hearingPrepCompletionRate.toFixed(1)}%
+                  </Badge>
+                  <Badge className="border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                    Drop-off: {formatKpiNumber(hearingPrepDropoff)}
+                  </Badge>
+                </div>
+
+                <InsightBadge
+                  type="warning"
+                  text={`${formatKpiNumber(hearingPrepDropoff)} users started Hearing Prep but didn't finish. That's a ${hearingPrepStarted > 0 ? ((hearingPrepDropoff / hearingPrepStarted) * 100).toFixed(1) : "0.0"}% drop-off - your biggest product opportunity. Consider: shorter flows, progress saving, or a mid-flow nudge email.`}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <MetricCard value={formatKpiNumber(analytics.snapshots.total)} label="Snapshots Saved" />
+              <MetricCard value={formatKpiNumber(analytics.documents.total)} label="Documents Uploaded" />
+            </div>
+          </CardContent>
+        </Card>
       </AnalyticsSection>
 
-      <AnalyticsSection title="Attorney Portal">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <AnalyticsCard label="Total Attorneys" value={formatKpiNumber(analytics.attorneys.total)} />
-          <AnalyticsCard label="Total Connections" value={formatKpiNumber(analytics.attorneys.connectionsTotal)} />
-          <AnalyticsCard label="Pending" value={formatKpiNumber(analytics.attorneys.connectionsPending)} />
-          <AnalyticsCard label="Accepted" value={formatKpiNumber(analytics.attorneys.connectionsAccepted)} />
-        </div>
+      <AnalyticsSection title="Attorney Pipeline">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+          <CardContent className="space-y-5 p-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <PipelineStage label="Registered" value={attorneyUsers} color="#3b82f6" />
+              <PipelineStage label="Invited" value={analytics.attorneys.connectionsTotal} color="#8b5cf6" />
+              <PipelineStage label="Pending" value={analytics.attorneys.connectionsPending} color="#f59e0b" />
+              <PipelineStage label="Accepted" value={analytics.attorneys.connectionsAccepted} color="#10b981" isLast />
+            </div>
+            <InsightBadge
+              type="info"
+              text="Attorney portal just launched - pipeline is empty by design. First milestone: onboard 3 attorneys manually and get feedback before scaling outreach."
+            />
+          </CardContent>
+        </Card>
       </AnalyticsSection>
+
+      <AnalyticsSection title="Organizations">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+          <CardContent className="space-y-5 p-8 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500">
+              <Building2 className="h-8 w-8" />
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-xl font-semibold text-foreground">No partner organizations yet</h4>
+              <p className="mx-auto max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                Partner with legal aid orgs, family resource centers, and domestic violence shelters.
+                They pay a flat fee, get a pool of Pro licenses to distribute, and appear on the
+                Resources page for parents in their area.
+              </p>
+            </div>
+            <InsightBadge
+              type="info"
+              text="Organizations will be managed in the dedicated Organizations tab once partnerships are established. This section will show a summary: total partners, licenses allocated vs redeemed, and top organizations by utilization."
+            />
+          </CardContent>
+        </Card>
+      </AnalyticsSection>
+
+      <p className="text-center text-xs text-muted-foreground">
+        Custody Atlas Admin - Live data from Supabase. KPIs refresh on tab open.
+      </p>
     </div>
   );
 }
