@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { firstNameFromDisplayName, initialsFromPreferredName, resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
 import { useToast } from "@/hooks/use-toast";
-import { useUsage } from "@/hooks/use-usage";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -313,21 +312,19 @@ export default function AttorneyDashboardPage() {
   const [, navigate] = useLocation();
   const { user, isLoading: authLoading } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile();
-  const { usage, isLoading: usageLoading } = useUsage();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [inviteEmail, setInviteEmail] = useState("");
 
   const isAttorneyUser =
-    (profile?.tier === "attorney_firm" || usage?.tier === "attorney_firm") &&
-    !!user;
+    profile?.tier === "attorney_firm" && !!user;
 
   useEffect(() => {
-    if (authLoading || profileLoading || usageLoading) return;
+    if (authLoading || profileLoading) return;
     if (!isAttorneyUser) {
       navigate("/", { replace: true });
     }
-  }, [authLoading, isAttorneyUser, navigate, profileLoading, usageLoading]);
+  }, [authLoading, isAttorneyUser, navigate, profileLoading]);
 
   const clientsQuery = useQuery<{ clients: AttorneyClientConnection[] }>({
     queryKey: ["/api/attorney/clients"],
@@ -506,7 +503,7 @@ export default function AttorneyDashboardPage() {
     await inviteMutation.mutateAsync(trimmed);
   }
 
-  if (authLoading || profileLoading || usageLoading || !isAttorneyUser) {
+  if (authLoading || profileLoading || !isAttorneyUser) {
     return (
       <div className="min-h-screen bg-[#f7f3ed]">
         <AttorneyTopNav displayName={attorneyDisplayName} initials={attorneyInitials} />
