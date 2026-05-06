@@ -692,7 +692,7 @@ export async function refreshCaseIntelligenceFromDocument(
   const changeLog = parseChangeLog(current.change_log);
   const changes = Object.entries(updatesByColumn).map(([field, value]) => ({
     field,
-    old_value: serializeScalar((current as Record<string, unknown>)[field]),
+    old_value: serializeScalar((current as unknown as Record<string, unknown>)[field]),
     new_value: serializeScalar(value),
     source: "document_upload",
     document_id: documentId,

@@ -172,6 +172,10 @@ export async function checkQuestionLimit(
   (req as any).user = user;
 
   const tier = await getUserTier(user.id);
+  if (tier === "attorney_firm") {
+    next();
+    return;
+  }
   const limit = TIER_LIMITS[tier].questions;
   const questionsUsed = tier === "free"
     ? await getLifetimeQuestionUsage(user.id)
@@ -217,6 +221,10 @@ export async function checkDocumentLimit(
   }
 
   const tier = await getUserTier(user.id);
+  if (tier === "attorney_firm") {
+    next();
+    return;
+  }
   const limit = TIER_LIMITS[tier].documents;
   const { documentsUsed } = await getCurrentUsage(user.id);
 

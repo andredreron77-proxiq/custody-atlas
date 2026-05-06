@@ -61,12 +61,24 @@ type DashboardTaskItem = {
   clientName: string;
 };
 
-const ATTORNEY_NAV_ITEMS = [
+type AttorneyNavItem =
+  | {
+      label: string;
+      href: string;
+      activeMatch: (pathname: string) => boolean;
+    }
+  | {
+      label: string;
+      href?: undefined;
+      activeMatch?: undefined;
+    };
+
+const ATTORNEY_NAV_ITEMS: AttorneyNavItem[] = [
   { label: "Clients", href: "/attorney", activeMatch: (pathname: string) => pathname === "/attorney" || pathname.startsWith("/attorney/") },
   { label: "Calendar" },
   { label: "Messages" },
   { label: "Profile" },
-] as const;
+];
 
 const STATUS_COLORS: Record<EnrichedClient["statusBucket"], string> = {
   active: "oklch(0.66 0.13 154)",

@@ -11,7 +11,6 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { initialsFromPreferredName, resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
-import { useUsage } from "@/hooks/use-usage";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -43,12 +42,24 @@ type TaskItem = {
   done: boolean;
 };
 
-const ATTORNEY_NAV_ITEMS = [
+type AttorneyNavItem =
+  | {
+      label: string;
+      href: string;
+      activeMatch: (pathname: string) => boolean;
+    }
+  | {
+      label: string;
+      href?: undefined;
+      activeMatch?: undefined;
+    };
+
+const ATTORNEY_NAV_ITEMS: AttorneyNavItem[] = [
   { label: "Clients", href: "/attorney", activeMatch: (pathname: string) => pathname === "/attorney" || pathname.startsWith("/attorney/") },
   { label: "Calendar" },
   { label: "Messages" },
   { label: "Profile" },
-] as const;
+];
 
 function readString(record: Record<string, unknown> | null | undefined, keys: string[]): string | null {
   if (!record) return null;
@@ -185,7 +196,6 @@ export default function AttorneyClientPage() {
   const [, navigate] = useLocation();
   const { user, isLoading: authLoading } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile();
-  const { usage, isLoading: usageLoading } = useUsage();
   const [notes, setNotes] = useState("");
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [taskDraft, setTaskDraft] = useState("");
@@ -196,15 +206,14 @@ export default function AttorneyClientPage() {
   const hasLoadedLocalStateRef = useRef(false);
 
   const isAttorneyUser =
-    (profile?.tier === "attorney_firm" || usage?.tier === "attorney_firm") &&
-    !!user;
+    profile?.tier === "attorney_firm" && !!user;
 
   useEffect(() => {
-    if (authLoading || profileLoading || usageLoading) return;
+    if (authLoading || profileLoading) return;
     if (!isAttorneyUser) {
       navigate("/", { replace: true });
     }
-  }, [authLoading, isAttorneyUser, navigate, profileLoading, usageLoading]);
+  }, [authLoading, isAttorneyUser, navigate, profileLoading]);
 
   const clientsQuery = useQuery<{ clients: AttorneyClientConnection[] }>({
     queryKey: ["/api/attorney/clients"],
@@ -355,7 +364,7 @@ export default function AttorneyClientPage() {
     setTaskDraft("");
   }
 
-  if (authLoading || profileLoading || usageLoading || !isAttorneyUser) {
+  if (authLoading || profileLoading || !isAttorneyUser) {
     return (
       <div className="min-h-screen bg-[#f7f3ed]">
         <AttorneyClientTopNav displayName={attorneyDisplayName} initials={attorneyInitials} />

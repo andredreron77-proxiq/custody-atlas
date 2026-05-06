@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../lib/supabaseAdmin";
+import { sendAttorneyInviteEmail } from "./emailService";
 
 export interface AttorneyProfile {
   id: string;
@@ -131,6 +132,12 @@ export async function inviteClient(
     .single();
 
   if (error || !data) return null;
+  try {
+    await sendAttorneyInviteEmail(payload.invite_email);
+    console.log(`Invite email sent to ${payload.invite_email}`);
+  } catch (emailError) {
+    console.warn(`Resend invite email failed: ${emailError}`);
+  }
   return mapConnection(data);
 }
 

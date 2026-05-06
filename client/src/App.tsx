@@ -101,7 +101,7 @@ function ProtectedRoute({
   const { user, isLoading } = useCurrentUser();
   const [location, navigate] = useLocation();
   const pathname = location.split("?")[0] || location;
-  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
+  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null; tier?: string | null } | null>({
     queryKey: ["/api/user-profile", user?.id ?? "anon", "welcome-gate"],
     enabled: Boolean(user),
     staleTime: 30_000,
@@ -170,7 +170,7 @@ function ProtectedWelcomeRoute() {
   const welcomeFlowActive =
     typeof window !== "undefined" &&
     window.sessionStorage.getItem("custody-atlas:welcome-flow-active") === "1";
-  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
+  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null; tier?: string | null } | null>({
     queryKey: ["/api/user-profile", user?.id ?? "anon", "welcome-route"],
     enabled: Boolean(user),
     staleTime: 30_000,
@@ -333,7 +333,7 @@ function HomeRoute() {
     staleTime: 60_000,
     retry: false,
   });
-  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null } | null>({
+  const { data: profile, isLoading: isProfileLoading } = useQuery<{ welcomeDismissedAt?: string | null; welcome_dismissed_at?: string | null; tier?: string | null } | null>({
     queryKey: ["/api/user-profile", user?.id ?? "anon", "home-redirect"],
     enabled: Boolean(user),
     staleTime: 30_000,

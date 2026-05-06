@@ -449,7 +449,7 @@ export const caseFacts = pgTable("case_facts", {
   factValueJson: jsonb("fact_value_json"),
   source:       text("source").notNull(),       // document_id | "memory" | "user_confirmed"
   sourceName:   text("source_name"),            // human-readable label (file name, etc.)
-  confidence:   numeric("confidence").default(0.8),
+  confidence:   numeric("confidence").default("0.8"),
   isActive:     boolean("is_active").default(true),
   createdAt:    timestamp("created_at").defaultNow(),
   updatedAt:    timestamp("updated_at").defaultNow(),

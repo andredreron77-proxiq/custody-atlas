@@ -126,7 +126,7 @@ export async function upsertCaseFact(
         .where(eq(caseFacts.id, existing[0].id));
     } else {
       await db.insert(caseFacts).values({
-        caseId, userId, factType, value, source,
+        caseId, userId, factType, factKey: factType, value, source,
         sourceName, confidence,
         createdAt: new Date(), updatedAt: new Date(),
       });
