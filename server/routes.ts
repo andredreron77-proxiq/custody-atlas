@@ -5579,6 +5579,195 @@ Do not add facts not present in the provided evidence.`,
     return res.json({ users });
   });
 
+  // GET /api/admin/analytics — aggregate live KPIs for the admin dashboard
+  app.get("/api/admin/analytics", requireAdmin, async (_req, res) => {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Supabase admin client is not configured." });
+    }
+    const adminClient = supabaseAdmin;
+
+    const safeCount = async (
+      label: string,
+      queryFactory: () => Promise<{ count: number | null; error: { message?: string } | null }>,
+    ): Promise<number> => {
+      try {
+        const { count, error } = await queryFactory();
+        if (error) {
+          console.warn(`[admin] analytics ${label} query failed:`, error);
+          return 0;
+        }
+        return typeof count === "number" ? count : 0;
+      } catch (error) {
+        console.warn(`[admin] analytics ${label} query threw:`, error);
+        return 0;
+      }
+    };
+
+    const safeSum = async (
+      label: string,
+      queryFactory: () => Promise<{ data: Array<{ questions_used?: number | null }> | null; error: { message?: string } | null }>,
+    ): Promise<number> => {
+      try {
+        const { data, error } = await queryFactory();
+        if (error) {
+          console.warn(`[admin] analytics ${label} query failed:`, error);
+          return 0;
+        }
+        return (data ?? []).reduce((total, row) => total + (row.questions_used ?? 0), 0);
+      } catch (error) {
+        console.warn(`[admin] analytics ${label} query threw:`, error);
+        return 0;
+      }
+    };
+
+    const [
+      totalUsers,
+      freeUsers,
+      proUsers,
+      attorneyUsers,
+      activeSubscriptions,
+      totalCases,
+      totalMessages,
+      totalQuestionsUsed,
+      totalAttorneyProfiles,
+      totalConnections,
+      pendingConnections,
+      acceptedConnections,
+      hearingPrepStarted,
+      hearingPrepCompleted,
+      totalSnapshots,
+      totalDocuments,
+    ] = await Promise.all([
+      safeCount("users.total", async () =>
+        adminClient
+          .from("user_profiles")
+          .select("*", { count: "exact", head: true }),
+      ),
+      safeCount("users.free", async () =>
+        adminClient
+          .from("user_profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("tier", "free"),
+      ),
+      safeCount("users.pro", async () =>
+        adminClient
+          .from("user_profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("tier", "pro"),
+      ),
+      safeCount("users.attorney", async () =>
+        adminClient
+          .from("user_profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("tier", "attorney_firm"),
+      ),
+      safeCount("users.activeSubscriptions", async () =>
+        adminClient
+          .from("user_profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("subscription_status", "active"),
+      ),
+      safeCount("cases.total", async () =>
+        adminClient
+          .from("cases")
+          .select("*", { count: "exact", head: true }),
+      ),
+      safeCount("usage.totalMessages", async () =>
+        adminClient
+          .from("messages")
+          .select("*", { count: "exact", head: true }),
+      ),
+      safeSum("usage.totalQuestionsUsed", async () =>
+        adminClient
+          .from("usage_limits")
+          .select("questions_used"),
+      ),
+      safeCount("attorneys.total", async () =>
+        adminClient
+          .from("attorney_profiles")
+          .select("*", { count: "exact", head: true }),
+      ),
+      safeCount("attorneys.connectionsTotal", async () =>
+        adminClient
+          .from("attorney_client_connections")
+          .select("*", { count: "exact", head: true }),
+      ),
+      safeCount("attorneys.connectionsPending", async () =>
+        adminClient
+          .from("attorney_client_connections")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pending"),
+      ),
+      safeCount("attorneys.connectionsAccepted", async () =>
+        adminClient
+          .from("attorney_client_connections")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "accepted"),
+      ),
+      safeCount("guidedFlows.hearingPrepStarted", async () =>
+        adminClient
+          .from("conversations")
+          .select("*", { count: "exact", head: true })
+          .eq("conversation_type", "guided_hearing_prep"),
+      ),
+      safeCount("guidedFlows.hearingPrepCompleted", async () =>
+        adminClient
+          .from("conversations")
+          .select("*", { count: "exact", head: true })
+          .eq("conversation_type", "guided_hearing_prep")
+          .filter("guided_state->>snapshot_complete", "eq", "true"),
+      ),
+      safeCount("snapshots.total", async () =>
+        adminClient
+          .from("case_memory")
+          .select("*", { count: "exact", head: true }),
+      ),
+      safeCount("documents.total", async () =>
+        adminClient
+          .from("documents")
+          .select("*", { count: "exact", head: true }),
+      ),
+    ]);
+
+    const mrr = Math.round(activeSubscriptions * 19.99 * 100) / 100;
+
+    return res.json({
+      users: {
+        total: totalUsers,
+        free: freeUsers,
+        pro: proUsers,
+        attorney: attorneyUsers,
+        activeSubscriptions,
+      },
+      revenue: {
+        mrr,
+      },
+      cases: {
+        total: totalCases,
+      },
+      usage: {
+        totalMessages,
+        totalQuestionsUsed,
+      },
+      attorneys: {
+        total: totalAttorneyProfiles,
+        connectionsTotal: totalConnections,
+        connectionsPending: pendingConnections,
+        connectionsAccepted: acceptedConnections,
+      },
+      guidedFlows: {
+        hearingPrepStarted,
+        hearingPrepCompleted,
+      },
+      snapshots: {
+        total: totalSnapshots,
+      },
+      documents: {
+        total: totalDocuments,
+      },
+    });
+  });
+
   // PATCH /api/admin/users/:userId/tier — change a user's tier
   app.patch("/api/admin/users/:userId/tier", requireAdmin, async (req, res) => {
     const userId = asString(req.params.userId);

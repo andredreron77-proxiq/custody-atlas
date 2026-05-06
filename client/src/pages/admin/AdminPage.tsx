@@ -18,6 +18,7 @@ import {
   Users,
   UserPlus,
   Ticket,
+  BarChart3,
   Shield,
   Search,
   Loader2,
@@ -67,6 +68,42 @@ interface InviteCode {
   createdAt: string;
 }
 
+interface AdminAnalytics {
+  users: {
+    total: number;
+    free: number;
+    pro: number;
+    attorney: number;
+    activeSubscriptions: number;
+  };
+  revenue: {
+    mrr: number;
+  };
+  cases: {
+    total: number;
+  };
+  usage: {
+    totalMessages: number;
+    totalQuestionsUsed: number;
+  };
+  attorneys: {
+    total: number;
+    connectionsTotal: number;
+    connectionsPending: number;
+    connectionsAccepted: number;
+  };
+  guidedFlows: {
+    hearingPrepStarted: number;
+    hearingPrepCompleted: number;
+  };
+  snapshots: {
+    total: number;
+  };
+  documents: {
+    total: number;
+  };
+}
+
 /* ── Small helpers ───────────────────────────────────────────────────────── */
 
 function TierBadge({ tier }: { tier: "free" | "pro" }) {
@@ -95,6 +132,19 @@ function fmt(iso: string) {
   }
 }
 
+function formatKpiNumber(value: number) {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   function handleCopy() {
@@ -112,6 +162,53 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
+  );
+}
+
+function AnalyticsCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <Card className="border-slate-800 bg-slate-950 text-slate-50 shadow-sm">
+      <CardContent className="p-5">
+        <div className="text-3xl font-bold tracking-tight">{value}</div>
+        <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AnalyticsLoadingGrid({ cards = 4 }: { cards?: number }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: cards }).map((_, index) => (
+        <Card key={index} className="border-slate-800 bg-slate-950">
+          <CardContent className="p-5">
+            <div className="h-8 w-24 animate-pulse rounded bg-slate-800" />
+            <div className="mt-3 h-3 w-28 animate-pulse rounded bg-slate-800/80" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function AnalyticsSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{title}</h3>
+      {children}
+    </section>
   );
 }
 
@@ -584,10 +681,105 @@ function CodesTab() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ *  TAB 4: Analytics
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+function AnalyticsTab({ enabled }: { enabled: boolean }) {
+  const { data, isLoading, error } = useQuery<AdminAnalytics>({
+    queryKey: ["/api/admin/analytics"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <AnalyticsSection title="Users">
+          <AnalyticsLoadingGrid cards={5} />
+        </AnalyticsSection>
+        <AnalyticsSection title="Revenue">
+          <AnalyticsLoadingGrid cards={1} />
+        </AnalyticsSection>
+        <AnalyticsSection title="Engagement">
+          <AnalyticsLoadingGrid cards={7} />
+        </AnalyticsSection>
+        <AnalyticsSection title="Attorney Portal">
+          <AnalyticsLoadingGrid cards={4} />
+        </AnalyticsSection>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-12 text-center">
+        <AlertTriangle className="w-6 h-6 text-amber-500" />
+        <p className="text-sm text-muted-foreground">{(error as Error).message}</p>
+      </div>
+    );
+  }
+
+  const analytics = data ?? {
+    users: { total: 0, free: 0, pro: 0, attorney: 0, activeSubscriptions: 0 },
+    revenue: { mrr: 0 },
+    cases: { total: 0 },
+    usage: { totalMessages: 0, totalQuestionsUsed: 0 },
+    attorneys: { total: 0, connectionsTotal: 0, connectionsPending: 0, connectionsAccepted: 0 },
+    guidedFlows: { hearingPrepStarted: 0, hearingPrepCompleted: 0 },
+    snapshots: { total: 0 },
+    documents: { total: 0 },
+  };
+
+  return (
+    <div className="space-y-6">
+      <AnalyticsSection title="Users">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <AnalyticsCard label="Total Users" value={formatKpiNumber(analytics.users.total)} />
+          <AnalyticsCard label="Free" value={formatKpiNumber(analytics.users.free)} />
+          <AnalyticsCard label="Pro" value={formatKpiNumber(analytics.users.pro)} />
+          <AnalyticsCard label="Attorney Firm" value={formatKpiNumber(analytics.users.attorney)} />
+          <AnalyticsCard label="Active Subscriptions" value={formatKpiNumber(analytics.users.activeSubscriptions)} />
+        </div>
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Revenue">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <AnalyticsCard label="MRR" value={formatCurrency(analytics.revenue.mrr)} />
+        </div>
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Engagement">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <AnalyticsCard label="Total Cases" value={formatKpiNumber(analytics.cases.total)} />
+          <AnalyticsCard label="Total Messages" value={formatKpiNumber(analytics.usage.totalMessages)} />
+          <AnalyticsCard label="Questions Used" value={formatKpiNumber(analytics.usage.totalQuestionsUsed)} />
+          <AnalyticsCard label="Hearing Prep Started" value={formatKpiNumber(analytics.guidedFlows.hearingPrepStarted)} />
+          <AnalyticsCard label="Hearing Prep Completed" value={formatKpiNumber(analytics.guidedFlows.hearingPrepCompleted)} />
+          <AnalyticsCard label="Snapshots Saved" value={formatKpiNumber(analytics.snapshots.total)} />
+          <AnalyticsCard label="Documents Uploaded" value={formatKpiNumber(analytics.documents.total)} />
+        </div>
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Attorney Portal">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <AnalyticsCard label="Total Attorneys" value={formatKpiNumber(analytics.attorneys.total)} />
+          <AnalyticsCard label="Total Connections" value={formatKpiNumber(analytics.attorneys.connectionsTotal)} />
+          <AnalyticsCard label="Pending" value={formatKpiNumber(analytics.attorneys.connectionsPending)} />
+          <AnalyticsCard label="Accepted" value={formatKpiNumber(analytics.attorneys.connectionsAccepted)} />
+        </div>
+      </AnalyticsSection>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  *  ROOT: AdminPage
  * ══════════════════════════════════════════════════════════════════════════ */
 
 export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState("users");
   // Step 1: wait for Supabase auth to resolve before making any API calls.
   // This prevents the admin status query from firing before the token is
   // available in the token store (which would always return 401).
@@ -693,7 +885,7 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="users">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="h-9">
           <TabsTrigger value="users" className="gap-1.5 text-sm" data-testid="tab-users">
             <Users className="w-3.5 h-3.5" />
@@ -707,6 +899,10 @@ export default function AdminPage() {
             <Ticket className="w-3.5 h-3.5" />
             Invite Codes
           </TabsTrigger>
+          <TabsTrigger value="analytics" className="gap-1.5 text-sm" data-testid="tab-analytics">
+            <BarChart3 className="w-3.5 h-3.5" />
+            Analytics
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="pt-5">
@@ -719,6 +915,10 @@ export default function AdminPage() {
 
         <TabsContent value="codes" className="pt-5">
           <CodesTab />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="pt-5">
+          <AnalyticsTab enabled={activeTab === "analytics"} />
         </TabsContent>
       </Tabs>
     </div>
