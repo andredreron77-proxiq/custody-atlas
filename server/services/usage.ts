@@ -17,7 +17,7 @@ import type { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
 import { getCurrentUser, getUserTier } from "./auth";
 
-export type Tier = "anonymous" | "free" | "pro";
+export type Tier = "anonymous" | "free" | "pro" | "attorney_firm";
 
 export interface UsageState {
   isAuthenticated: boolean;
@@ -118,6 +118,18 @@ export async function getUsageState(req: Request): Promise<UsageState> {
   }
 
   const tier = await getUserTier(user.id);
+  if (tier === "attorney_firm") {
+    return {
+      isAuthenticated: true,
+      tier: "attorney_firm",
+      questionsUsed: 0,
+      questionsLimit: null,
+      documentsUsed: 0,
+      documentsLimit: null,
+      documentQuestionsUsed: 0,
+      documentQuestionsLimit: null,
+    };
+  }
   const limits = TIER_LIMITS[tier];
   const documentQuestionsLimit = DOCUMENT_QUESTION_LIMITS[tier];
   const currentUsage = await getCurrentUsage(user.id);
