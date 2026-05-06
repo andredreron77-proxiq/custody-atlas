@@ -319,13 +319,6 @@ export default function AttorneyDashboardPage() {
   const isAttorneyUser =
     profile?.tier === "attorney_firm" && !!user;
 
-  useEffect(() => {
-    if (authLoading || profileLoading) return;
-    if (!isAttorneyUser) {
-      navigate("/", { replace: true });
-    }
-  }, [authLoading, isAttorneyUser, navigate, profileLoading]);
-
   const clientsQuery = useQuery<{ clients: AttorneyClientConnection[] }>({
     queryKey: ["/api/attorney/clients"],
     enabled: isAttorneyUser,
@@ -503,12 +496,36 @@ export default function AttorneyDashboardPage() {
     await inviteMutation.mutateAsync(trimmed);
   }
 
-  if (authLoading || profileLoading || !isAttorneyUser) {
+  if (authLoading || profileLoading) {
     return (
       <div className="min-h-screen bg-[#f7f3ed]">
         <AttorneyTopNav displayName={attorneyDisplayName} initials={attorneyInitials} />
         <div className="flex items-center justify-center py-24">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-[oklch(0.66_0.13_154)] border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAttorneyUser) {
+    return (
+      <div className="min-h-screen bg-[#f7f3ed]">
+        <AttorneyTopNav displayName={attorneyDisplayName} initials={attorneyInitials} />
+        <div className="flex items-center justify-center px-6 py-24">
+          <Card className="w-full max-w-md border-black/6 bg-white shadow-sm">
+            <CardContent className="p-8 text-center">
+              <p className="text-lg font-semibold text-slate-900">Attorney portal access required</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                This area is only available to attorney portal accounts.
+              </p>
+              <Link
+                href="/"
+                className="mt-5 inline-flex text-sm font-medium text-slate-900 underline underline-offset-4"
+              >
+                Go to home
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
