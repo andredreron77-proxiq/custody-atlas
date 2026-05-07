@@ -33,6 +33,7 @@ export async function extractTextFromDocument(
   const name = `projects/${projectId}/locations/${location}/processors/${processorId}`;
 
   const encodedFile = fileBuffer.toString("base64");
+  const useImagelessMode = mimeType === "application/pdf";
 
   const [result] = await client.processDocument({
     name,
@@ -40,6 +41,7 @@ export async function extractTextFromDocument(
       content: encodedFile,
       mimeType,
     },
+    imagelessMode: useImagelessMode,
   });
 
   const document = result.document;
