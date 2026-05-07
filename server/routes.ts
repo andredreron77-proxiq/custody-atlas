@@ -60,7 +60,7 @@ import { extractSignalsFromDocument } from "./lib/extractSignals";
 import { generateProactiveInsights } from "./lib/proactiveIntelligence";
 import { alertImpactWhyThisMatters, eventWhyThisMatters } from "./lib/caseDashboardInterpretation";
 import { computeCaseRiskScore, hasConflictingTimelineEvents } from "./lib/caseRiskScoring";
-import { requireAuth, requireAdmin } from "./services/auth";
+import { optionalAuth, requireAuth, requireAdmin } from "./services/auth";
 import { requireAttorneyAuth } from "./middleware/requireAttorneyAuth";
 import {
   listAdminUsers,
@@ -2131,8 +2131,9 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
     return res.json(validated.data);
   });
 
-  app.get("/api/resources", requireAuth, async (req, res) => {
+  app.get("/api/resources", optionalAuth, async (req, res) => {
     try {
+      const user = ((req as any).user ?? null) as { id: string } | null;
       const state = asString(req.query.state).trim();
       const county = asString(req.query.county).trim();
 
@@ -2143,6 +2144,10 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
       const cached = await getCachedResources(state, county);
       if (cached && "government_resources" in cached) {
         return res.json(cached);
+      }
+
+      if (!user?.id) {
+        return res.json(getEmptyResourcesResponse());
       }
 
       const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;

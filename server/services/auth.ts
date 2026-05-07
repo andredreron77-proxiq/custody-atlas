@@ -63,6 +63,20 @@ export async function requireAuth(
 }
 
 /**
+ * Express middleware that resolves the current user when possible but never
+ * rejects the request. Attaches the resolved user or null to req.user.
+ */
+export async function optionalAuth(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const user = await getCurrentUser(req);
+  (req as any).user = user;
+  next();
+}
+
+/**
  * Express middleware that restricts access to the designated admin email.
  * Must be used AFTER requireAuth — assumes (req as any).user is already set.
  * Reads ADMIN_EMAIL from environment variables.
