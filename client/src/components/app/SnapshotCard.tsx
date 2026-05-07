@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { apiRequestRaw } from "@/lib/queryClient";
 import UpgradeModal from "@/components/app/UpgradeModal";
+import { useUserProfile } from "@/hooks/use-user-profile";
 import { useUsage } from "@/hooks/use-usage";
 
 export interface GuidedSnapshotState {
@@ -186,7 +187,9 @@ export function SnapshotCard({
   );
   const [, navigate] = useLocation();
   const { usage } = useUsage();
-  const isProUser = usage?.tier === "pro" && usage?.isAuthenticated === true;
+  const { data: profile } = useUserProfile();
+  const isProUser = (usage?.tier === "pro" || profile?.tier === "pro")
+    && (usage?.isAuthenticated === true || !!profile);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const isMoreTimeSnapshot = Boolean(
     snapshot.current_arrangement
