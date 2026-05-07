@@ -130,16 +130,9 @@ export async function handleWebhookEvent(
   }
 
   const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
-  console.log("[billing] webhook received event type:", event.type);
-
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
-      console.log("[billing] handling checkout.session.completed", {
-        userId: session.metadata?.userId,
-        customerId: typeof session.customer === "string" ? session.customer : "object",
-        subscriptionId: typeof session.subscription === "string" ? session.subscription : "object",
-      });
       const userId = session.metadata?.userId;
       const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
       const subscriptionId =
@@ -160,9 +153,7 @@ export async function handleWebhookEvent(
           subscriptionStatus: "active",
           tier: "pro",
         });
-        console.log("[billing] user profile updated successfully", { userId });
       } catch (err) {
-        console.error("[billing] updateUserProfileBilling failed", err);
         throw err;
       }
       return;
