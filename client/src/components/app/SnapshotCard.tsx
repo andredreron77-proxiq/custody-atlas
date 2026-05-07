@@ -347,7 +347,7 @@ export function SnapshotCard({
               Situation
             </div>
             <p className="mt-1 text-sm text-foreground">
-              {snapshot.situation_summary ? truncateText(snapshot.situation_summary) : "Not captured yet"}
+              {snapshot.situation_summary ? snapshot.situation_summary : "Not captured yet"}
             </p>
           </div>
           <div className="rounded-xl border border-border/70 bg-card/70 p-3">
