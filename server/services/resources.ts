@@ -1,3 +1,4 @@
+import OpenAI from "openai";
 import { z } from "zod";
 import { supabaseAdmin } from "../lib/supabaseAdmin";
 
@@ -42,6 +43,37 @@ export function getEmptyResourcesResponse(): ResourcesResponse {
   return EMPTY_RESOURCES_RESPONSE;
 }
 
+function buildResourcesPrompt(params: { state: string; county: string }): string {
+  return [
+    "You are a legal aid resource specialist. Return ONLY a valid JSON object with no preamble.",
+    "Find real, currently operating legal aid organizations, court self-help centers, and mediation services",
+    "for the specified US state and county. Only include organizations you are confident exist.",
+    "Never invent organizations. If unsure, return fewer results rather than guessing.",
+    "",
+    "For government_resources: include the state child support enforcement agency,",
+    "Department of Human Services or equivalent state agency, CASA (Court Appointed",
+    "Special Advocates) program if present in the county, state bar lawyer referral",
+    "service, family court facilitator or self-help coordinator office, and any",
+    "state-funded mediation programs run through the court system. These must be",
+    "government or government-funded entities. Include phone numbers prominently —",
+    "these offices are often more reachable by phone than online.",
+    "",
+    "Return this exact shape:",
+    "{",
+    '  "legal_aid": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }],',
+    '  "government_resources": [{ "name": string, "description": string, "url": string, "phone": string, "tags": string[] }],',
+    '  "court_self_help": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }],',
+    '  "mediation": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }]',
+    "}",
+    "",
+    "tags must be from: free, income-qualified, in-person, remote, government, family-law, custody-specialist",
+    "Maximum 4 results per category.",
+    "",
+    `State: ${params.state}`,
+    `County: ${params.county}`,
+  ].join("\n");
+}
+
 function normalizeLookupValue(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -64,6 +96,54 @@ export function normalizeResourcesResponse(input: unknown): ResourcesResponse {
     court_self_help: parsed.court_self_help.map(sanitizeItem),
     mediation: parsed.mediation.map(sanitizeItem),
   };
+}
+
+export async function generateResourcesForJurisdiction(
+  state: string,
+  county: string,
+): Promise<ResourcesResponse | null> {
+  const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  if (!hasAI) {
+    return null;
+  }
+
+  const openai = new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+  });
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: buildResourcesPrompt({ state, county }),
+      },
+    ],
+    response_format: { type: "json_object" },
+    max_tokens: 1200,
+    temperature: 0.2,
+  });
+
+  const rawContent = completion.choices[0]?.message?.content;
+  if (!rawContent) {
+    return null;
+  }
+
+  let parsedResponse: unknown;
+  try {
+    parsedResponse = JSON.parse(rawContent);
+  } catch {
+    console.error("[resources] OpenAI returned invalid JSON.");
+    return null;
+  }
+
+  try {
+    return normalizeResourcesResponse(parsedResponse);
+  } catch (error) {
+    console.error("[resources] OpenAI resources validation failed:", error);
+    return null;
+  }
 }
 
 export async function getCachedResources(

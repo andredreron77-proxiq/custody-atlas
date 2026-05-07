@@ -154,10 +154,9 @@ import {
 } from "./services/signals";
 import {
   cacheResources,
+  generateResourcesForJurisdiction,
   getCachedResources,
   getEmptyResourcesResponse,
-  normalizeResourcesResponse,
-  type ResourcesResponse,
 } from "./services/resources";
 import {
   createCheckoutSession,
@@ -195,6 +194,74 @@ import { classifyDateStatus, type DateStatus } from "@shared/dateStatus";
 import type { CaseTimelineEvent } from "./services/caseTimeline";
 
 const asString = (v: unknown): string => Array.isArray(v) ? (typeof v[0] === "string" ? v[0] : "") : typeof v === "string" ? v : "";
+
+const ADMIN_RESOURCE_SEED_COUNTIES = [
+  { state: "Georgia", county: "DeKalb County" },
+  { state: "Georgia", county: "Cobb County" },
+  { state: "Georgia", county: "Gwinnett County" },
+  { state: "Georgia", county: "Clayton County" },
+  { state: "Georgia", county: "Cherokee County" },
+  { state: "Georgia", county: "Henry County" },
+  { state: "Georgia", county: "Chatham County" },
+  { state: "Georgia", county: "Richmond County" },
+  { state: "Georgia", county: "Bibb County" },
+  { state: "Georgia", county: "Clarke County" },
+  { state: "New York", county: "New York County" },
+  { state: "New York", county: "Kings County" },
+  { state: "New York", county: "Queens County" },
+  { state: "New York", county: "Bronx County" },
+  { state: "New York", county: "Richmond County" },
+  { state: "California", county: "Los Angeles County" },
+  { state: "California", county: "Orange County" },
+  { state: "California", county: "San Diego County" },
+  { state: "California", county: "Santa Clara County" },
+  { state: "California", county: "Alameda County" },
+  { state: "California", county: "San Francisco County" },
+  { state: "California", county: "Sacramento County" },
+  { state: "California", county: "Riverside County" },
+  { state: "Illinois", county: "Cook County" },
+  { state: "Texas", county: "Harris County" },
+  { state: "Texas", county: "Dallas County" },
+  { state: "Texas", county: "Tarrant County" },
+  { state: "Texas", county: "Bexar County" },
+  { state: "Texas", county: "Travis County" },
+  { state: "Texas", county: "Collin County" },
+  { state: "Arizona", county: "Maricopa County" },
+  { state: "Florida", county: "Miami-Dade County" },
+  { state: "Florida", county: "Broward County" },
+  { state: "Florida", county: "Palm Beach County" },
+  { state: "Florida", county: "Hillsborough County" },
+  { state: "Florida", county: "Orange County" },
+  { state: "Florida", county: "Duval County" },
+  { state: "Washington", county: "King County" },
+  { state: "Washington", county: "Pierce County" },
+  { state: "Colorado", county: "Denver County" },
+  { state: "Colorado", county: "Arapahoe County" },
+  { state: "North Carolina", county: "Mecklenburg County" },
+  { state: "North Carolina", county: "Wake County" },
+  { state: "Tennessee", county: "Davidson County" },
+  { state: "Tennessee", county: "Shelby County" },
+  { state: "Indiana", county: "Marion County" },
+  { state: "Ohio", county: "Franklin County" },
+  { state: "Michigan", county: "Wayne County" },
+  { state: "Minnesota", county: "Hennepin County" },
+  { state: "Maryland", county: "Montgomery County" },
+  { state: "Maryland", county: "Prince George's County" },
+  { state: "Virginia", county: "Fairfax County" },
+  { state: "District of Columbia", county: "District of Columbia" },
+  { state: "Nevada", county: "Clark County" },
+  { state: "Oregon", county: "Multnomah County" },
+  { state: "Missouri", county: "St. Louis City" },
+  { state: "Missouri", county: "Jackson County" },
+  { state: "Louisiana", county: "Orleans Parish" },
+  { state: "Wisconsin", county: "Milwaukee County" },
+  { state: "Massachusetts", county: "Suffolk County" },
+  { state: "Pennsylvania", county: "Philadelphia County" },
+] as const;
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
 
 /** Chat/text model client — routes through the AI Integration proxy when available. */
 function getOpenAIClient(): OpenAI {
@@ -1539,37 +1606,6 @@ function shouldSurfaceResources(params: {
   return RESOURCE_HELP_PATTERNS.some((pattern) => pattern.test(params.userQuestion));
 }
 
-function buildResourcesPrompt(params: { state: string; county: string }): string {
-  return [
-    "You are a legal aid resource specialist. Return ONLY a valid JSON object with no preamble.",
-    "Find real, currently operating legal aid organizations, court self-help centers, and mediation services",
-    "for the specified US state and county. Only include organizations you are confident exist.",
-    "Never invent organizations. If unsure, return fewer results rather than guessing.",
-    "",
-    "For government_resources: include the state child support enforcement agency,",
-    "Department of Human Services or equivalent state agency, CASA (Court Appointed",
-    "Special Advocates) program if present in the county, state bar lawyer referral",
-    "service, family court facilitator or self-help coordinator office, and any",
-    "state-funded mediation programs run through the court system. These must be",
-    "government or government-funded entities. Include phone numbers prominently —",
-    "these offices are often more reachable by phone than online.",
-    "",
-    "Return this exact shape:",
-    "{",
-    '  "legal_aid": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }],',
-    '  "government_resources": [{ "name": string, "description": string, "url": string, "phone": string, "tags": string[] }],',
-    '  "court_self_help": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }],',
-    '  "mediation": [{ "name": string, "description": string, "url": string, "phone"?: string, "tags": string[] }]',
-    "}",
-    "",
-    "tags must be from: free, income-qualified, in-person, remote, government, family-law, custody-specialist",
-    "Maximum 4 results per category.",
-    "",
-    `State: ${params.state}`,
-    `County: ${params.county}`,
-  ].join("\n");
-}
-
 function normalizeJurisdictionValue(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
@@ -2150,43 +2186,8 @@ if (normalizedTargetEmail !== normalizedDesignatedFreshEmail) {
         return res.json(getEmptyResourcesResponse());
       }
 
-      const hasAI = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-      if (!hasAI) {
-        return res.json(getEmptyResourcesResponse());
-      }
-
-      const openai = getOpenAIClient();
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: buildResourcesPrompt({ state, county }),
-          },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 1200,
-        temperature: 0.2,
-      });
-
-      const rawContent = completion.choices[0]?.message?.content;
-      if (!rawContent) {
-        return res.json(getEmptyResourcesResponse());
-      }
-
-      let parsedResponse: unknown;
-      try {
-        parsedResponse = JSON.parse(rawContent);
-      } catch {
-        console.error("[resources] OpenAI returned invalid JSON.");
-        return res.json(getEmptyResourcesResponse());
-      }
-
-      let normalized: ResourcesResponse;
-      try {
-        normalized = normalizeResourcesResponse(parsedResponse);
-      } catch (error) {
-        console.error("[resources] OpenAI resources validation failed:", error);
+      const normalized = await generateResourcesForJurisdiction(state, county);
+      if (!normalized) {
         return res.json(getEmptyResourcesResponse());
       }
 
@@ -5771,6 +5772,51 @@ Do not add facts not present in the provided evidence.`,
         total: totalDocuments,
       },
     });
+  });
+
+  app.post("/api/admin/seed-resources", requireAdmin, async (_req, res) => {
+    const summary = {
+      seeded: [] as string[],
+      skipped: [] as string[],
+      failed: [] as string[],
+    };
+
+    for (const entry of ADMIN_RESOURCE_SEED_COUNTIES) {
+      const label = `${entry.county}, ${entry.state}`;
+      let attemptedGeneration = false;
+
+      try {
+        const cached = await getCachedResources(entry.state, entry.county);
+        if (cached) {
+          console.log(`[admin][resources-seed] already cached: ${label}`);
+          summary.skipped.push(label);
+          continue;
+        }
+
+        attemptedGeneration = true;
+        const generated = await generateResourcesForJurisdiction(entry.state, entry.county);
+        if (!generated) {
+          const failure = `${label}: generation returned empty result`;
+          console.log(`[admin][resources-seed] failed: ${failure}`);
+          summary.failed.push(failure);
+          continue;
+        }
+
+        await cacheResources(entry.state, entry.county, generated);
+        console.log(`[admin][resources-seed] seeded: ${label}`);
+        summary.seeded.push(label);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.log(`[admin][resources-seed] failed: ${label}: ${message}`);
+        summary.failed.push(`${label}: ${message}`);
+      } finally {
+        if (attemptedGeneration) {
+          await delay(500);
+        }
+      }
+    }
+
+    return res.json(summary);
   });
 
   // PATCH /api/admin/users/:userId/tier — change a user's tier
