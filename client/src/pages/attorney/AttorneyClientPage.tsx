@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,8 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { initialsFromPreferredName, resolvePreferredDisplayName, useUserProfile } from "@/hooks/use-user-profile";
+import { USAGE_QUERY_KEY } from "@/services/usageService";
+import { signOut } from "@/services/authService";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
@@ -129,7 +131,14 @@ function AttorneyClientTopNav({
   displayName: string;
   initials: string;
 }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
+  const queryClient = useQueryClient();
+
+  async function handleSignOut() {
+    await signOut();
+    queryClient.removeQueries({ queryKey: USAGE_QUERY_KEY });
+    navigate("/");
+  }
 
   return (
     <div className="border-b border-black/8 bg-[#f7f3ed]/95 backdrop-blur">
@@ -175,6 +184,15 @@ function AttorneyClientTopNav({
         </nav>
 
         <div className="flex min-w-0 items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 border-black/10 bg-white/70 px-3 text-sm text-slate-600 hover:bg-white hover:text-slate-900"
+            onClick={() => void handleSignOut()}
+          >
+            Sign Out
+          </Button>
           <div className="hidden min-w-0 text-right sm:block">
             <p className="truncate text-sm font-medium text-slate-900">{displayName}</p>
             <p className="text-xs text-slate-500">Attorney account</p>
