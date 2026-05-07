@@ -23,8 +23,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Home",             href: "/",               icon: Home,            exact: true },
-  { label: "Workspace",        href: "/workspace",       icon: LayoutDashboard, gated: true },
   { label: "Custody Map",      href: "/custody-map",     icon: Map },
+  { label: "Workspace",        href: "/workspace",       icon: LayoutDashboard, gated: true },
   { label: "Ask Atlas",         href: "/ask",             icon: MessageSquare,   gated: true },
   { label: "Resources",        href: "/resources",       icon: HelpCircle,      gated: true },
   { label: "Analyze Document", href: "/upload-document", icon: FileSearch,      gated: true },
