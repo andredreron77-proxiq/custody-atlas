@@ -22,13 +22,35 @@ async function extractTextFromProcessResponse(
   mimeType: string,
 ): Promise<string> {
   const encodedFile = fileBuffer.toString("base64");
+  console.log(`[documentai] calling processDocument with mimeType=${mimeType} bufferSize=${fileBuffer.length}`);
 
-  const processResult = await client.processDocument({
-    name,
-    rawDocument: {
-      content: encodedFile,
-      mimeType,
-    },
+  let processResult: unknown;
+  try {
+    processResult = await client.processDocument({
+      name,
+      rawDocument: {
+        content: encodedFile,
+        mimeType,
+      },
+    });
+  } catch (err) {
+    const error = err as Error;
+    console.error("[documentai] processDocument threw", {
+      name: error?.name ?? "Error",
+      message: error?.message ?? "Unknown error",
+      stack: error?.stack ?? null,
+    });
+    throw err;
+  }
+
+  console.log(`[documentai] processDocument returned: typeof=${typeof processResult} isArray=${Array.isArray(processResult)}`);
+  console.log("[documentai] processDocument raw type info", {
+    constructorName:
+      processResult && typeof processResult === "object" && "constructor" in (processResult as Record<string, unknown>)
+        ? ((processResult as { constructor?: { name?: string } }).constructor?.name ?? null)
+        : null,
+    isNull: processResult === null,
+    isUndefined: typeof processResult === "undefined",
   });
 
   const processResponse = Array.isArray(processResult) ? processResult[0] : processResult;
@@ -127,11 +149,26 @@ export async function extractTextFromDocument(
   const chunks = await splitPdfIntoChunks(fileBuffer, DOCUMENT_AI_SAFE_PAGE_LIMIT);
   const extractedTexts: string[] = [];
 
-  for (const chunkBuffer of chunks) {
-    const chunkText = await extractTextFromProcessResponse(client, name, chunkBuffer, mimeType);
-    if (chunkText.trim()) {
-      extractedTexts.push(chunkText.trim());
+  try {
+    for (const [index, chunkBuffer] of chunks.entries()) {
+      const chunkText = await extractTextFromProcessResponse(client, name, chunkBuffer, mimeType);
+      if (chunkText.trim()) {
+        extractedTexts.push(chunkText.trim());
+      }
     }
+  } catch (err) {
+    const error = err as Error;
+    const completedChunks = extractedTexts.length;
+    const failedChunkIndex = Math.min(completedChunks, chunks.length - 1);
+    const failedChunkBuffer = chunks[failedChunkIndex];
+    console.error("[documentai] chunk processing failed", {
+      chunk: `${failedChunkIndex + 1} of ${chunks.length}`,
+      chunkIndex: failedChunkIndex,
+      chunkBufferSize: failedChunkBuffer?.length ?? null,
+      message: error?.message ?? "Unknown error",
+      stack: error?.stack ?? null,
+    });
+    throw err;
   }
 
   const combinedText = extractedTexts.join("\n\n");
