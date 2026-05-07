@@ -35,7 +35,7 @@ export async function extractTextFromDocument(
   const encodedFile = fileBuffer.toString("base64");
   const useImagelessMode = mimeType === "application/pdf";
 
-  const [result] = await client.processDocument({
+  const processResult = await client.processDocument({
     name,
     rawDocument: {
       content: encodedFile,
@@ -44,8 +44,32 @@ export async function extractTextFromDocument(
     imagelessMode: useImagelessMode,
   });
 
-  const document = result.document;
+  const processResponse = Array.isArray(processResult) ? processResult[0] : processResult;
+  const responseRecord = (processResponse ?? null) as Record<string, unknown> | null;
+  const document =
+    (responseRecord?.document as { text?: string } | undefined)
+    ?? (
+      Array.isArray(responseRecord?.documents)
+        ? ((responseRecord.documents[0] as Record<string, unknown> | undefined)?.document as { text?: string } | undefined)
+          ?? (responseRecord.documents[0] as { text?: string } | undefined)
+        : undefined
+    )
+    ?? ((responseRecord?.result as Record<string, unknown> | undefined)?.document as { text?: string } | undefined)
+    ?? ((responseRecord?.response as Record<string, unknown> | undefined)?.document as { text?: string } | undefined);
+
   if (!document) {
+    console.error("[documentai] unexpected processDocument response shape", {
+      imagelessMode: useImagelessMode,
+      mimeType,
+      topLevelKeys: responseRecord ? Object.keys(responseRecord) : [],
+      resultKeys: responseRecord?.result && typeof responseRecord.result === "object"
+        ? Object.keys(responseRecord.result as Record<string, unknown>)
+        : [],
+      responseKeys: responseRecord?.response && typeof responseRecord.response === "object"
+        ? Object.keys(responseRecord.response as Record<string, unknown>)
+        : [],
+      documentsLength: Array.isArray(responseRecord?.documents) ? responseRecord.documents.length : 0,
+    });
     throw new Error("Document AI returned no document");
   }
 
