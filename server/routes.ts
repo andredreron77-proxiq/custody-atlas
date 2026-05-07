@@ -3353,6 +3353,7 @@ GUEST DEMO RESPONSE GUIDANCE
   });
 
   app.post("/api/analyze-document", requireAuth, checkDocumentLimit, analyzeUploadMiddleware, async (req, res) => {
+    console.log("[analyze-document] handler reached, starting flow");
     const filePath = req.file?.path;
     const docUserId = (req as any).user?.id as string | undefined;
     const requestedCaseId: string | undefined = req.body?.caseId || undefined;

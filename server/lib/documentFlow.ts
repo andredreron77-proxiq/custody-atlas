@@ -21,6 +21,7 @@ export interface GuardResult {
 const MAX_DOCUMENT_SIZE_BYTES = 50 * 1024 * 1024;
 
 export function validateAnalyzeDocumentGuards(input: AnalyzeDocumentGuardsInput): GuardResult {
+  console.log("[documentFlow] flow started");
   if (!input.hasFile) {
     return { ok: false, status: 400, error: "No file uploaded. Please attach a PDF, JPG, or PNG." };
   }

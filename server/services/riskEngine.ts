@@ -71,14 +71,15 @@ function hasResponseDocument(documentTypes: string[], summaries: string[]): bool
 
 export function evaluateRisks(context: RiskEngineContext): RiskSignal[] {
   const risks: RiskSignal[] = [];
-  const summaries = context.documents.map((doc) => doc.summary.toLowerCase());
+  const { documents = [] } = (context ?? {}) as Partial<RiskEngineContext>;
+  const summaries = documents.map((doc) => doc.summary.toLowerCase());
   const allText = [
     ...summaries,
-    ...context.normalized.implications.map((value) => value.toLowerCase()),
-    ...Object.values(context.normalized.facts).flat().map((value) => value.toLowerCase()),
+    ...(context?.normalized?.implications ?? []).map((value) => value.toLowerCase()),
+    ...Object.values(context?.normalized?.facts ?? {}).flat().map((value) => value.toLowerCase()),
   ].join(" \n");
 
-  const hearingSoon = context.normalized.keyDates
+  const hearingSoon = (context?.normalized?.keyDates ?? [])
     .filter((entry) => entry.kind === "hearing")
     .map((entry) => ({ entry, daysAway: daysFromNow(entry.parsedDate) }))
     .find((item) => item.daysAway !== null && item.daysAway >= 0 && item.daysAway <= 14);
@@ -93,7 +94,7 @@ export function evaluateRisks(context: RiskEngineContext): RiskSignal[] {
     });
   }
 
-  const deadlineSoon = context.normalized.keyDates
+  const deadlineSoon = (context?.normalized?.keyDates ?? [])
     .filter((entry) => entry.kind === "deadline")
     .map((entry) => ({ entry, daysAway: daysFromNow(entry.parsedDate) }))
     .find((item) => item.daysAway !== null && item.daysAway >= 0 && item.daysAway <= 7);
@@ -108,7 +109,7 @@ export function evaluateRisks(context: RiskEngineContext): RiskSignal[] {
     });
   }
 
-  const hasOrder = hasOrderDocument(context.normalized.documentTypes) || textIncludes(allText, ["court ordered", "ordered that", "court order"]);
+  const hasOrder = hasOrderDocument(context?.normalized?.documentTypes ?? []) || textIncludes(allText, ["court ordered", "ordered that", "court order"]);
   if (hasOrder) {
     const obligationSignals = ["must", "shall", "required", "obligation", "complete", "pay", "exchange", "attend", "submit"];
     if (textIncludes(allText, obligationSignals)) {
@@ -122,8 +123,8 @@ export function evaluateRisks(context: RiskEngineContext): RiskSignal[] {
     }
   }
 
-  const hasMotion = hasMotionDocument(context.normalized.documentTypes, summaries);
-  const hasResponse = hasResponseDocument(context.normalized.documentTypes, summaries);
+  const hasMotion = hasMotionDocument(context?.normalized?.documentTypes ?? [], summaries);
+  const hasResponse = hasResponseDocument(context?.normalized?.documentTypes ?? [], summaries);
   if (hasMotion && !hasResponse) {
     risks.push({
       id: "motion_without_response",
@@ -154,8 +155,8 @@ export function evaluateRisks(context: RiskEngineContext): RiskSignal[] {
     });
   }
 
-  if (context.documents.length > 0) {
-    const latestActivity = context.documents.reduce<number | null>((latest, doc) => {
+  if (documents.length > 0) {
+    const latestActivity = documents.reduce<number | null>((latest, doc) => {
       const ts = toTimestamp(doc.createdAt);
       if (ts === null) return latest;
       if (latest === null) return ts;
@@ -177,7 +178,7 @@ export function evaluateRisks(context: RiskEngineContext): RiskSignal[] {
   }
 
   if (hasOrder) {
-    const hasHearingDetail = context.normalized.keyDates.some((entry) => entry.kind === "hearing")
+    const hasHearingDetail = (context?.normalized?.keyDates ?? []).some((entry) => entry.kind === "hearing")
       || textIncludes(allText, ["hearing date", "hearing time", "courtroom", "department"]);
 
     if (!hasHearingDetail) {

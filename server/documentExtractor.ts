@@ -20,6 +20,7 @@ export const SUPPORTED_MIME_TYPES = [
  * Throws with a human-readable message on failure.
  */
 export async function extractText(fileBuffer: Buffer, mimeType: string): Promise<string> {
+  console.log("[documentExtractor] extraction started");
   if (mimeType === DOCX_MIME) {
     return extractDocxText(fileBuffer);
   }
