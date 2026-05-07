@@ -82,7 +82,7 @@ const ACCEPTED_PDF_TYPES = ["application/pdf"];
 const ACCEPTED_DOCX_TYPES = [DOCX_MIME];
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
 const ACCEPTED_ALL_TYPES = [...ACCEPTED_PDF_TYPES, ...ACCEPTED_DOCX_TYPES, ...ACCEPTED_IMAGE_TYPES];
-const MAX_SIZE_MB = 10;
+const MAX_SIZE_MB = 50;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 const MAX_PAGES = 5;
 
