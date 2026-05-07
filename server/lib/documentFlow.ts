@@ -18,7 +18,7 @@ export interface GuardResult {
   error?: string;
 }
 
-const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_DOCUMENT_SIZE_BYTES = 50 * 1024 * 1024;
 
 export function validateAnalyzeDocumentGuards(input: AnalyzeDocumentGuardsInput): GuardResult {
   if (!input.hasFile) {
@@ -30,7 +30,7 @@ export function validateAnalyzeDocumentGuards(input: AnalyzeDocumentGuardsInput)
   }
 
   if (input.fileSize && input.fileSize > MAX_DOCUMENT_SIZE_BYTES) {
-    return { ok: false, status: 400, error: "File is too large. Maximum size is 10MB." };
+    return { ok: false, status: 400, error: "File is too large. Maximum size is 50MB." };
   }
 
   if (!input.hasAiClient) {

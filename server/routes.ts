@@ -1366,7 +1366,7 @@ mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const upload = multer({
   dest: UPLOADS_DIR,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (SUPPORTED_MIME_TYPES.includes(file.mimetype)) {
       cb(null, true);
@@ -1382,7 +1382,7 @@ const analyzeUploadMiddleware = (req: any, res: any, next: any) => {
 
     if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
-        error: "File is too large. Maximum size is 10MB.",
+        error: "File is too large. Maximum size is 50MB.",
         code: "DOCUMENT_ANALYSIS_PRECONDITION_FAILED",
       });
     }
