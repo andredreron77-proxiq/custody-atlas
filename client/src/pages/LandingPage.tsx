@@ -9,6 +9,7 @@ import {
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ExploreStateMap, GuestStateQAPanel, StateInfoPanel, STATES_WITH_DATA } from "@/components/custody/CustodyExploreShared";
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const NAVY  = "#0f172a";
@@ -17,17 +18,6 @@ const WARM_BG = "#f9f8f6";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
-const STATES_WITH_DATA = new Set([
-  "Alabama","Alaska","Arizona","Arkansas","California","Colorado",
-  "Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho",
-  "Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana",
-  "Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi",
-  "Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey",
-  "New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma",
-  "Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota",
-  "Tennessee","Texas","Utah","Vermont","Virginia","Washington",
-  "West Virginia","Wisconsin","Wyoming",
-]);
 const STATES_COVERED = Array.from(STATES_WITH_DATA).sort();
 
 function openSignup() {
@@ -209,6 +199,9 @@ function MiniMap() {
 
 // ─── 1. HERO ──────────────────────────────────────────────────────────────────
 function HeroSection() {
+  const [selectedState, setSelectedState] = useState<string | null>(null);
+  const [hoveredState, setHoveredState] = useState<string | null>(null);
+
   return (
     <section className="relative bg-white border-b border-slate-100 overflow-hidden">
       {/* Subtle background accent */}
@@ -220,7 +213,7 @@ function HeroSection() {
         }}
       />
 
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-20 pb-24 md:pt-28 md:pb-32">
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-18 md:pt-18 md:pb-24">
         <div className="max-w-3xl mx-auto text-center">
           <Reveal>
             <Eyebrow>
@@ -247,44 +240,6 @@ function HeroSection() {
             </p>
           </Reveal>
 
-          <Reveal delay={240}>
-            <p className="text-slate-400 text-base leading-relaxed mb-10 max-w-lg mx-auto">
-              Make confident custody decisions with AI-powered,
-              state-specific guidance.
-            </p>
-          </Reveal>
-
-          <Reveal delay={320}>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
-              <Button
-                size="lg"
-                className="h-11 px-7 font-semibold transition-all duration-200 hover:scale-[1.02] hover:shadow-md"
-                onClick={openSignup}
-                data-testid="button-hero-primary"
-              >
-                Get Started Free
-                <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-              </Button>
-              <Link href="/custody-map">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-11 px-6 text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400 hover:text-slate-900 transition-all duration-200"
-                  data-testid="button-hero-secondary"
-                >
-                  <Map className="w-4 h-4" />
-                  Explore Custody Map
-                </Button>
-              </Link>
-            </div>
-            <p className="text-sm text-slate-400">
-              Have questions?{" "}
-              <Link href="/contact" className="transition-colors hover:text-slate-600">
-                Contact us →
-              </Link>
-            </p>
-          </Reveal>
-
           <Reveal delay={400}>
             <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-2">
               {[
@@ -300,6 +255,68 @@ function HeroSection() {
             </div>
           </Reveal>
         </div>
+
+        <Reveal delay={240} className="mt-12">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)] lg:items-start">
+            <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-sm dark:border-slate-700 dark:bg-[linear-gradient(180deg,#020617_0%,#0f172a_100%)] sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-700">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+                    Interactive Map
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
+                    Click a state to preview custody law in plain English.
+                  </p>
+                </div>
+                <Link href="/custody-map" className="hidden text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 dark:text-slate-300 dark:hover:text-white sm:inline-flex">
+                  Explore full map →
+                </Link>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.12)]">
+                {hoveredState ? (
+                  <div className="flex items-center gap-2 border-b border-slate-200 px-4 pb-2 pt-3 dark:border-slate-700">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/30">
+                      <MapPin className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
+                    </div>
+                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{hoveredState}</span>
+                    <Badge className="ml-1 border-amber-200 bg-amber-50 text-xs text-amber-800">Click to view</Badge>
+                  </div>
+                ) : (
+                  <div className="border-b border-slate-200 px-4 pb-2 pt-3 dark:border-slate-700">
+                    <span className="text-sm text-slate-500 dark:text-slate-300">
+                      Hover over a state to preview. Click to open the law summary.
+                    </span>
+                  </div>
+                )}
+                <div className="p-3 sm:p-4">
+                  <ExploreStateMap
+                    selectedState={selectedState}
+                    hoveredState={hoveredState}
+                    onHoverStateChange={setHoveredState}
+                    onStateClick={setSelectedState}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <StateInfoPanel
+                selectedState={selectedState}
+                variant="landing"
+              />
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal delay={320} className="mt-8">
+          <GuestStateQAPanel
+            selectedState={selectedState}
+            heading="Have a custody question? Get an answer in plain English."
+            subtext="3 free questions. No account needed."
+            emptyPrompt="Choose a state above to tailor your question and start with 3 free questions."
+          />
+        </Reveal>
       </div>
     </section>
   );

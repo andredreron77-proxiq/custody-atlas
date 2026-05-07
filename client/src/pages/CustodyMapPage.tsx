@@ -14,38 +14,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ExploreStateMap, GuestStateQAPanel, StateInfoPanel, ALL_STATES, GOLD, GEO_URL, QUICK_ACCESS_STATES, STATES_WITH_DATA } from "@/components/custody/CustodyExploreShared";
 import { apiRequestRaw } from "@/lib/queryClient";
 import { JurisdictionContextHeader } from "@/components/app/JurisdictionContextHeader";
 import { UpgradePromptCard } from "@/components/app/UpgradePromptCard";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
   fetchUsageState,
-  getGuestQuestionsUsed,
-  GUEST_QUESTION_LIMIT,
   incrementGuestQuestionsUsed,
   USAGE_QUERY_KEY,
 } from "@/services/usageService";
 import type { CustodyLawRecord, AILegalResponse } from "@shared/schema";
 
-const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 const IS_DEV = import.meta.env.DEV;
 const NAVY = "#0f172a";
-const GOLD = "#b5922f";
 const WARM_BG = "#f9f8f6";
-
-const ALL_STATES = [
-  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
-  "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
-  "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana",
-  "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
-  "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
-  "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma",
-  "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
-  "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
-  "West Virginia", "Wisconsin", "Wyoming",
-];
-
-const STATES_WITH_DATA = new Set(ALL_STATES);
 
 function useReveal<T extends HTMLElement = HTMLDivElement>() {
   const ref = useRef<T | null>(null);
@@ -234,19 +217,6 @@ const GUEST_DEMO_SCENARIOS = [
   },
 ] as const;
 
-interface GuestExchange {
-  id: string;
-  question: string;
-  answer: string;
-  worthKnowing?: string | null;
-}
-
-type GuestMessage = {
-  role: "user" | "assistant";
-  content: string;
-  keyPoint?: string | null;
-};
-
 type Mode = "explore" | "compare";
 
 function openSignup() {
@@ -286,308 +256,6 @@ function getStateFill(opts: {
     : (isDark ? "#4a5568" : "#94a3b8");
   if (hasData) return isDark ? darkBaseFill : "#c7d5f0";
   return isDark ? darkNoDataFill : "#e2e8f0";
-}
-
-/* ── StateInfoPanel ────────────────────────────────────────────────────
- *
- * Persistent side panel (desktop) / bottom sheet (mobile) that shows
- * state-level custody law information when a state is selected on the map.
- *
- * Behaviour:
- *   • Always rendered in explore mode — no mount/unmount flicker.
- *   • Empty state  → placeholder with quick-access chips.
- *   • State selected, data available → Quick Summary, Custody Standard,
- *     Child Preference Age (if field populated), Relocation Rules + actions.
- *   • State selected, no data → friendly "coming soon" with AI fallback.
- *   • Mobile: collapsible — collapses to a slim handle; auto-expands on
- *     state selection.
- *   • Desktop (lg+): always fully visible, no collapse handle shown.
- *
- * Data: fetched directly from /api/custody-laws/:state so the panel stays
- * decoupled from its parent; parent only passes the selected state name.
- * ──────────────────────────────────────────────────────────────────────── */
-function StateInfoPanel({
-  selectedState,
-  onCompare,
-  quickAccessStates,
-  onQuickAccess,
-}: {
-  selectedState: string | null;
-  /** Switch to compare mode with this state pre-loaded as State A. */
-  onCompare: (stateName: string) => void;
-  quickAccessStates: string[];
-  onQuickAccess: (stateName: string) => void;
-}) {
-  const [mobileExpanded, setMobileExpanded] = useState(false);
-
-  const hasData = selectedState ? STATES_WITH_DATA.has(selectedState) : false;
-
-  const { data: law, isLoading } = useQuery<CustodyLawRecord>({
-    queryKey: ["/api/custody-laws", selectedState ?? "__none__"],
-    queryFn: async () => {
-      const res = await fetch(`/api/custody-laws/${encodeURIComponent(selectedState!)}`);
-      if (!res.ok) throw new Error("Not found");
-      return res.json();
-    },
-    enabled: hasData && !!selectedState,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Auto-expand the mobile bottom sheet whenever a state is selected
-  useEffect(() => {
-    if (selectedState) setMobileExpanded(true);
-  }, [selectedState]);
-
-  const askAIPath = selectedState
-    ? `/ask?state=${encodeURIComponent(selectedState)}&county=general&country=United%20States`
-    : "";
-  const fullDetailsPath = selectedState
-    ? `/jurisdiction/${encodeURIComponent(selectedState)}/general`
-    : "";
-
-  return (
-    <div
-      className="bg-card border rounded-xl shadow-xs overflow-hidden flex flex-col"
-      data-testid="panel-state-info"
-    >
-
-      {/* ── Mobile collapse handle (hidden on desktop) ──────────────── */}
-      <button
-        className="lg:hidden flex items-center justify-between px-4 py-3.5 border-b hover:bg-muted/30 transition-colors w-full text-left"
-        onClick={() => setMobileExpanded((v) => !v)}
-        aria-expanded={mobileExpanded}
-        aria-controls="state-panel-body"
-        data-testid="button-mobile-panel-toggle"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <Scale className="w-4 h-4 text-primary flex-shrink-0" />
-          <span className="font-semibold text-sm truncate">
-            {selectedState ? `${selectedState} Custody Law` : "Select a state to explore"}
-          </span>
-          {selectedState && (
-            <Badge className={`text-[10px] flex-shrink-0 ${
-              hasData
-                ? "bg-primary/[0.1] text-primary border-primary/30 dark:bg-primary/20 dark:text-primary-foreground/80"
-                : "bg-muted text-muted-foreground border-border"
-            }`}>
-              {hasData ? "Data available" : "Coming soon"}
-            </Badge>
-          )}
-        </div>
-        <ChevronDown
-          className={`w-4 h-4 text-muted-foreground flex-shrink-0 ml-3 transition-transform duration-200 ${
-            mobileExpanded ? "rotate-180" : ""
-          }`}
-        />
-      </button>
-
-      {/* ── Panel body ─────────────────────────────────────────────────
-       *   Hidden on mobile when collapsed; always visible on desktop.
-       * ─────────────────────────────────────────────────────────────── */}
-      <div
-        id="state-panel-body"
-        className={mobileExpanded ? "block" : "hidden lg:block"}
-      >
-
-        {/* ── Empty state ─────────────────────────────────────────────── */}
-        {!selectedState && (
-          <div className="p-6 flex flex-col items-center justify-center text-center gap-5 min-h-[360px]">
-            <div className="w-14 h-14 rounded-2xl border border-border bg-background dark:bg-muted/40 flex items-center justify-center shadow-xs">
-              <Scale className="w-6 h-6 text-muted-foreground/70 dark:text-muted-foreground" />
-            </div>
-            <div>
-              <p className="font-serif font-semibold text-base mb-1.5" data-testid="text-panel-empty-heading">
-                Select a state on the map
-              </p>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                to explore custody law.
-              </p>
-            </div>
-            <div className="w-full space-y-2.5">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
-                Quick access
-              </p>
-              <div className="flex flex-wrap gap-1.5 justify-center">
-                {quickAccessStates.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => onQuickAccess(s)}
-                    className="text-xs px-2.5 py-1 rounded-full bg-primary/[0.07] text-primary border border-primary/20 hover:bg-primary/[0.13] transition-colors dark:bg-primary/[0.18] dark:text-primary dark:border-primary/50 dark:hover:bg-primary/[0.28]"
-                    data-testid={`quick-state-${s.toLowerCase().replace(/\s+/g, "-")}`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Loading ─────────────────────────────────────────────────── */}
-        {selectedState && hasData && isLoading && (
-          <div className="flex flex-col items-center justify-center gap-3 p-10 min-h-[300px]">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">
-              Loading {selectedState} custody laws…
-            </p>
-          </div>
-        )}
-
-        {/* ── No data (coming soon) ────────────────────────────────────── */}
-        {selectedState && !hasData && (
-          <div className="p-5 space-y-4">
-            <div className="pb-3 border-b">
-              <h2 className="text-lg font-bold leading-tight" data-testid="text-panel-state-name">
-                {selectedState} Custody Law
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                General statewide overview
-              </p>
-            </div>
-            <div className="flex flex-col items-center text-center gap-3 py-4">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                <Info className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-[260px]">
-                We're working on adding detailed custody law data for this state.
-                You can still ask our AI general questions.
-              </p>
-            </div>
-            <Link href={askAIPath}>
-              <Button className="w-full gap-2 justify-center" data-testid="button-ask-ai-no-data">
-                <MessageSquare className="w-4 h-4" />
-                Ask Atlas About {selectedState}
-              </Button>
-            </Link>
-          </div>
-        )}
-
-        {/* ── State data ──────────────────────────────────────────────── */}
-        {selectedState && hasData && law && (
-          <div className="p-5 space-y-4" data-testid={`panel-state-${selectedState.toLowerCase().replace(/\s+/g, "-")}`}>
-
-            {/* Header row */}
-            <div className="flex items-start justify-between gap-2 pb-3 border-b">
-              <div className="min-w-0">
-                <h2
-                  className="text-lg font-bold leading-tight"
-                  data-testid="text-panel-state-name"
-                >
-                  {selectedState} Custody Law
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">General statewide overview</p>
-              </div>
-              <Link href={fullDetailsPath} className="flex-shrink-0 mt-0.5">
-                <Badge
-                  className="text-[10px] bg-primary/[0.07] text-primary border-primary/20 dark:bg-primary/20 cursor-pointer hover:bg-primary/[0.13] transition-colors"
-                  data-testid="badge-detailed-data"
-                >
-                  Full details ↗
-                </Badge>
-              </Link>
-            </div>
-
-            {/* Quick Summary — "At a Glance" blurb */}
-            {law.quick_summary && (
-              <div
-                className="rounded-lg bg-muted/50 border px-3 py-2.5"
-                data-testid="text-panel-quick-summary"
-              >
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  At a Glance
-                </p>
-                <p className="text-xs leading-relaxed text-foreground">{law.quick_summary}</p>
-              </div>
-            )}
-
-            {/* Law section cards */}
-            <div className="space-y-2.5">
-
-              {/* Custody Standard */}
-              <div className="rounded-lg border-l-2 border-l-primary/40 border border-border bg-card p-3 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Scale className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Custody Standard
-                  </h3>
-                </div>
-                <ExpandableText
-                  text={law.custody_standard}
-                  maxLen={200}
-                  testId="text-panel-custody-standard"
-                />
-              </div>
-
-              {/* Child Preference Age — only when the field is populated */}
-              {law.child_preference_age && (
-                <div className="rounded-lg border-l-2 border-l-violet-400/40 border border-border bg-card p-3 shadow-sm">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <Users className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 flex-shrink-0" />
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Child Preference Age
-                    </h3>
-                  </div>
-                  <ExpandableText
-                    text={law.child_preference_age}
-                    maxLen={200}
-                    testId="text-panel-child-preference"
-                  />
-                </div>
-              )}
-
-              {/* Relocation Rules */}
-              <div className="rounded-lg border-l-2 border-l-orange-400/40 border border-border bg-card p-3 shadow-sm">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400 flex-shrink-0" />
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Relocation Rules
-                  </h3>
-                </div>
-                <ExpandableText
-                  text={law.relocation_rules}
-                  maxLen={200}
-                  testId="text-panel-relocation-rules"
-                />
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="space-y-2 pt-1">
-              <Link href={fullDetailsPath}>
-                <Button
-                  className="w-full gap-2 justify-center"
-                  data-testid="button-view-full-summary"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  View Full Law Summary
-                </Button>
-              </Link>
-              <Link href={askAIPath}>
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 justify-center"
-                  data-testid="button-ask-ai-state"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  Ask Atlas About This State
-                </Button>
-              </Link>
-              <Button
-                variant="ghost"
-                className="w-full gap-2 justify-center text-muted-foreground hover:text-foreground"
-                onClick={() => onCompare(selectedState)}
-                data-testid="button-compare-this-state"
-              >
-                <GitCompare className="w-3.5 h-3.5" />
-                Compare Another State
-              </Button>
-            </div>
-
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 /* ── Comparison AI inline chat section ────────────────────────────────── */
@@ -952,248 +620,6 @@ function ComparisonPanel({ stateA, stateB, onClearA, onClearB, onSwap }: Compari
       {!isLoading && (
         <ComparisonAISection stateA={stateA} stateB={stateB} />
       )}
-    </div>
-  );
-}
-
-function GuestStateQAPanel({ selectedState }: { selectedState: string | null }) {
-  const { user } = useCurrentUser();
-  const queryClient = useQueryClient();
-  const [question, setQuestion] = useState("");
-  const [guestMessages, setGuestMessages] = useState<GuestMessage[]>([]);
-  const [questionsUsed, setQuestionsUsed] = useState(() => getGuestQuestionsUsed());
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const isGuest = !user;
-  const remainingQuestions = Math.max(0, GUEST_QUESTION_LIMIT - questionsUsed);
-  const limitReached = isGuest && questionsUsed >= GUEST_QUESTION_LIMIT;
-  const hasAskedFirstQuestion = guestMessages.some((message) => message.role === "user");
-  const suggestionChips = selectedState
-    ? [
-        `What are ${selectedState}'s rules if my ex wants to move?`,
-        `Can my child choose who to live with in ${selectedState}?`,
-        `What should I expect at a ${selectedState} custody hearing?`,
-      ]
-    : [
-        "What rights do I have if my ex wants to move?",
-        "Can my child choose who to live with?",
-        "What happens at a custody hearing?",
-      ];
-  const exchanges = guestMessages.reduce<GuestExchange[]>((items, message, index) => {
-    if (message.role !== "user") return items;
-    const answer = guestMessages[index + 1];
-    items.push({
-      id: `${index}`,
-      question: message.content,
-      answer: answer?.role === "assistant" ? answer.content : "",
-      worthKnowing: answer?.role === "assistant" ? answer.keyPoint ?? null : null,
-    });
-    return items;
-  }, []);
-
-  useEffect(() => {
-    setQuestionsUsed(getGuestQuestionsUsed());
-  }, []);
-
-  useEffect(() => {
-    setGuestMessages([]);
-    setQuestion("");
-    setError(null);
-  }, [selectedState]);
-
-  const mutation = useMutation({
-    mutationFn: async (userQuestion: string) => {
-      if (!selectedState) {
-        throw new Error("Select a state on the map to ask a question.");
-      }
-
-      const res = await apiRequestRaw("POST", "/api/ask", {
-        question: userQuestion,
-        userQuestion,
-        jurisdiction: {
-          state: selectedState,
-          county: "statewide",
-          country: "United States",
-        },
-        history: guestMessages.concat({ role: "user", content: userQuestion }).slice(-16),
-        isGuest: true,
-      });
-
-      if (res.status === 429) {
-        throw new Error("You've used your free questions.");
-      }
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Atlas couldn't answer right now. Please try again.");
-      }
-
-      return res.json() as Promise<AILegalResponse>;
-    },
-    onSuccess: (response, userQuestion) => {
-      setGuestMessages((current) => [
-        ...current,
-        {
-          role: "user",
-          content: userQuestion,
-        },
-        {
-          role: "assistant",
-          content: response.summary,
-          keyPoint: response.key_points?.[0] ?? null,
-        }
-      ]);
-      setQuestion("");
-      setError(null);
-      if (isGuest) {
-        const next = incrementGuestQuestionsUsed();
-        setQuestionsUsed(next);
-        queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
-      }
-    },
-    onError: (err) => {
-      const message = err instanceof Error ? err.message : "Atlas couldn't answer right now. Please try again.";
-      setError(message);
-      if (isGuest) {
-        setQuestionsUsed(getGuestQuestionsUsed());
-      }
-    },
-  });
-
-  const handleSubmit = () => {
-    if (!question.trim() || mutation.isPending || !selectedState || limitReached) return;
-    setError(null);
-    mutation.mutate(question.trim());
-  };
-
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6" data-testid="card-guest-state-qa">
-      <p
-        className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em]"
-        style={{ color: GOLD }}
-      >
-        TRY ATLAS FREE
-      </p>
-      <div className="max-w-2xl">
-        <h2 className="font-serif text-2xl font-semibold leading-tight text-foreground">
-          Have a custody question about {selectedState ?? "this state"}?
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Get a real answer in plain English. No account needed.
-        </p>
-      </div>
-
-      {!selectedState ? (
-        <div className="mt-5 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-5 text-sm text-muted-foreground">
-          Select a state on the map to ask a question.
-        </div>
-      ) : limitReached ? (
-        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-5 dark:border-amber-800/50 dark:bg-amber-950/20">
-          <p className="text-sm leading-relaxed text-foreground">
-            You've used your 3 free questions. Create a free account to get 10 questions total and save your conversations.
-          </p>
-          <Button className="mt-4 gap-2" onClick={openSignup} data-testid="button-guest-map-signup">
-            Create Free Account
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-      ) : (
-        <div className="mt-5 space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Input
-              ref={inputRef}
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              placeholder={`Ask anything about custody in ${selectedState}...`}
-              className="h-11 border-input bg-background"
-              disabled={mutation.isPending}
-              data-testid="input-guest-state-question"
-            />
-            <Button
-              onClick={handleSubmit}
-              disabled={mutation.isPending || !question.trim()}
-              className="h-11 gap-2 px-5"
-              data-testid="button-guest-state-question-submit"
-            >
-              {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-              Send
-            </Button>
-          </div>
-          {!hasAskedFirstQuestion ? (
-            <div className="flex flex-wrap gap-2" data-testid="guest-question-suggestions">
-              {suggestionChips.map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  className="rounded-full border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => {
-                    setQuestion(chip);
-                    inputRef.current?.focus();
-                  }}
-                  data-testid={`guest-suggestion-${chip.slice(0, 20).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {isGuest ? (
-            <p className="text-sm text-muted-foreground" data-testid="text-guest-questions-remaining">
-              {remainingQuestions} of 3 free questions remaining
-            </p>
-          ) : null}
-          {error ? (
-            <p className="text-sm text-destructive" data-testid="text-guest-state-question-error">
-              {error}
-            </p>
-          ) : null}
-        </div>
-      )}
-
-      <div className="mt-6 space-y-4" data-testid="guest-state-history">
-        {exchanges.map((entry) => (
-          <div key={entry.id} className="space-y-3">
-            <div className="flex justify-end">
-              <div className="max-w-[90%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-3 text-sm leading-relaxed text-white shadow-sm sm:max-w-[80%] dark:bg-slate-800">
-                {entry.question}
-              </div>
-            </div>
-            {entry.answer ? (
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-primary">
-                  <MessageSquare className="h-4 w-4" />
-                </div>
-                <div className="max-w-[92%] rounded-2xl rounded-tl-md bg-muted/70 px-4 py-3 text-sm leading-relaxed text-foreground sm:max-w-[82%]">
-                  {entry.answer}
-                  {entry.worthKnowing ? (
-                    <p className="mt-2 text-sm italic text-muted-foreground">
-                      Worth knowing: {entry.worthKnowing}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ))}
-
-        {mutation.isPending ? (
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-primary">
-              <MessageSquare className="h-4 w-4" />
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-2xl rounded-tl-md bg-muted/70 px-4 py-3 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Atlas is thinking...
-            </div>
-          </div>
-        ) : null}
-      </div>
     </div>
   );
 }
@@ -1741,52 +1167,61 @@ export default function CustodyMapPage() {
 
               <div className={IS_DEV ? "bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 sm:p-4 dark:bg-[linear-gradient(180deg,#020617_0%,#0f172a_100%)]" : ""}>
                 <div className={IS_DEV ? "rounded-2xl border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.12)]" : ""}>
-                  <ComposableMap
-                    projection="geoAlbersUsa"
-                    style={{ width: "100%", height: "auto" }}
-                    data-testid="svg-map"
-                  >
-                    <Geographies geography={GEO_URL}>
-                      {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
-                        geographies.map((geo: { rsmKey: string; properties: { name: string } }) => {
-                          const stateName: string = geo.properties.name;
-                          const fill = getStateFill({
-                            mode,
-                            stateName,
-                            selectedState,
-                            stateA,
-                            stateB,
-                            hoveredState,
-                            isDark,
-                          });
-                          return (
-                            <Geography
-                              key={geo.rsmKey}
-                              geography={geo}
-                              fill={fill}
-                              stroke="#ffffff"
-                              strokeWidth={0.75}
-                              style={{
-                                default: {
-                                  outline: "none",
-                                  cursor: "pointer",
-                                  transition: IS_DEV ? "fill 0.2s ease, transform 0.2s ease, filter 0.2s ease" : "fill 0.15s ease",
-                                  filter: IS_DEV && hoveredState === stateName ? "drop-shadow(0 0 6px rgba(181, 146, 47, 0.22))" : "none",
-                                },
-                                hover: { outline: "none", cursor: "pointer", opacity: 0.9 },
-                                pressed: { outline: "none", opacity: 0.8 },
-                              }}
-                              onClick={() => handleMapClick(stateName)}
-                              onMouseEnter={() => setHoveredState(stateName)}
-                              onMouseLeave={() => setHoveredState(null)}
-                              data-testid={`state-${stateName.toLowerCase().replace(/\s+/g, "-")}`}
-                              aria-label={stateName}
-                            />
-                          );
-                        })
-                      }
-                    </Geographies>
-                  </ComposableMap>
+                  {mode === "explore" ? (
+                    <ExploreStateMap
+                      selectedState={selectedState}
+                      hoveredState={hoveredState}
+                      onHoverStateChange={setHoveredState}
+                      onStateClick={handleMapClick}
+                    />
+                  ) : (
+                    <ComposableMap
+                      projection="geoAlbersUsa"
+                      style={{ width: "100%", height: "auto" }}
+                      data-testid="svg-map"
+                    >
+                      <Geographies geography={GEO_URL}>
+                        {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
+                          geographies.map((geo: { rsmKey: string; properties: { name: string } }) => {
+                            const stateName: string = geo.properties.name;
+                            const fill = getStateFill({
+                              mode,
+                              stateName,
+                              selectedState,
+                              stateA,
+                              stateB,
+                              hoveredState,
+                              isDark,
+                            });
+                            return (
+                              <Geography
+                                key={geo.rsmKey}
+                                geography={geo}
+                                fill={fill}
+                                stroke="#ffffff"
+                                strokeWidth={0.75}
+                                style={{
+                                  default: {
+                                    outline: "none",
+                                    cursor: "pointer",
+                                    transition: IS_DEV ? "fill 0.2s ease, transform 0.2s ease, filter 0.2s ease" : "fill 0.15s ease",
+                                    filter: IS_DEV && hoveredState === stateName ? "drop-shadow(0 0 6px rgba(181, 146, 47, 0.22))" : "none",
+                                  },
+                                  hover: { outline: "none", cursor: "pointer", opacity: 0.9 },
+                                  pressed: { outline: "none", opacity: 0.8 },
+                                }}
+                                onClick={() => handleMapClick(stateName)}
+                                onMouseEnter={() => setHoveredState(stateName)}
+                                onMouseLeave={() => setHoveredState(null)}
+                                data-testid={`state-${stateName.toLowerCase().replace(/\s+/g, "-")}`}
+                                aria-label={stateName}
+                              />
+                            );
+                          })
+                        }
+                      </Geographies>
+                    </ComposableMap>
+                  )}
                 </div>
               </div>
             </div>
@@ -1805,7 +1240,7 @@ export default function CustodyMapPage() {
                 setStateA(stateName);
                 setStateB(null);
               }}
-              quickAccessStates={[...STATES_WITH_DATA].slice(0, 8)}
+              quickAccessStates={QUICK_ACCESS_STATES}
               onQuickAccess={handleStateClickExplore}
             />
           )}
