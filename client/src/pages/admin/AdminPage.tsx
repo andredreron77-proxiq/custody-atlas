@@ -105,6 +105,12 @@ interface AdminAnalytics {
   };
 }
 
+interface SeedResourcesResponse {
+  seeded: string[];
+  skipped: string[];
+  failed: string[];
+}
+
 /* ── Small helpers ───────────────────────────────────────────────────────── */
 
 function TierBadge({ tier }: { tier: "free" | "pro" }) {
@@ -772,12 +778,36 @@ function CodesTab() {
  * ══════════════════════════════════════════════════════════════════════════ */
 
 function AnalyticsTab({ enabled }: { enabled: boolean }) {
+  const [seedResult, setSeedResult] = useState<SeedResourcesResponse | null>(null);
+  const [seedError, setSeedError] = useState<string | null>(null);
   const { data, isLoading, error } = useQuery<AdminAnalytics>({
     queryKey: ["/api/admin/analytics"],
     queryFn: getQueryFn({ on401: "throw" }),
     enabled,
     staleTime: 60_000,
     retry: false,
+  });
+  const seedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequestRaw("POST", "/api/admin/seed-resources", {});
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof body?.error === "string" ? body.error : "Failed to seed resources cache.");
+      }
+      return body as SeedResourcesResponse;
+    },
+    onMutate: () => {
+      setSeedError(null);
+      setSeedResult(null);
+    },
+    onSuccess: (body) => {
+      setSeedResult(body);
+      setSeedError(null);
+    },
+    onError: (mutationError: Error) => {
+      setSeedError(mutationError.message);
+      setSeedResult(null);
+    },
   });
 
   if (isLoading) {
@@ -959,6 +989,91 @@ function AnalyticsTab({ enabled }: { enabled: boolean }) {
               type="info"
               text="Organizations will be managed in the dedicated Organizations tab once partnerships are established. This section will show a summary: total partners, licenses allocated vs redeemed, and top organizations by utilization."
             />
+          </CardContent>
+        </Card>
+      </AnalyticsSection>
+
+      <AnalyticsSection title="System Maintenance">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+          <CardContent className="space-y-5 p-6">
+            <div className="space-y-2">
+              <h4 className="text-lg font-semibold text-foreground">Pre-seed Resources Cache</h4>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                Generate and cache resources for major US metro counties. Counties already cached
+                will be skipped. This calls OpenAI for each new county and may take a few minutes.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <Button
+                onClick={() => seedMutation.mutate()}
+                disabled={seedMutation.isPending}
+                className="gap-2"
+                data-testid="button-run-seed-resources"
+              >
+                {seedMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+                {seedMutation.isPending ? "Running Seed…" : "Run Seed"}
+              </Button>
+
+              {seedMutation.isPending ? (
+                <p className="text-sm text-muted-foreground">
+                  Seeding resources... this may take a few minutes.
+                </p>
+              ) : null}
+
+              {seedError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                  Failed: {seedError}
+                </div>
+              ) : null}
+
+              {seedResult ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    Seeded: {formatKpiNumber(seedResult.seeded.length)} counties. Skipped: {formatKpiNumber(seedResult.skipped.length)} (already cached). Failed: {formatKpiNumber(seedResult.failed.length)}.
+                  </div>
+
+                  {seedResult.seeded.length > 0 ? (
+                    <details className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/30">
+                      <summary className="cursor-pointer text-sm font-medium text-foreground">
+                        Seeded counties
+                      </summary>
+                      <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                        {seedResult.seeded.map((item) => (
+                          <li key={`seeded-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+
+                  {seedResult.skipped.length > 0 ? (
+                    <details className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/30">
+                      <summary className="cursor-pointer text-sm font-medium text-foreground">
+                        Skipped counties
+                      </summary>
+                      <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                        {seedResult.skipped.map((item) => (
+                          <li key={`skipped-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+
+                  {seedResult.failed.length > 0 ? (
+                    <details className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/30">
+                      <summary className="cursor-pointer text-sm font-medium text-foreground">
+                        Failed counties
+                      </summary>
+                      <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                        {seedResult.failed.map((item) => (
+                          <li key={`failed-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       </AnalyticsSection>
