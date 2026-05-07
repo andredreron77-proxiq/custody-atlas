@@ -46,12 +46,13 @@ export async function extractTextFromDocument(
 
   const processResponse = Array.isArray(processResult) ? processResult[0] : processResult;
   const responseRecord = (processResponse ?? null) as Record<string, unknown> | null;
+  console.log("[documentai] raw response keys:", Object.keys(responseRecord || {}));
   const document =
     (responseRecord?.document as { text?: string } | undefined)
     ?? (
       Array.isArray(responseRecord?.documents)
-        ? ((responseRecord.documents[0] as Record<string, unknown> | undefined)?.document as { text?: string } | undefined)
-          ?? (responseRecord.documents[0] as { text?: string } | undefined)
+        ? ((responseRecord?.documents?.[0] as Record<string, unknown> | undefined)?.document as { text?: string } | undefined)
+          ?? (responseRecord?.documents?.[0] as { text?: string } | undefined)
         : undefined
     )
     ?? ((responseRecord?.result as Record<string, unknown> | undefined)?.document as { text?: string } | undefined)
@@ -68,14 +69,14 @@ export async function extractTextFromDocument(
       responseKeys: responseRecord?.response && typeof responseRecord.response === "object"
         ? Object.keys(responseRecord.response as Record<string, unknown>)
         : [],
-      documentsLength: Array.isArray(responseRecord?.documents) ? responseRecord.documents.length : 0,
+      documentsLength: Array.isArray(responseRecord?.documents) ? (responseRecord?.documents?.length ?? 0) : 0,
     });
-    throw new Error("Document AI returned no document");
+    throw new Error("Unable to extract text from this document. Please try a smaller file or a different format.");
   }
 
   const text = document.text;
   if (!text || text.trim().length === 0) {
-    throw new Error("Document AI could not extract any text from this document");
+    throw new Error("Unable to extract text from this document. Please try a smaller file or a different format.");
   }
 
   return text;
