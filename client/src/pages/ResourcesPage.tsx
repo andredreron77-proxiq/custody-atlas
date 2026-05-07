@@ -153,11 +153,25 @@ function EmptyCategoryState({
   heading,
   county,
   state,
+  isAuthenticated,
 }: {
   heading: string;
   county: string;
   state: string;
+  isAuthenticated: boolean;
 }) {
+  if (!isAuthenticated) {
+    return (
+      <div className="rounded-xl border border-dashed bg-card px-4 py-5 text-sm text-muted-foreground">
+        Resources for {county}, {state} are available to registered users. Sign up free to see
+        what&apos;s available in your area.{" "}
+        <Link href="/" className="font-medium text-primary hover:text-primary/80">
+          Sign Up Free
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-dashed bg-card px-4 py-5 text-sm text-muted-foreground">
       We couldn&apos;t find specific {heading.toLowerCase()} resources for {county}, {state}. Try searching{" "}
@@ -180,12 +194,14 @@ function ResourceCategorySection({
   isLoading,
   county,
   state,
+  isAuthenticated,
 }: {
   config: ResourceSectionConfig;
   items: ResourceItem[];
   isLoading: boolean;
   county: string;
   state: string;
+  isAuthenticated: boolean;
 }) {
   return (
     <Card className={`border ${config.accentClassName}`}>
@@ -218,7 +234,12 @@ function ResourceCategorySection({
             />
           ))
         ) : (
-          <EmptyCategoryState heading={config.label} county={county} state={state} />
+          <EmptyCategoryState
+            heading={config.label}
+            county={county}
+            state={state}
+            isAuthenticated={Boolean(isAuthenticated)}
+          />
         )}
       </CardContent>
     </Card>
@@ -451,6 +472,7 @@ export default function ResourcesPage() {
               isLoading={query.isLoading}
               county={jurisdiction.county}
               state={jurisdiction.state}
+              isAuthenticated={Boolean(user)}
             />
           );
         })}
