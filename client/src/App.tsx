@@ -260,9 +260,7 @@ function Router() {
       <Route path="/ask">
         {() => <ProtectedRoute component={AskAIPage} feature="ask-ai" />}
       </Route>
-      <Route path="/resources">
-        {() => <ProtectedRoute component={ResourcesPage} feature="ask-ai" />}
-      </Route>
+      <Route path="/resources" component={ResourcesPage} />
       <Route path="/upload-document">
         {() => <ProtectedRoute component={UploadDocumentPage} feature="analyze-document" />}
       </Route>

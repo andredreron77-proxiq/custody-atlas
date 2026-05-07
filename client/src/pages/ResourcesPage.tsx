@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, MapPin, Phone, BellRing, ChevronRight } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, Phone, BellRing, ChevronRight, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -228,6 +229,7 @@ export default function ResourcesPage() {
   const [waitlistJoined, setWaitlistJoined] = useState(false);
   const [waitlistLoading, setWaitlistLoading] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const { toast } = useToast();
   const { user } = useCurrentUser();
 
@@ -388,6 +390,27 @@ export default function ResourcesPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
+        {!user && !bannerDismissed ? (
+          <div className="relative overflow-hidden rounded-2xl border border-blue-200/80 bg-blue-50/80 px-5 py-4 shadow-sm backdrop-blur dark:border-blue-900/40 dark:bg-blue-950/20">
+            <button
+              type="button"
+              onClick={() => setBannerDismissed(true)}
+              className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-blue-700/70 transition-colors hover:bg-blue-100 hover:text-blue-900 dark:text-blue-200/70 dark:hover:bg-blue-900/40 dark:hover:text-blue-100"
+              aria-label="Dismiss signup banner"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex flex-col gap-4 pr-8 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-3xl text-sm leading-relaxed text-blue-900 dark:text-blue-100">
+                You&apos;re viewing public resources. Sign up free to access AI-powered custody guidance personalized to your county.
+              </p>
+              <Link href="/">
+                <Button className="w-full sm:w-auto">Sign Up Free</Button>
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
         <div className="rounded-2xl border bg-card px-6 py-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
