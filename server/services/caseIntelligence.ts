@@ -586,6 +586,22 @@ export async function generateCaseIntelligence(caseId: string): Promise<CaseInte
   if (!supabaseAdmin) return null;
 
   const prioritySignal = await getPrioritySignalForCase(caseId);
+  const { data: caseRow, error: caseError } = await supabaseAdmin
+    .from("cases")
+    .select("user_id")
+    .eq("id", caseId)
+    .maybeSingle();
+
+  if (caseError) {
+    console.error("[caseIntelligence] case fetch error:", caseError.message);
+    return null;
+  }
+
+  const userId = typeof caseRow?.user_id === "string" ? caseRow.user_id : null;
+  if (!userId) {
+    console.error("[caseIntelligence] case fetch missing user_id");
+    return null;
+  }
 
   const { data, error } = await supabaseAdmin
     .from("documents")
@@ -625,6 +641,7 @@ export async function generateCaseIntelligence(caseId: string): Promise<CaseInte
 
   const payload = {
     case_id: caseId,
+    user_id: userId,
     summary,
     active_issues_json: activeIssues,
     key_dates_json: normalizedContext.normalized.keyDates,
