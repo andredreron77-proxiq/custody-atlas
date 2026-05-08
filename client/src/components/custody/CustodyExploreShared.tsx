@@ -102,9 +102,9 @@ export function ExploreStateMap({
             const fill = isSelected
               ? "hsl(var(--gold))"
               : isHovered
-                ? (hasData ? "hsl(var(--gold) / 0.4)" : "hsl(var(--muted) / 0.5)")
+                ? (hasData ? "hsl(var(--gold) / 0.7)" : "hsl(var(--muted) / 0.5)")
                 : hasData
-                  ? "hsl(var(--muted))"
+                  ? "hsl(var(--muted-foreground) / 0.12)"
                   : "hsl(var(--muted) / 0.5)";
 
             return (
@@ -112,8 +112,8 @@ export function ExploreStateMap({
                 key={geo.rsmKey}
                 geography={geo}
                 fill={fill}
-                stroke={isSelected ? "hsl(var(--foreground))" : "hsl(var(--background))"}
-                strokeWidth={isSelected ? 1 : 0.75}
+                stroke={isSelected ? "hsl(var(--foreground))" : "hsl(var(--border))"}
+                strokeWidth={isSelected ? 1 : 0.6}
                 style={{
                   default: {
                     outline: "none",

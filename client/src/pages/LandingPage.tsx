@@ -205,16 +205,24 @@ function HeroSection() {
           </p>
         </Reveal>
 
-        <Reveal delay={240} className="mt-10 w-full max-w-[520px]">
+        <Reveal delay={220} className="mt-8">
+          <div className="space-y-1.5 text-center">
+            <p className="font-serif text-[16px] font-medium text-foreground">
+              Start with your state.
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              50 states. Three free questions.
+            </p>
+          </div>
+        </Reveal>
+
+        <Reveal delay={240} className="mt-5 w-full max-w-[520px]">
           <ExploreStateMap
             selectedState={selectedState}
             hoveredState={hoveredState}
             onHoverStateChange={setHoveredState}
             onStateClick={setSelectedState}
           />
-          <p className="mt-4 text-center text-[12px] italic text-muted-foreground">
-            Click your state to begin.
-          </p>
         </Reveal>
 
         {selectedState ? (
