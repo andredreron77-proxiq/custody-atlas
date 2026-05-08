@@ -190,7 +190,7 @@ function HeroSection() {
 
       <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 pb-16 pt-16 text-center sm:px-6 md:pb-20 md:pt-20">
         <Reveal>
-          <Eyebrow>A QUIET GUIDE THROUGH CUSTODY LAW</Eyebrow>
+          <Eyebrow>KNOW YOUR RIGHTS AS A PARENT</Eyebrow>
         </Reveal>
 
         <Reveal delay={80}>
