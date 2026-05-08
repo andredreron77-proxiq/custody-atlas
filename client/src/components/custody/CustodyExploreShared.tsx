@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
-import { useTheme } from "next-themes";
 import { Link } from "wouter";
 import { ChevronDown, Info, Loader2, MapPin, MessageSquare, Scale, Users, ExternalLink, GitCompare, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +18,7 @@ import {
 import type { AILegalResponse, CustodyLawRecord } from "@shared/schema";
 
 export const GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
-export const GOLD = "#b5922f";
+export const GOLD = "hsl(var(--gold))";
 
 export const ALL_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
@@ -87,9 +86,6 @@ export function ExploreStateMap({
   onHoverStateChange: (stateName: string | null) => void;
   onStateClick: (stateName: string) => void;
 }) {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-
   return (
     <ComposableMap
       projection="geoAlbersUsa"
@@ -104,26 +100,26 @@ export function ExploreStateMap({
             const isSelected = selectedState === stateName;
             const isHovered = hoveredState === stateName;
             const fill = isSelected
-              ? (isDark ? "#8fbbe0" : "#0f172a")
+              ? "hsl(var(--gold))"
               : isHovered
-                ? (hasData ? (isDark ? "#78a7ce" : "#334155") : (isDark ? "#4a5568" : "#94a3b8"))
+                ? (hasData ? "hsl(var(--gold) / 0.4)" : "hsl(var(--muted) / 0.5)")
                 : hasData
-                  ? (isDark ? "#5b8db8" : "#c7d5f0")
-                  : (isDark ? "#2d3748" : "#e2e8f0");
+                  ? "hsl(var(--muted))"
+                  : "hsl(var(--muted) / 0.5)";
 
             return (
               <Geography
                 key={geo.rsmKey}
                 geography={geo}
                 fill={fill}
-                stroke="#ffffff"
-                strokeWidth={0.75}
+                stroke={isSelected ? "hsl(var(--foreground))" : "hsl(var(--background))"}
+                strokeWidth={isSelected ? 1 : 0.75}
                 style={{
                   default: {
                     outline: "none",
                     cursor: "pointer",
                     transition: "fill 0.2s ease, filter 0.2s ease",
-                    filter: isHovered ? "drop-shadow(0 0 6px rgba(181, 146, 47, 0.22))" : "none",
+                    filter: isHovered ? "drop-shadow(0 0 6px hsl(var(--gold) / 0.22))" : "none",
                   },
                   hover: { outline: "none", cursor: "pointer", opacity: 0.9 },
                   pressed: { outline: "none", opacity: 0.8 },
@@ -195,7 +191,7 @@ export function StateInfoPanel({
             {selectedState ? `${selectedState} Custody Law` : "Select a state to explore"}
           </span>
           {selectedState ? (
-            <Badge className={`text-[10px] ${hasData ? "border-primary/30 bg-primary/[0.1] text-primary dark:bg-primary/20 dark:text-primary-foreground/80" : "border-border bg-muted text-muted-foreground"}`}>
+            <Badge className={`text-[10px] ${hasData ? "border-border bg-secondary text-primary" : "border-border bg-muted text-muted-foreground"}`}>
               {hasData ? "Data available" : "Coming soon"}
             </Badge>
           ) : null}
@@ -206,8 +202,8 @@ export function StateInfoPanel({
       <div id="state-panel-body" className={mobileExpanded ? "block" : "hidden lg:block"}>
         {!selectedState ? (
           <div className="flex min-h-[360px] flex-col items-center justify-center gap-5 p-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-background shadow-xs dark:bg-muted/40">
-              <Scale className="h-6 w-6 text-muted-foreground/70 dark:text-muted-foreground" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-background shadow-xs">
+              <Scale className="h-6 w-6 text-muted-foreground" />
             </div>
             <div>
               <p className="mb-1.5 font-serif text-base font-semibold" data-testid="text-panel-empty-heading">
@@ -229,7 +225,7 @@ export function StateInfoPanel({
                     <button
                       key={s}
                       onClick={() => onQuickAccess(s)}
-                      className="rounded-full border border-primary/20 bg-primary/[0.07] px-2.5 py-1 text-xs text-primary transition-colors hover:bg-primary/[0.13] dark:border-primary/50 dark:bg-primary/[0.18] dark:text-primary dark:hover:bg-primary/[0.28]"
+                      className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-secondary"
                       data-testid={`quick-state-${s.toLowerCase().replace(/\s+/g, "-")}`}
                     >
                       {s}
@@ -293,7 +289,7 @@ export function StateInfoPanel({
               </div>
               <Link href={fullDetailsPath} className="mt-0.5 flex-shrink-0">
                 <Badge
-                  className="cursor-pointer border-primary/20 bg-primary/[0.07] text-[10px] text-primary transition-colors hover:bg-primary/[0.13] dark:bg-primary/20"
+                  className="cursor-pointer border-border bg-secondary text-[10px] text-primary transition-colors hover:bg-accent"
                   data-testid="badge-detailed-data"
                 >
                   {variant === "landing" ? "View Full Details →" : "Full details ↗"}
@@ -324,7 +320,7 @@ export function StateInfoPanel({
               {law.child_preference_age ? (
                 <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
                   <div className="mb-1.5 flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5 flex-shrink-0 text-violet-600 dark:text-violet-400" />
+                    <Users className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Child Preference Age
                     </h3>
@@ -335,7 +331,7 @@ export function StateInfoPanel({
 
               <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
                 <div className="mb-1.5 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 flex-shrink-0 text-orange-500 dark:text-orange-400" />
+                  <MapPin className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Relocation Rules
                   </h3>
@@ -396,11 +392,13 @@ export function GuestStateQAPanel({
   heading,
   subtext,
   emptyPrompt,
+  embedded = false,
 }: {
   selectedState: string | null;
   heading?: string;
   subtext?: string;
   emptyPrompt?: string;
+  embedded?: boolean;
 }) {
   const { user } = useCurrentUser();
   const queryClient = useQueryClient();
@@ -506,25 +504,35 @@ export function GuestStateQAPanel({
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6" data-testid="card-guest-state-qa">
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
-        ASK ATLAS — FREE
-      </p>
-      <div className="max-w-2xl">
-        <h2 className="font-serif text-2xl font-semibold leading-tight text-foreground">
-          {heading ?? `Have a custody question about ${selectedState ?? "this state"}?`}
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {subtext ?? "Get a real answer in plain English. No account needed."}
-        </p>
-      </div>
+    <div className={embedded ? "" : "rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6"} data-testid={embedded ? "card-guest-state-qa-embedded" : "card-guest-state-qa"}>
+      {embedded ? null : (
+        <>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+            ASK ATLAS — FREE
+          </p>
+          <div className="max-w-2xl">
+            <h2 className="font-serif text-2xl font-semibold leading-tight text-foreground">
+              {heading ?? `Have a custody question about ${selectedState ?? "this state"}?`}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {subtext ?? "Get a real answer in plain English. No account needed."}
+            </p>
+          </div>
+        </>
+      )}
 
       {!selectedState ? (
         <div className="mt-5 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-5 text-sm text-muted-foreground">
           {emptyPrompt ?? "Select a state on the map to ask a question."}
         </div>
       ) : limitReached ? (
-        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-5 dark:border-amber-800/50 dark:bg-amber-950/20">
+        <div
+          className="mt-5 rounded-xl border px-4 py-5"
+          style={{
+            borderColor: "hsl(var(--gold))",
+            backgroundColor: "hsl(var(--gold) / 0.08)",
+          }}
+        >
           <p className="text-sm leading-relaxed text-foreground">
             You've used your 3 free questions. Create a free account to get 10 questions total and save your conversations.
           </p>
@@ -547,7 +555,7 @@ export function GuestStateQAPanel({
                 }
               }}
               placeholder={`Ask anything about custody in ${selectedState}...`}
-              className="h-11 border-input bg-background"
+              className="h-11 border-transparent bg-muted text-foreground"
               disabled={mutation.isPending}
               data-testid="input-guest-state-question"
             />
@@ -585,7 +593,7 @@ export function GuestStateQAPanel({
             </p>
           ) : null}
           {error ? (
-            <p className="text-sm text-destructive" data-testid="text-guest-state-question-error">
+            <p className="text-sm text-foreground" data-testid="text-guest-state-question-error">
               {error}
             </p>
           ) : null}
@@ -596,7 +604,7 @@ export function GuestStateQAPanel({
         {exchanges.map((entry) => (
           <div key={entry.id} className="space-y-3">
             <div className="flex justify-end">
-              <div className="max-w-[90%] rounded-2xl rounded-br-md bg-slate-900 px-4 py-3 text-sm leading-relaxed text-white shadow-sm sm:max-w-[80%] dark:bg-slate-800">
+              <div className="max-w-[90%] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-relaxed text-primary-foreground shadow-sm sm:max-w-[80%]">
                 {entry.question}
               </div>
             </div>
