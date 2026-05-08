@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   MapPin,
+  ChevronDown,
   CheckCircle,
   Shield,
   FileSearch,
@@ -216,7 +217,7 @@ function HeroSection() {
           </div>
         </Reveal>
 
-        <Reveal delay={240} className="mt-5 w-full max-w-[520px]">
+        <Reveal delay={240} className="mt-5 w-full max-w-[680px]">
           <ExploreStateMap
             selectedState={selectedState}
             hoveredState={hoveredState}
@@ -226,7 +227,17 @@ function HeroSection() {
         </Reveal>
 
         {selectedState ? (
-          <Reveal delay={320} className="mt-7 w-full max-w-[520px] text-left">
+          <>
+            <Reveal delay={280} className="mt-5">
+              <div className="flex justify-center">
+                <ChevronDown
+                  className="h-6 w-6 animate-bounce"
+                  style={{ color: "hsl(var(--gold))" }}
+                  aria-hidden="true"
+                />
+              </div>
+            </Reveal>
+            <Reveal delay={320} className="mt-4 w-full max-w-[680px] text-left">
             <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -262,7 +273,8 @@ function HeroSection() {
                 emptyPrompt={`Choose ${selectedState} to ask Atlas about custody law in your area.`}
               />
             </div>
-          </Reveal>
+            </Reveal>
+          </>
         ) : null}
       </div>
     </section>

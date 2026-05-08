@@ -86,55 +86,66 @@ export function ExploreStateMap({
   onHoverStateChange: (stateName: string | null) => void;
   onStateClick: (stateName: string) => void;
 }) {
-  return (
-    <ComposableMap
-      projection="geoAlbersUsa"
-      style={{ width: "100%", height: "auto" }}
-      data-testid="svg-map"
-    >
-      <Geographies geography={GEO_URL}>
-        {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
-          geographies.map((geo: { rsmKey: string; properties: { name: string } }) => {
-            const stateName = geo.properties.name;
-            const hasData = STATES_WITH_DATA.has(stateName);
-            const isSelected = selectedState === stateName;
-            const isHovered = hoveredState === stateName;
-            const fill = isSelected
-              ? "hsl(var(--gold))"
-              : isHovered
-                ? (hasData ? "hsl(var(--gold) / 0.7)" : "hsl(var(--muted) / 0.5)")
-                : hasData
-                  ? "hsl(var(--muted-foreground) / 0.18)"
-                  : "hsl(var(--muted) / 0.5)";
+  const visibleStateLabel = hoveredState ?? selectedState;
 
-            return (
-              <Geography
-                key={geo.rsmKey}
-                geography={geo}
-                fill={fill}
-                stroke={isSelected ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground) / 0.4)"}
-                strokeWidth={isSelected ? 1 : 1}
-                style={{
-                  default: {
-                    outline: "none",
-                    cursor: "pointer",
-                    transition: "fill 0.2s ease, filter 0.2s ease",
-                    filter: isHovered ? "drop-shadow(0 0 6px hsl(var(--gold) / 0.22))" : "none",
-                  },
-                  hover: { outline: "none", cursor: "pointer", opacity: 0.9 },
-                  pressed: { outline: "none", opacity: 0.8 },
-                }}
-                onClick={() => onStateClick(stateName)}
-                onMouseEnter={() => onHoverStateChange(stateName)}
-                onMouseLeave={() => onHoverStateChange(null)}
-                data-testid={`state-${stateName.toLowerCase().replace(/\s+/g, "-")}`}
-                aria-label={stateName}
-              />
-            );
-          })
-        }
-      </Geographies>
-    </ComposableMap>
+  return (
+    <div className="space-y-3">
+      <div className="flex min-h-8 items-center justify-center">
+        {visibleStateLabel ? (
+          <div className="rounded-md border border-border bg-card px-3 py-1 text-[12px] text-foreground shadow-sm">
+            {visibleStateLabel}
+          </div>
+        ) : null}
+      </div>
+      <ComposableMap
+        projection="geoAlbersUsa"
+        style={{ width: "100%", height: "auto" }}
+        data-testid="svg-map"
+      >
+        <Geographies geography={GEO_URL}>
+          {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
+            geographies.map((geo: { rsmKey: string; properties: { name: string } }) => {
+              const stateName = geo.properties.name;
+              const hasData = STATES_WITH_DATA.has(stateName);
+              const isSelected = selectedState === stateName;
+              const isHovered = hoveredState === stateName;
+              const fill = isSelected
+                ? "hsl(var(--gold))"
+                : isHovered
+                  ? (hasData ? "hsl(var(--gold) / 0.7)" : "hsl(var(--muted) / 0.5)")
+                  : hasData
+                    ? "hsl(var(--muted-foreground) / 0.18)"
+                    : "hsl(var(--muted) / 0.5)";
+
+              return (
+                <Geography
+                  key={geo.rsmKey}
+                  geography={geo}
+                  fill={fill}
+                  stroke={isSelected ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground) / 0.4)"}
+                  strokeWidth={isSelected ? 1 : 1}
+                  style={{
+                    default: {
+                      outline: "none",
+                      cursor: "pointer",
+                      transition: "fill 0.2s ease, filter 0.2s ease",
+                      filter: isHovered ? "drop-shadow(0 0 6px hsl(var(--gold) / 0.22))" : "none",
+                    },
+                    hover: { outline: "none", cursor: "pointer", opacity: 0.9 },
+                    pressed: { outline: "none", opacity: 0.8 },
+                  }}
+                  onClick={() => onStateClick(stateName)}
+                  onMouseEnter={() => onHoverStateChange(stateName)}
+                  onMouseLeave={() => onHoverStateChange(null)}
+                  data-testid={`state-${stateName.toLowerCase().replace(/\s+/g, "-")}`}
+                  aria-label={stateName}
+                />
+              );
+            })
+          }
+        </Geographies>
+      </ComposableMap>
+    </div>
   );
 }
 
